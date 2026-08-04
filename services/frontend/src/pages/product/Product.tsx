@@ -1,5 +1,16 @@
-import { useParams } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import './Product.css'
+import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import clockIcon from '../../assets/clock.svg'
+import { JoinSuccessModal } from '../../components/modals/JoinSuccessModal'
+import { queueApi } from '../../features/queue/api'
+import { joinQueue as joinQueueAction } from '../../features/queue/queueSlice'
+import {
+  ACTIVE_QUEUE_STATUSES,
+  getProductActionLabel,
+} from '../../features/queue/lib'
+import type { QueueEntry } from '../../features/queue/types'
 
 const similarProducts = [
   { emoji: '👟', price: '14 500 ₽', title: 'Кроссовки Northline Base' },
@@ -8,9 +19,23 @@ const similarProducts = [
   { emoji: '🎒', price: '6 700 ₽', title: 'Рюкзак Northline City' },
 ]
 
+function pluralPeople(count: number): string {
+    const mod10 = count % 10
+    const mod100 = count % 100
+    if (mod10 === 1 && mod100 !== 11) return 'человек'
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'человека'
+    }
+    return 'человек'
+  }
+  
+
 export function Product() {
   const { id } = useParams<{ id: string }>()
-
+  const dispatch = useAppDispatch()
+  const navigate = useNavigate()
+  const [joinedEntry, setJoinedEntry] = useState<QueueEntry | null>(null)
+  
   const product = {
     id: id ?? '1',
     title: 'Кроссовки Northline Drop 01',
@@ -24,8 +49,42 @@ export function Product() {
       'Первая лимитированная коллекция Northline: многослойный верх, мягкая подошва и номер пары на внутренней бирке. В продаже только 300 пар. Для справедливой покупки действует очередь и временное право на покупку.',
   }
 
+  const myEntry = useAppSelector((state) =>
+    state.queue.queueItems.find(
+      (item) =>
+        item.productId === product.id &&
+        ACTIVE_QUEUE_STATUSES.includes(item.status),
+    ),
+  )
+  const alreadyInQueue = Boolean(myEntry)
+
   const inStock = product.stock > 0
   const demandHigh = product.queueLength > product.stock
+  const actionLabel = getProductActionLabel(inStock, myEntry)
+
+  const completeJoin = (entry: QueueEntry) => {
+    dispatch(joinQueueAction(entry))
+    setJoinedEntry(entry)
+  }
+
+  const handleJoinQueue = async (productId: string) => {
+    if (alreadyInQueue) return
+
+    try {
+      const entry = (await queueApi.joinQueue(productId)) as QueueEntry
+      completeJoin(entry)
+    } catch (error) {
+      console.error(error)
+      completeJoin({
+        id: '342',
+        productId,
+        status: 'queued',
+        position: 8,
+      })
+    }
+  }
+
+
 
   return (
     <section>
@@ -93,7 +152,43 @@ export function Product() {
             </div>
           </div>
 
-          {demandHigh && inStock && (
+          {myEntry?.status === 'queued' && (
+            <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-avito-blue-soft p-3.5 text-sm leading-snug text-[#006ca8]">
+              <div
+                className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white/70"
+                aria-hidden="true"
+              >
+                <img src={clockIcon} alt="" className="size-4" />
+              </div>
+              <div>
+                <strong>Вы в очереди</strong>
+                <span className="mt-1 block">
+                  Ваше место: {myEntry.position ?? '—'}. Мы сообщим, когда
+                  появится право на покупку.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {myEntry?.status === 'ticket' && (
+            <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-[#f0f9e7] p-3.5 text-sm leading-snug text-[#477b12]">
+              <div
+                className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white/70"
+                aria-hidden="true"
+              >
+                ✓
+              </div>
+              <div>
+                <strong>Есть право на покупку</strong>
+                <span className="mt-1 block">
+                  Товар закреплён за вами на ограниченное время. Перейдите к
+                  оформлению, пока право не истекло.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {!myEntry && demandHigh && inStock && (
             <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-[#fff8e6] p-3.5 text-sm leading-snug text-[#654300]">
               <div
                 className="grid size-[34px] shrink-0 place-items-center rounded-full bg-[#ffe8a7]"
@@ -114,8 +209,15 @@ export function Product() {
             <button
               type="button"
               className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover"
+              onClick={() => {
+                if (myEntry) {
+                  navigate('/queue')
+                  return
+                }
+                void handleJoinQueue(product.id)
+              }}
             >
-              {inStock ? 'Забронировать' : 'Уведомить о поступлении'}
+              {actionLabel}
             </button>
           </div>
 
@@ -157,16 +259,18 @@ export function Product() {
           ))}
         </div>
       </section>
+
+      <JoinSuccessModal
+        open={joinedEntry !== null}
+        position={joinedEntry?.position}
+        productTitle={product.title}
+        onClose={() => setJoinedEntry(null)}
+        onGoToQueues={() => {
+          setJoinedEntry(null)
+          navigate('/queue')
+        }}
+      />
     </section>
   )
 }
 
-function pluralPeople(count: number): string {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return 'человек'
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return 'человека'
-  }
-  return 'человек'
-}

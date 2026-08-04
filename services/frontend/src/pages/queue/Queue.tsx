@@ -1,38 +1,31 @@
 import { Link } from 'react-router-dom'
+import type { QueueEntry, QueueStatus } from '../../features/queue/types'
+import type { Product } from '../../features/product/types'
 
-type QueueStatus = 'queued' | 'ticket' | 'soldout'
+type QueueTileView = QueueEntry & Pick<Product, 'name' | 'image'>
 
-type QueueTile = {
-  productId: string
-  title: string
-  emoji: string
-  status: QueueStatus
-  position?: number
-  expiresIn?: string
-  notified?: boolean
-}
-
-const mockTiles: QueueTile[] = [
+const mockTiles: QueueTileView[] = [
   {
-    productId: '1',
-    title: 'Кроссовки Northline Drop 01',
-    emoji: '👟',
+    id: '1',
+    productId: '1',  
+    name: 'Кроссовки Northline Drop 01',
+    image: '👟',
     status: 'queued',
     position: 8,
   },
   {
+    id: '2',
     productId: '2',
-    title: 'Куртка Northline Shell',
-    emoji: '🧥',
+    name: 'Куртка Northline Shell',
+    image: '🧥',
     status: 'ticket',
-    expiresIn: '28:42',
   },
   {
+    id: '3',
     productId: '3',
-    title: 'Кепка Drop 01',
-    emoji: '🧢',
+    name: 'Кепка Drop 01',
+    image: '🧢',
     status: 'soldout',
-    notified: false,
   },
 ]
 

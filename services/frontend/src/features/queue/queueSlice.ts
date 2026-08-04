@@ -1,28 +1,31 @@
-// import { createSlice } from '@reduxjs/toolkit'
-// import type { PayloadAction } from '@reduxjs/toolkit'
-// import type { QueueEntry } from './types'
+import { createSlice } from '@reduxjs/toolkit'
+import type { PayloadAction } from '@reduxjs/toolkit'
+import type { QueueEntry } from './types'
 
-// interface QueueItemsState {
-//   queueItems: QueueEntry[]
-// }
+interface QueueItemsState {
+  queueItems: QueueEntry[]
+}
 
-// const initialState = { value: 0 } satisfies CounterState as CounterState
+const initialState = { queueItems: [] } satisfies QueueItemsState as QueueItemsState
 
-// const counterSlice = createSlice({
-//   name: 'counter',
-//   initialState,
-//   reducers: {
-//     increment(state) {
-//       state.value++
-//     },
-//     decrement(state) {
-//       state.value--
-//     },
-//     incrementByAmount(state, action: PayloadAction<number>) {
-//       state.value += action.payload
-//     },
-//   },
-// })
+const QueueItemsSlice = createSlice({
+  name: 'queueItems',
+  initialState,
+  reducers: {
+    joinQueue(state, action: PayloadAction<QueueEntry>) {
+        if (state.queueItems.find(item => item.id === action.payload.id)) {
+            return state;
+        }
+      state.queueItems.push(action.payload)
+    },
+    leaveQueue(state, action: PayloadAction<string>) {
+      state.queueItems = state.queueItems.filter(item => item.id !== action.payload)
+    },
+    updateQueueItem(state, action: PayloadAction<QueueEntry>) {
+      state.queueItems = state.queueItems.map(item => item.id === action.payload.id ? action.payload : item)
+    },
+  },
+})
 
-// export const { increment, decrement, incrementByAmount } = counterSlice.actions
-// export default counterSlice.reducer
+export const { joinQueue, leaveQueue, updateQueueItem } = QueueItemsSlice.actions
+export default QueueItemsSlice.reducer

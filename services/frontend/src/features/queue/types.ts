@@ -1,10 +1,8 @@
-import type { Product } from "../product/types"
-
 export type QueueStatus = 'queued' | 'ticket' | 'soldout'
 
 export type QueueEntry = {
-    id: string
-    product: Product
-    status: QueueStatus
-    position?: number
+  id: string
+  productId: string
+  status: QueueStatus
+  position?: number
 }
