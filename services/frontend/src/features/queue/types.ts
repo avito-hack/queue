@@ -5,4 +5,5 @@ export type QueueEntry = {
   productId: string
   status: QueueStatus
   position?: number
+  expiresAt?: string
 }

@@ -15,7 +15,7 @@ export function Header() {
     <header className="sticky top-0 z-30 border-b border-black/5 bg-white/95 backdrop-blur-md">
       <div className="mx-auto flex h-[68px] w-[min(1180px,calc(100%-22px))] items-center gap-2.5 sm:w-[min(1180px,calc(100%-32px))] sm:gap-6">
         <Link
-          to="/product/1"
+          to="/catalog"
           className="inline-flex items-center gap-2.5 whitespace-nowrap text-[21px] font-extrabold tracking-tight text-avito-ink no-underline sm:text-2xl"
         >
           <img
@@ -34,8 +34,8 @@ export function Header() {
           className="order-3 flex gap-1.5 sm:order-none"
           aria-label="Основная навигация"
         >
-          <NavLink to="/product/1" className={navClass}>
-            Товар
+          <NavLink to="/catalog" className={navClass}>
+            Каталог
           </NavLink>
           <NavLink to="/queue" className={navClass}>
             Мои очереди

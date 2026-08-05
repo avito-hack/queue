@@ -1,33 +1,12 @@
 import { Link } from 'react-router-dom'
-import type { QueueEntry, QueueStatus } from '../../features/queue/types'
+import { useAppSelector } from '../../app/hooks'
 import type { Product } from '../../features/product/types'
+import type { QueueEntry, QueueStatus } from '../../features/queue/types'
+
 
 type QueueTileView = QueueEntry & Pick<Product, 'name' | 'image'>
 
-const mockTiles: QueueTileView[] = [
-  {
-    id: '1',
-    productId: '1',  
-    name: 'Кроссовки Northline Drop 01',
-    image: '👟',
-    status: 'queued',
-    position: 8,
-  },
-  {
-    id: '2',
-    productId: '2',
-    name: 'Куртка Northline Shell',
-    image: '🧥',
-    status: 'ticket',
-  },
-  {
-    id: '3',
-    productId: '3',
-    name: 'Кепка Drop 01',
-    image: '🧢',
-    status: 'soldout',
-  },
-]
+
 
 const statusStyles: Record<QueueStatus, string> = {
   queued: 'bg-avito-blue-soft text-[#0075b8]',
@@ -36,9 +15,21 @@ const statusStyles: Record<QueueStatus, string> = {
 }
 
 export function Queue() {
-  const activeCount = mockTiles.filter((t) => t.status === 'queued').length
-  const ticketCount = mockTiles.filter((t) => t.status === 'ticket').length
-  const doneCount = mockTiles.filter((t) => t.status === 'soldout').length
+  const queueItems = useAppSelector((state) => state.queue.queueItems)
+  const productItems = useAppSelector((state) => state.products.productItems)
+
+  const queueTiles: QueueTileView[] = queueItems.map((entry) => {
+    const product = products.find((p) => p.id === entry.productId)
+    return {
+      ...entry,
+      name: product?.name ?? `Товар ${entry.productId}`,
+      image: product?.image ?? '🛒',
+    }
+  })
+
+  const activeCount = queueTiles.filter((t) => t.status === 'queued').length
+  const ticketCount = queueTiles.filter((t) => t.status === 'ticket').length
+  const doneCount = queueTiles.filter((t) => t.status === 'soldout').length
 
   return (
     <section>
@@ -66,11 +57,20 @@ export function Queue() {
         <SummaryTile label="Завершено" value={doneCount} />
       </div>
 
-      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
-        {mockTiles.map((tile) => (
-          <QueueCard key={tile.productId} tile={tile} />
-        ))}
-      </div>
+      {queueTiles.length === 0 ? (
+        <div className="rounded-2xl bg-white p-8 text-center text-avito-muted">
+          Вы ещё не вставали в очередь.{' '}
+          <Link to="/product/1" className="font-extrabold text-[#008ed8]">
+            Перейти к товару
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
+          {queueTiles.map((tile) => (
+            <QueueCard key={tile.id} tile={tile} />
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -84,14 +84,14 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
   )
 }
 
-function QueueCard({ tile }: { tile: QueueTile }) {
+function QueueCard({ tile }: { tile: QueueTileView }) {
   return (
     <Link
       to={`/product/${tile.productId}`}
       className="flex min-h-[365px] flex-col overflow-hidden rounded-[20px] border border-transparent bg-white no-underline transition duration-150 hover:-translate-y-0.5 hover:border-[#c9c9c9] hover:shadow-card"
     >
       <div className="grid h-[170px] place-items-center bg-linear-to-br from-[#dff5ff] to-[#e7dcff] text-[92px]">
-        {tile.emoji}
+        {tile.image}
       </div>
 
       <div className="flex flex-1 flex-col p-[18px]">
@@ -102,7 +102,7 @@ function QueueCard({ tile }: { tile: QueueTile }) {
         </div>
 
         <div className="text-lg font-extrabold leading-snug text-avito-ink">
-          {tile.title}
+          {tile.name}
         </div>
 
         <div className="mt-4 grid gap-2 text-sm text-[#555]">
@@ -124,34 +124,34 @@ function QueueCard({ tile }: { tile: QueueTile }) {
   )
 }
 
-function statusLabel(tile: QueueTile): string {
+function statusLabel(tile: QueueTileView): string {
   if (tile.status === 'queued') {
-    return `В очереди · место ${tile.position}`
+    return `В очереди · место ${tile.position ?? '—'}`
   }
   if (tile.status === 'ticket') {
-    return `Право на покупку · ${tile.expiresIn}`
+    return 'Право на покупку'
   }
   return 'Товар закончился'
 }
 
-function metaRows(tile: QueueTile): { label: string; value: string }[] {
+function metaRows(tile: QueueTileView): { label: string; value: string }[] {
   if (tile.status === 'queued') {
     return [
-      { label: 'Перед вами', value: String(Math.max(0, (tile.position ?? 1) - 1)) },
+      {
+        label: 'Перед вами',
+        value: String(Math.max(0, (tile.position ?? 1) - 1)),
+      },
       { label: 'Тикет', value: 'ожидается' },
     ]
   }
   if (tile.status === 'ticket') {
     return [
       { label: 'Право на покупку', value: '1 шт.' },
-      { label: 'Осталось', value: tile.expiresIn ?? '—' },
+      { label: 'Истекает', value: tile.expiresAt ?? '—' },
     ]
   }
   return [
-    {
-      label: 'Поступление',
-      value: tile.notified ? 'уведомление включено' : 'можно подписаться',
-    },
+    { label: 'Поступление', value: 'можно подписаться' },
     { label: 'Тикет', value: 'нет' },
   ]
 }
