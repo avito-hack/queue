@@ -1,12 +1,13 @@
-import { Link } from 'react-router-dom'
-import { useAppSelector } from '../../app/hooks'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { TicketPurchaseModal } from '../../components/modals/TicketPurchaseModal'
 import type { Product } from '../../features/product/types'
+import { leaveQueue } from '../../features/queue/queueSlice'
+import { useCountdown } from '../../features/queue/useCountdown'
 import type { QueueEntry, QueueStatus } from '../../features/queue/types'
 
-
 type QueueTileView = QueueEntry & Pick<Product, 'name' | 'image'>
-
-
 
 const statusStyles: Record<QueueStatus, string> = {
   queued: 'bg-avito-blue-soft text-[#0075b8]',
@@ -15,11 +16,14 @@ const statusStyles: Record<QueueStatus, string> = {
 }
 
 export function Queue() {
+  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const queueItems = useAppSelector((state) => state.queue.queueItems)
   const productItems = useAppSelector((state) => state.products.productItems)
+  const [ticketTile, setTicketTile] = useState<QueueTileView | null>(null)
 
   const queueTiles: QueueTileView[] = queueItems.map((entry) => {
-    const product = products.find((p) => p.id === entry.productId)
+    const product = productItems.find((p) => p.id === entry.productId)
     return {
       ...entry,
       name: product?.name ?? `Товар ${entry.productId}`,
@@ -44,10 +48,10 @@ export function Queue() {
           </p>
         </div>
         <Link
-          to="/product/1"
+          to="/catalog"
           className="inline-flex min-h-10 items-center rounded-xl bg-[#f1f1f1] px-4 py-2 font-extrabold text-avito-ink no-underline"
         >
-          ← Вернуться к товару
+          ← В каталог
         </Link>
       </div>
 
@@ -60,17 +64,41 @@ export function Queue() {
       {queueTiles.length === 0 ? (
         <div className="rounded-2xl bg-white p-8 text-center text-avito-muted">
           Вы ещё не вставали в очередь.{' '}
-          <Link to="/product/1" className="font-extrabold text-[#008ed8]">
-            Перейти к товару
+          <Link to="/catalog" className="font-extrabold text-[#008ed8]">
+            Перейти в каталог
           </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
           {queueTiles.map((tile) => (
-            <QueueCard key={tile.id} tile={tile} />
+            <QueueCard
+              key={tile.id}
+              tile={tile}
+              onOpenTicket={() => setTicketTile(tile)}
+              onLeaveQueue={() => dispatch(leaveQueue(tile.id))}
+            />
           ))}
         </div>
       )}
+
+      <TicketPurchaseModal
+        open={ticketTile !== null}
+        productTitle={ticketTile?.name ?? ''}
+        productImage={ticketTile?.image ?? '🛒'}
+        expiresAt={ticketTile?.expiresAt}
+        onClose={() => setTicketTile(null)}
+        onBuy={() => {
+          if (!ticketTile) return
+          const id = ticketTile.id
+          setTicketTile(null)
+          navigate(`/checkout?ticket=${id}`)
+        }}
+        onDecline={() => {
+          if (!ticketTile) return
+          dispatch(leaveQueue(ticketTile.id))
+          setTicketTile(null)
+        }}
+      />
     </section>
   )
 }
@@ -84,57 +112,94 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
   )
 }
 
-function QueueCard({ tile }: { tile: QueueTileView }) {
+function QueueCard({
+  tile,
+  onOpenTicket,
+  onLeaveQueue,
+}: {
+  tile: QueueTileView
+  onOpenTicket: () => void
+  onLeaveQueue: () => void
+}) {
+  const countdown = useCountdown(
+    tile.status === 'ticket' ? tile.expiresAt : undefined,
+  )
+
   return (
-    <Link
-      to={`/product/${tile.productId}`}
-      className="flex min-h-[365px] flex-col overflow-hidden rounded-[20px] border border-transparent bg-white no-underline transition duration-150 hover:-translate-y-0.5 hover:border-[#c9c9c9] hover:shadow-card"
-    >
+    <article className="flex min-h-[365px] flex-col overflow-hidden rounded-[20px] border border-transparent bg-white transition duration-150 hover:-translate-y-0.5 hover:border-[#c9c9c9] hover:shadow-card">
       <div className="grid h-[170px] place-items-center bg-linear-to-br from-[#dff5ff] to-[#e7dcff] text-[92px]">
         {tile.image}
       </div>
 
-      <div className="flex flex-1 flex-col p-[18px]">
+      <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
         <div
-          className={`mb-2.5 self-start rounded-full px-2.5 py-1.5 text-xs font-extrabold ${statusStyles[tile.status]}`}
+          className={`self-start rounded-full px-2.5 py-1.5 text-xs font-extrabold ${statusStyles[tile.status]}`}
         >
-          {statusLabel(tile)}
+          {statusLabel(tile, countdown)}
         </div>
 
         <div className="text-lg font-extrabold leading-snug text-avito-ink">
           {tile.name}
         </div>
 
-        <div className="mt-4 grid gap-2 text-sm text-[#555]">
-          {metaRows(tile).map((row) => (
+        <div className="grid gap-2.5 text-sm text-[#555]">
+          {metaRows(tile, countdown).map((row) => (
             <div key={row.label} className="flex justify-between gap-3">
               <span>{row.label}</span>
-              <strong className="text-avito-ink">{row.value}</strong>
+              <strong className="font-mono text-avito-ink">{row.value}</strong>
             </div>
           ))}
         </div>
 
-        <div className="mt-auto pt-[18px] text-sm font-extrabold text-[#008ed8]">
-          {tile.status === 'ticket'
-            ? 'Перейти к покупке →'
-            : 'Перейти на страницу товара →'}
+        <div className="mt-auto flex flex-col gap-3 pt-2">
+          {tile.status === 'ticket' && (
+            <button
+              type="button"
+              className="min-h-10 w-full cursor-pointer rounded-[10px] bg-avito-blue px-3 py-2 text-[13px] font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover"
+              onClick={onOpenTicket}
+            >
+              Перейти к покупке
+            </button>
+          )}
+
+          {tile.status === 'queued' && (
+            <button
+              type="button"
+              className="min-h-10 w-full cursor-pointer rounded-[10px] bg-[#fff0f2] px-3 py-2 text-[13px] font-extrabold text-avito-red"
+              onClick={onLeaveQueue}
+            >
+              Выйти из очереди
+            </button>
+          )}
+
+          <Link
+            to={`/product/${tile.productId}`}
+            className="text-center text-sm font-extrabold text-[#008ed8] no-underline"
+          >
+            Перейти на страницу товара →
+          </Link>
         </div>
       </div>
-    </Link>
+    </article>
   )
 }
 
-function statusLabel(tile: QueueTileView): string {
+function statusLabel(tile: QueueTileView, countdown: string | null): string {
   if (tile.status === 'queued') {
     return `В очереди · место ${tile.position ?? '—'}`
   }
   if (tile.status === 'ticket') {
-    return 'Право на покупку'
+    return countdown
+      ? `Право на покупку · ${countdown}`
+      : 'Право на покупку'
   }
   return 'Товар закончился'
 }
 
-function metaRows(tile: QueueTileView): { label: string; value: string }[] {
+function metaRows(
+  tile: QueueTileView,
+  countdown: string | null,
+): { label: string; value: string }[] {
   if (tile.status === 'queued') {
     return [
       {
@@ -147,7 +212,7 @@ function metaRows(tile: QueueTileView): { label: string; value: string }[] {
   if (tile.status === 'ticket') {
     return [
       { label: 'Право на покупку', value: '1 шт.' },
-      { label: 'Истекает', value: tile.expiresAt ?? '—' },
+      { label: 'Осталось', value: countdown ?? '—' },
     ]
   }
   return [

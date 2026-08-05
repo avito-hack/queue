@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useAppDispatch } from '../../app/hooks'
+import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import type { Product } from '../../features/product/types'
 import { CatalogCard } from './CatalogCard'
 import { productApi } from '../../features/product/api'
@@ -64,7 +64,6 @@ const mockProducts: Product[] = [
 
 export function Catalog() {
   const dispatch = useAppDispatch()
- 
   useEffect(() => {
     (async () => {
       try {
@@ -76,6 +75,8 @@ export function Catalog() {
       }
     })()
   }, [dispatch])
+  
+  const products = useAppSelector((state) => state.products.productItems)
   
   return (
     <section>
@@ -97,12 +98,12 @@ export function Catalog() {
           С очередью
         </span>
         <span className="rounded-full bg-[#f1f1f1] px-3 py-1.5 text-xs font-bold text-[#4d4d4d]">
-          {mockProducts.length} объявлений
+          {products.length} объявлений
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {mockProducts.map((product) => (
+        {products.map((product) => (
           <CatalogCard key={product.id} product={product} />
         ))}
       </div>

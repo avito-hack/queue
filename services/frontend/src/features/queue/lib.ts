@@ -16,3 +16,17 @@ export function getProductActionLabel(
   }
   return inStock ? 'Встать в очередь' : 'Уведомить о поступлении'
 }
+
+/** Оставшееся время до expiresAt → "mm:ss", либо null если нет даты / уже истекло */
+export function formatCountdown(expiresAt?: string): string | null {
+  if (!expiresAt) return null
+
+  const diffMs = new Date(expiresAt).getTime() - Date.now()
+  if (Number.isNaN(diffMs) || diffMs <= 0) return '00:00'
+
+  const totalSec = Math.floor(diffMs / 1000)
+  const minutes = Math.floor(totalSec / 60)
+  const seconds = totalSec % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}

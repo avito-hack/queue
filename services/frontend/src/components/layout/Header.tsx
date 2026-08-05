@@ -37,9 +37,6 @@ export function Header() {
           <NavLink to="/catalog" className={navClass}>
             Каталог
           </NavLink>
-          <NavLink to="/queue" className={navClass}>
-            Мои очереди
-          </NavLink>
         </nav>
 
         <div className="flex-1" />

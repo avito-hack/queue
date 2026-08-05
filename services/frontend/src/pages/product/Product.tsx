@@ -32,59 +32,66 @@ function pluralPeople(count: number): string {
 
 export function Product() {
   const { id } = useParams<{ id: string }>()
+  const productId = id ?? ''
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const [joinedEntry, setJoinedEntry] = useState<QueueEntry | null>(null)
-  
-  const product = {
-    id: id ?? '1',
-    title: 'Кроссовки Northline Drop 01',
-    breadcrumb: 'Лимитированные кроссовки',
-    price: '19 990 ₽',
-    emoji: '👟',
-    stock: 3,
-    queueLength: 27,
-    location: 'Санкт-Петербург',
-    description:
-      'Первая лимитированная коллекция Northline: многослойный верх, мягкая подошва и номер пары на внутренней бирке. В продаже только 300 пар. Для справедливой покупки действует очередь и временное право на покупку.',
-  }
+
+  const product = useAppSelector((state) =>
+    state.products.productItems.find((p) => p.id === productId),
+  )
 
   const myEntry = useAppSelector((state) =>
     state.queue.queueItems.find(
       (item) =>
-        item.productId === product.id &&
+        item.productId === productId &&
         ACTIVE_QUEUE_STATUSES.includes(item.status),
     ),
   )
   const alreadyInQueue = Boolean(myEntry)
-
-  const inStock = product.stock > 0
-  const demandHigh = product.queueLength > product.stock
-  const actionLabel = getProductActionLabel(inStock, myEntry)
 
   const completeJoin = (entry: QueueEntry) => {
     dispatch(joinQueueAction(entry))
     setJoinedEntry(entry)
   }
 
-  const handleJoinQueue = async (productId: string) => {
+  const handleJoinQueue = async (targetProductId: string) => {
     if (alreadyInQueue) return
 
     try {
-      const entry = (await queueApi.joinQueue(productId)) as QueueEntry
+      const entry = (await queueApi.joinQueue(targetProductId)) as QueueEntry
       completeJoin(entry)
     } catch (error) {
       console.error(error)
       completeJoin({
-        id: '342',
-        productId,
-        status: 'queued',
+        id: `${targetProductId}-entry`,
+        productId: targetProductId,
+        status: 'ticket',
         position: 8,
       })
     }
   }
 
+  if (!product) {
+    return (
+      <section className="rounded-2xl bg-white p-8 text-center text-avito-muted">
+        Товар не найден. Откройте его из{' '}
+        <button
+          type="button"
+          className="cursor-pointer bg-transparent font-extrabold text-[#008ed8]"
+          onClick={() => navigate('/catalog')}
+        >
+          каталога
+        </button>
+        .
+      </section>
+    )
+  }
 
+  const inStock = product.count > 0
+  const demandHigh = product.queueCount > product.count
+  const actionLabel = getProductActionLabel(inStock, myEntry)
+  const priceLabel = `${product.price.toLocaleString('ru-RU')} ₽`
 
   return (
     <section>
@@ -97,7 +104,7 @@ export function Product() {
           Одежда и обувь
         </a>
         <span>›</span>
-        <span>{product.breadcrumb}</span>
+        <span>{product.name}</span>
       </div>
 
       <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)]">
@@ -109,7 +116,7 @@ export function Product() {
             className="product-emoji z-[1] -rotate-8 select-none"
             aria-hidden="true"
           >
-            {product.emoji}
+            {product.image}
           </div>
           <div
             className="absolute bottom-[18px] left-1/2 z-[2] flex -translate-x-1/2 gap-1.5"
@@ -124,13 +131,13 @@ export function Product() {
 
         <aside className="rounded-[22px] bg-avito-card p-6 shadow-card lg:sticky lg:top-[92px]">
           <div className="mb-2.5 text-sm text-avito-muted">
-            Новое · {product.location}
+            Лимитированный товар
           </div>
           <h1 className="m-0 text-[26px] leading-[1.14] tracking-tight sm:text-[30px]">
-            {product.title}
+            {product.name}
           </h1>
           <div className="mt-3.5 text-[27px] font-extrabold tracking-tight sm:text-[30px]">
-            {product.price}
+            {priceLabel}
           </div>
 
           <div className="my-[22px] grid gap-2.5 rounded-[14px] bg-[#f7f7f7] p-4">
@@ -141,13 +148,13 @@ export function Product() {
                   inStock ? 'text-avito-green' : 'text-avito-red'
                 }
               >
-                {inStock ? `${product.stock} шт.` : 'нет в наличии'}
+                {inStock ? `${product.count} шт.` : 'нет в наличии'}
               </strong>
             </div>
             <div className="flex items-center justify-between gap-3.5 text-sm">
               <span className="text-avito-muted">Уже в очереди</span>
               <strong>
-                {product.queueLength} {pluralPeople(product.queueLength)}
+                {product.queueCount} {pluralPeople(product.queueCount)}
               </strong>
             </div>
           </div>
@@ -263,7 +270,7 @@ export function Product() {
       <JoinSuccessModal
         open={joinedEntry !== null}
         position={joinedEntry?.position}
-        productTitle={product.title}
+        productTitle={product.name}
         onClose={() => setJoinedEntry(null)}
         onGoToQueues={() => {
           setJoinedEntry(null)

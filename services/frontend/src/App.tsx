@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Header } from './components/layout/Header'
 import { Catalog } from './pages/catalog/Catalog'
+import { Checkout } from './pages/checkout/Checkout'
 import { Product } from './pages/product/Product'
 import { Queue } from './pages/queue/Queue'
 
@@ -14,6 +15,7 @@ function App() {
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/product/:id" element={<Product />} />
           <Route path="/queue" element={<Queue />} />
+          <Route path="/checkout" element={<Checkout />} />
         </Routes>
       </main>
     </div>
