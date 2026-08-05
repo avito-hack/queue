@@ -1,0 +1,436 @@
+openapi: 3.0.3
+
+info:
+  title: API тикетов
+  version: 1.0.0
+  description: |
+    API сервиса тикетов (прав) на покупку лимитированных товаров.
+
+    Пользовательские методы работают от имени пользователя, определяемого
+    по Bearer-токену. Внутренние методы доступны только доверенным сервисам.
+
+paths:
+  /healthz:
+    get:
+      summary: Проверить доступность сервиса
+      security: []
+      responses:
+        "200":
+          description: Здоров
+
+  /v1/ticket/list:
+    get:
+      summary: Получить тикеты текущего пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Отфильтровать тикеты по статусу
+          schema:
+            $ref: "#/components/schemas/V1TicketStatus"
+        - name: listing_id
+          in: query
+          required: false
+          description: Отфильтровать тикеты по объявлению
+          schema:
+            type: string
+            format: uuid
+        - name: sku_id
+          in: query
+          required: false
+          description: Отфильтровать тикеты по конкретному SKU
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Список тикетов успешно получен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V1TicketListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/ticket/{ticket_id}:
+    get:
+      summary: Получить тикет по идентификатору
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      responses:
+        "200":
+          description: Тикет успешно получен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V1Ticket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TicketNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/ticket/{ticket_id}/activate:
+    post:
+      summary: Активировать тикет
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Тикет успешно активирован, запущен флоу оформления заказа
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V1TicketActivateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TicketNotFound"
+        "409":
+          description: Текущее состояние тикета запрещает активацию
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithMessage"
+        "410":
+          description: Срок активации тикета истек
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithMessage"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: Адаптер стандартного флоу оформления временно недоступен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithMessage"
+
+  /v1/ticket/{ticket_id}/decline:
+    post:
+      summary: Отказаться от тикета
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Пользователь отказался от тикета
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V1TicketStateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TicketNotFound"
+        "409":
+          description: Отказ от тикета в текущем состоянии запрещен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithMessage"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/v1/ticket/issue:
+    post:
+      summary: Выдать тикет пользователю
+      security:
+        - serviceAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalV1TicketIssueRequest"
+      responses:
+        "201":
+          description: Тикет успешно выдан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V1Ticket"
+        "200":
+          description: По этой заявке тикет уже был выдан ранее
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V1Ticket"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Тикет не может быть выдан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithMessage"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Пользовательский авторизационный токен
+
+    serviceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: ServiceToken
+      description: Токен доверенного внутреннего сервиса
+
+  parameters:
+    TicketId:
+      name: ticket_id
+      in: path
+      required: true
+      description: Идентификатор тикета
+      schema:
+        type: string
+        format: uuid
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Токен идемпотентности
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorWithMessage"
+
+    Unauthorized:
+      description: Авторизационный токен отсутствует или невалиден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorWithMessage"
+
+    TicketNotFound:
+      description: Тикет не найден или недоступен текущему пользователю
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorWithMessage"
+
+    InternalError:
+      description: Внутренняя ошибка сервиса
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorWithMessage"
+
+  schemas:
+    V1TicketListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - ticket
+      properties:
+        ticket:
+          type: array
+          items:
+            $ref: "#/components/schemas/V1Ticket"
+
+    V1Ticket:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - listing_id
+        - sku_id
+        - status
+        - issued_at
+        - activation_deadline
+        - available_actions
+      properties:
+        id:
+          type: string
+          format: uuid
+        listing_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/V1TicketStatus"
+        issued_at:
+          type: string
+          format: date-time
+        activation_deadline:
+          type: string
+          format: date-time
+        activated_at:
+          type: string
+          format: date-time
+          nullable: true
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Идентификатор заказа, созданного через адаптер
+        checkout_url:
+          type: string
+          format: uri-reference
+          nullable: true
+          description: Ссылка на стандартный флоу оформления заказа
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        finish_reason:
+          allOf:
+            - $ref: "#/components/schemas/V1TicketCloseReason"
+          nullable: true
+        available_actions:
+          type: array
+          description: Действия, доступные пользователю в текущем состоянии
+          items:
+            $ref: "#/components/schemas/V1TicketAvailableAction"
+
+    V1TicketActivateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - ticket_id
+        - status
+        - order_id
+        - checkout_url
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/V1TicketStatus"
+        order_id:
+          type: string
+          format: uuid
+          description: Идентификатор оформления, созданного через адаптер
+        checkout_url:
+          type: string
+          format: uri-reference
+          description: Ссылка на стандартный флоу оформления заказа
+
+    V1TicketStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - ticket_id
+        - status
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/V1TicketStatus"
+
+    InternalV1TicketIssueRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - queue_entry_id
+        - user_id
+        - listing_id
+        - sku_id
+      properties:
+        queue_entry_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        listing_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+
+    InternalV1TicketCancelRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          $ref: "#/components/schemas/InternalV1TicketCancellationReason"
+
+    V1TicketStatus:
+      type: string
+      enum:
+        - issued
+        - active
+        - redeemed
+        - closed
+
+    V1TicketAvailableAction:
+      type: string
+      enum:
+        - activate
+        - decline
+        - checkout
+
+    V1TicketCloseReason:
+      type: string
+      enum:
+        - payment_succeeded
+        - activation_timeout
+        - user_declined
+        - listing_closed
+        - sku_closed
+        - reservation_released
+        - system_cancelled
+
+    InternalV1TicketCancellationReason:
+      type: string
+      enum:
+        - listing_closed
+        - sku_closed
+        - stock_reduced
+        - system_cancelled
+
+    ErrorWithMessage:
+      type: object
+      additionalProperties: false
+      description: Код ошибки с пояснительным сообщением
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
