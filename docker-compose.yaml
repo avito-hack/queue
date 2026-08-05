@@ -23,6 +23,7 @@ services:
   tickets:
     build:
       context: ./services/tickets
+      dockerfile: build/Dockerfile
     expose:
       - "8080"
     healthcheck:

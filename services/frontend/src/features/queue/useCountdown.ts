@@ -2,19 +2,17 @@ import { useEffect, useState } from 'react'
 import { formatCountdown } from './lib'
 
 export function useCountdown(expiresAt?: string) {
-  const [label, setLabel] = useState(() => formatCountdown(expiresAt))
+  const [, setTick] = useState(0)
 
   useEffect(() => {
-    setLabel(formatCountdown(expiresAt))
-
     if (!expiresAt) return
 
     const id = window.setInterval(() => {
-      setLabel(formatCountdown(expiresAt))
+      setTick((tick) => tick + 1)
     }, 1000)
 
     return () => window.clearInterval(id)
   }, [expiresAt])
 
-  return label
+  return formatCountdown(expiresAt)
 }
