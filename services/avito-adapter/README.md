@@ -200,7 +200,7 @@ HTTP_PORT=8081 HTTP_SHUTDOWN_TIMEOUT=15s go run ./cmd/app
 
 ## Генерация и тесты
 
-После изменения [api/openapi.yaml](api/openapi.yaml) необходимо выполнить `make generate`. Конфигурация генератора — [gen/server/cfg.yaml](gen/server/cfg.yaml).
+После изменения [api/openapi.yaml](api/openapi.yaml) необходимо выполнить `make generate`. Конфигурация генератора — [api/oapi-codegen.yaml](api/oapi-codegen.yaml).
 
 Тесты проверяют healthcheck, уменьшение доступного остатка при резервировании, восстановление остатка при отмене и запрет повторного заказа по одному резерву. Они запускаются командой:
 
