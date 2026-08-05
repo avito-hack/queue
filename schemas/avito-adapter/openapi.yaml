@@ -1,0 +1,354 @@
+openapi: 3.0.3
+info:
+  title: Avito Adapter API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /v1/users:
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /v1/users/{userId}:
+    get:
+      operationId: getUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings:
+    post:
+      operationId: createListing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListingRequest'
+      responses:
+        '201':
+          description: Listing created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}:
+    get:
+      operationId: getListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateListingRequest'
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: removeListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '204': { description: Listing removed }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/quantity:
+    put:
+      operationId: changeListingQuantity
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeQuantityRequest'
+      responses:
+        '200':
+          description: Quantity changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/queue:
+    put:
+      operationId: setListingQueueEnabled
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueueSettingsRequest'
+      responses:
+        '200':
+          description: Queue setting updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/pause:
+    post:
+      operationId: pauseListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/activate:
+    post:
+      operationId: activateListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/reservations:
+    post:
+      operationId: createReservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+      responses:
+        '201':
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/reservations/{reservationId}:
+    get:
+      operationId: getReservation
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Reservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: cancelReservation
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '204': { description: Reservation cancelled }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/orders/{orderId}:
+    get:
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  parameters:
+    UserId: { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    ListingId: { name: listingId, in: path, required: true, schema: { type: string, format: uuid } }
+    ReservationId: { name: reservationId, in: path, required: true, schema: { type: string, format: uuid } }
+    OrderId: { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Operation conflicts with current state
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties: { status: { type: string, example: ok } }
+    Error:
+      type: object
+      required: [message]
+      properties: { message: { type: string } }
+    User:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateUserRequest:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 1 } }
+    ListingStatus:
+      type: string
+      enum: [active, paused, removed]
+    Listing:
+      type: object
+      required: [id, sellerId, title, price, quantity, reservedQuantity, availableQuantity, queueEnabled, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        sellerId: { type: string, format: uuid }
+        title: { type: string }
+        price: { type: integer, format: int64, minimum: 0 }
+        quantity: { type: integer, minimum: 0 }
+        reservedQuantity: { type: integer, minimum: 0 }
+        availableQuantity: { type: integer, minimum: 0 }
+        queueEnabled: { type: boolean }
+        status: { $ref: '#/components/schemas/ListingStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateListingRequest:
+      type: object
+      required: [sellerId, title, price, quantity]
+      properties:
+        sellerId: { type: string, format: uuid }
+        title: { type: string, minLength: 1 }
+        price: { type: integer, format: int64, minimum: 0 }
+        quantity: { type: integer, minimum: 0 }
+        queueEnabled: { type: boolean, default: false }
+    UpdateListingRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        price: { type: integer, format: int64, minimum: 0 }
+    ChangeQuantityRequest:
+      type: object
+      required: [quantity]
+      properties: { quantity: { type: integer, minimum: 0 } }
+    QueueSettingsRequest:
+      type: object
+      required: [enabled]
+      properties: { enabled: { type: boolean } }
+    ReservationStatus:
+      type: string
+      enum: [active, cancelled]
+    Reservation:
+      type: object
+      required: [id, listingId, userId, quantity, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+        status: { $ref: '#/components/schemas/ReservationStatus' }
+        createdAt: { type: string, format: date-time }
+    CreateReservationRequest:
+      type: object
+      required: [listingId, userId]
+      properties:
+        listingId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        quantity: { type: integer, default: 1, minimum: 1 }
+    OrderStatus:
+      type: string
+      enum: [created]
+    Order:
+      type: object
+      required: [id, reservationId, listingId, userId, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        reservationId: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        createdAt: { type: string, format: date-time }
+    CreateOrderRequest:
+      type: object
+      required: [reservationId, userId]
+      properties:
+        reservationId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
