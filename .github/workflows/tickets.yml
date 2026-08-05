@@ -1,0 +1,45 @@
+name: Tickets
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths:
+      - services/tickets/**
+      - Makefile
+      - .golangci.yaml
+      - .github/workflows/tickets.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/tickets/go.mod
+          cache-dependency-path: services/tickets/go.sum
+      - name: Generate
+        run: make generate-tickets
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.4.0
+          working-directory: services/tickets
+      - name: Test
+        run: make test-tickets
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/tickets/go.mod
+          cache-dependency-path: services/tickets/go.sum
+      - name: Generate
+        run: make generate-tickets
+      - name: Build
+        run: make build-tickets

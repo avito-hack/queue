@@ -1,0 +1,45 @@
+name: Avito adapter
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths:
+      - services/avito-adapter/**
+      - Makefile
+      - .golangci.yaml
+      - .github/workflows/avito-adapter.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/avito-adapter/go.mod
+          cache-dependency-path: services/avito-adapter/go.sum
+      - name: Generate
+        run: make generate-avito-adapter
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.4.0
+          working-directory: services/avito-adapter
+      - name: Test
+        run: make test-avito-adapter
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/avito-adapter/go.mod
+          cache-dependency-path: services/avito-adapter/go.sum
+      - name: Generate
+        run: make generate-avito-adapter
+      - name: Build
+        run: make build-avito-adapter
