@@ -6,6 +6,7 @@ import type { Product } from '../../features/product/types'
 import { leaveQueue } from '../../features/queue/queueSlice'
 import { useCountdown } from '../../features/queue/useCountdown'
 import type { QueueEntry, QueueStatus } from '../../features/queue/types'
+import { ticketApi } from '../../features/ticket/api'
 
 type QueueTileView = QueueEntry & Pick<Product, 'name' | 'image'>
 
@@ -95,8 +96,17 @@ export function Queue() {
         }}
         onDecline={() => {
           if (!ticketTile) return
-          dispatch(leaveQueue(ticketTile.id))
-          setTicketTile(null)
+          const id = ticketTile.id
+          void (async () => {
+            try {
+              await ticketApi.declineTicket(id)
+            } catch (error) {
+              console.error(error)
+            } finally {
+              dispatch(leaveQueue(id))
+              setTicketTile(null)
+            }
+          })()
         }}
       />
     </section>

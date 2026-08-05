@@ -1,8 +1,17 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../test/render'
 import { Queue } from './Queue'
+
+vi.mock('../../features/ticket/api', () => ({
+  ticketApi: {
+    payOrder: vi.fn(),
+    declineTicket: vi.fn(),
+  },
+}))
+
+import { ticketApi } from '../../features/ticket/api'
 
 const product = {
   id: 'p-1',
@@ -15,6 +24,10 @@ const product = {
 }
 
 describe('Queue integration', () => {
+  beforeEach(() => {
+    vi.mocked(ticketApi.declineTicket).mockReset()
+  })
+
   it('shows empty state when user has no queues', () => {
     renderWithProviders(<Queue />, { route: '/queue' })
 
@@ -85,6 +98,39 @@ describe('Queue integration', () => {
 
     await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }))
 
+    expect(store.getState().queue.queueItems).toEqual([])
+    expect(
+      screen.getByText(/Вы ещё не вставали в очередь/i),
+    ).toBeInTheDocument()
+  })
+
+  it('declines ticket via API and removes it from store', async () => {
+    const user = userEvent.setup()
+    vi.mocked(ticketApi.declineTicket).mockResolvedValue({ ok: true })
+
+    const { store } = renderWithProviders(<Queue />, {
+      route: '/queue',
+      preloadedState: {
+        products: { productItems: [product] },
+        queue: {
+          queueItems: [
+            {
+              id: 'e-ticket',
+              productId: 'p-1',
+              status: 'ticket',
+              expiresAt: '2099-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Перейти к покупке' }))
+    await user.click(screen.getByRole('button', { name: 'Отказаться от покупки' }))
+
+    await waitFor(() => {
+      expect(ticketApi.declineTicket).toHaveBeenCalledWith('e-ticket')
+    })
     expect(store.getState().queue.queueItems).toEqual([])
     expect(
       screen.getByText(/Вы ещё не вставали в очередь/i),
