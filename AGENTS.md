@@ -57,7 +57,7 @@
 - Queue service (services/queue) - отвечает за всю логику с очередью
 - Tickets service (services/tickets) - отвечает за всю логику с тикетами
 - Avito adapter (services/avito-adapter) - отвечает за мок готового функционала Авито, предоставленного кейсом
-- Api gateway (services/queue-gateway) - шлюз для взаимодействия фронтенда с бэкендом 
+- nginx - прокси на бэкенд для фронтенда
 
 Коммуникация между сервисами осуществляется через REST API и RabbitMQ.
 
@@ -68,7 +68,6 @@ services/frontend - сервис фронтенда
 services/queue - сервис очереди
 services/tickets - сервис билетов
 services/avito-adapter - адаптер Авито
-services/queue-gateway - шлюз
 
 schemas/ - директория с клиентскими схемами сервисов
 каждая директория в schemas соответствует openapi схеме соответствующего сервиса в services/
