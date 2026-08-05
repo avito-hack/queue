@@ -1,9 +1,12 @@
 import { Link, useSearchParams } from 'react-router-dom'
-import { useAppSelector } from '../../app/hooks'
+import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { leaveQueue } from '../../features/queue/queueSlice'
+import { ticketApi } from '../../features/ticket/api'
 
 export function Checkout() {
   const [params] = useSearchParams()
   const ticketId = params.get('ticket')
+  const dispatch = useAppDispatch()
 
   const entry = useAppSelector((state) =>
     state.queue.queueItems.find(
@@ -13,6 +16,18 @@ export function Checkout() {
   const product = useAppSelector((state) =>
     state.products.productItems.find((p) => p.id === entry?.productId),
   )
+
+  const handlePay = async () => {
+    if (!ticketId) return
+
+    try {
+      await ticketApi.payOrder(ticketId)
+      dispatch(leaveQueue(ticketId))
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
 
   if (!ticketId || !entry) {
     return (
@@ -67,6 +82,7 @@ export function Checkout() {
         </p>
         <button
           type="button"
+          onClick={handlePay}
           className="mt-5 min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white"
         >
           Оплатить заказ

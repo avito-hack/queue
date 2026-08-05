@@ -17,7 +17,6 @@ export function getProductActionLabel(
   return inStock ? 'Встать в очередь' : 'Уведомить о поступлении'
 }
 
-/** Оставшееся время до expiresAt → "mm:ss", либо null если нет даты / уже истекло */
 export function formatCountdown(expiresAt?: string): string | null {
   if (!expiresAt) return null
 

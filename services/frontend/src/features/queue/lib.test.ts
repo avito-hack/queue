@@ -1,0 +1,54 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { formatCountdown, getProductActionLabel } from './lib'
+import type { QueueEntry } from './types'
+
+const entry = (status: QueueEntry['status']): QueueEntry => ({
+  id: 'e1',
+  productId: 'p1',
+  status,
+})
+
+describe('getProductActionLabel', () => {
+  it('returns join label when in stock and not in queue', () => {
+    expect(getProductActionLabel(true)).toBe('Встать в очередь')
+  })
+
+  it('returns notify label when out of stock and not in queue', () => {
+    expect(getProductActionLabel(false)).toBe('Уведомить о поступлении')
+  })
+
+  it('returns queue label when already queued', () => {
+    expect(getProductActionLabel(true, entry('queued'))).toBe(
+      'Перейти к моим очередям',
+    )
+  })
+
+  it('returns purchase label when ticket is ready', () => {
+    expect(getProductActionLabel(true, entry('ticket'))).toBe(
+      'Перейти к покупке',
+    )
+  })
+})
+
+describe('formatCountdown', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-05T12:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns null when expiresAt is missing', () => {
+    expect(formatCountdown()).toBeNull()
+  })
+
+  it('returns 00:00 when time already passed', () => {
+    expect(formatCountdown('2026-08-05T11:59:00.000Z')).toBe('00:00')
+  })
+
+  it('formats remaining minutes and seconds', () => {
+    expect(formatCountdown('2026-08-05T12:05:07.000Z')).toBe('05:07')
+  })
+})

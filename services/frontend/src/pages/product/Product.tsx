@@ -66,7 +66,7 @@ export function Product() {
       completeJoin({
         id: `${targetProductId}-entry`,
         productId: targetProductId,
-        status: 'ticket',
+        status: 'queued',
         position: 8,
       })
     }
