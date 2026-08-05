@@ -12,6 +12,7 @@ info:
 paths:
   /healthz:
     get:
+      operationId: getHealth
       summary: Проверить доступность сервиса
       security: []
       responses:
@@ -20,6 +21,7 @@ paths:
 
   /v1/ticket/list:
     get:
+      operationId: listTickets
       summary: Получить тикеты текущего пользователя
       security:
         - bearerAuth: []
@@ -60,6 +62,7 @@ paths:
 
   /v1/ticket/{ticket_id}:
     get:
+      operationId: getTicket
       summary: Получить тикет по идентификатору
       security:
         - bearerAuth: []
@@ -81,6 +84,7 @@ paths:
 
   /v1/ticket/{ticket_id}/activate:
     post:
+      operationId: activateTicket
       summary: Активировать тикет
       security:
         - bearerAuth: []
@@ -123,6 +127,7 @@ paths:
 
   /v1/ticket/{ticket_id}/decline:
     post:
+      operationId: declineTicket
       summary: Отказаться от тикета
       security:
         - bearerAuth: []
@@ -153,6 +158,7 @@ paths:
 
   /internal/v1/ticket/issue:
     post:
+      operationId: issueTicket
       summary: Выдать тикет пользователю
       security:
         - serviceAuth: []
