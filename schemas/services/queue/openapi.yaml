@@ -1,144 +1,14 @@
 openapi: 3.0.3
 
-info: 
+info:
   title: API очередей
   version: 1.0.0
 
 paths:
-  /v1/queue/enqueue:
+  /v1/queue/{itemID}/enqueue:
     post:
       operationId: Enqueue
-      summary: User встал в очередь
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EnqueueRequest'
-      responses:
-        '201':
-          description: Встал в очередь
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnqueueResponse'
-        '400': 
-          description: Некорректный JSON или отсутствует обязательное поле
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Товар или SKU не существует
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'                
-        '409':
-          description: Пользователь уже стоит в очереди на этот SKU
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '422':
-          description: Запрос корректный, но выполнить его нельзя из-за бизнес-правил
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'    
-        '500':
-          description: Неожиданная ошибка сервера
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'   
-
-  /v1/queue/clear:
-    delete:
-      operationId: Clear
-      summary: User ушел из очереди (полная очистка)
-      security:
-        - bearerAuth: []
-      responses:
-        '204':
-          description: User ушел из очереди успешно
-        '400': 
-          description: Некорректный запрос
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Пользователь не авторизован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'                
-        '404':
-          description: Очередь или SKU не существует
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '409':
-          description: Очередь нельзя очистить в текущем состоянии
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'    
-        '500':
-          description: Неожиданная ошибка сервера
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'        
-                
-  /v1/queue/dequeue:             
-    delete:
-      operationId: Dequeue
-      summary: User вышел из очереди (обычный выход)
-      security:
-        - bearerAuth: []
-      responses:
-        '204':
-          description: User ушел из очереди успешно
-        '400': 
-          description: Некорректный запрос
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Пользователь не авторизован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'                
-        '404':
-          description: Пользователь не найден в очереди
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '409':
-          description: Пользователь уже получил Ticket и не может выйти этим методом
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'    
-        '500':
-          description: Неожиданная ошибка сервера
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'        
-
-  /v1/queue/{itemID}/position:
-    get:
-      operationId: GetUserPosition
-      summary: Получить позицию пользователя в очереди на товар
+      summary: Пользователь встал в очередь
       security:
         - bearerAuth: []
       parameters:
@@ -147,16 +17,157 @@ paths:
           required: true
           schema:
             type: string
-            description: ID товара или SKU
+            format: uuid
+      responses:
+        '201':
+          description: Пользователь успешно добавлен в очередь
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Пользователь не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Товар не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Пользователь уже состоит в очереди
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Очередь недоступна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/queue/{itemID}/dequeue:
+    delete:
+      operationId: Dequeue
+      summary: Пользователь покинул очередь
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Пользователь удален из очереди
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Пользователь не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Пользователь отсутствует в очереди
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Пользователь не может покинуть очередь в текущем состоянии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/queue/{itemID}/clear:
+    delete:
+      operationId: ClearItemQueue
+      summary: Очистить очередь после закрытия объявления
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Очередь товара очищена
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Очередь не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/queue/{itemID}/position:
+    get:
+      operationId: GetUserPosition
+      summary: Получить позицию пользователя в очереди
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
-          description: Позиция успешно получена
+          description: Позиция пользователя успешно получена
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserPositionResponse'
-        '400': 
+        '400':
           description: Некорректный itemID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Пользователь не авторизован
           content:
             application/json:
               schema:
@@ -166,15 +177,48 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '401':
-          description: Пользователь не авторизован
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/queue/{itemID}/state:
+    get:
+      operationId: GetItemQueueState
+      summary: Получить состояние очереди товара
+      security:
+        - bearerAuth: []      
+      parameters:
+        - name: itemID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Состояние очереди успешно получено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemQueueStateResponse'
+        '400':
+          description: Некорректный itemID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Очередь не найдена
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
-          description: Неожиданная ошибка сервера
+          description: Ошибка сервера
           content:
             application/json:
               schema:
@@ -183,18 +227,18 @@ paths:
   /v1/user/queues:
     get:
       operationId: GetUserQueues
-      summary: Получить все очереди, в которых стоит пользователь
+      summary: Получить все очереди пользователя
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: Успешное получение всех очередей пользователя
+          description: Очереди пользователя успешно получены
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/UserQueueInfo'
+                  $ref: '#/components/schemas/ItemQueueInfo'
         '401':
           description: Пользователь не авторизован
           content:
@@ -208,78 +252,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/queue/state:
-    get:
-      operationId: State
-      summary: Получить состояние очереди
-      responses:
-        '200':
-          description: Состояние очереди успешно получено
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/QueueState'
-        '400': 
-          description: Некорректный запрос
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Очередь не найдена
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '500':
-          description: Неожиданная ошибка сервера
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'    
-
-  /v1/queue/snapshot:
-    get:
-      operationId: Snapshot
-      summary: Сделать снапшот очереди
-      responses:
-        '200':
-          description: Снапшот успех
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SnapshotResponse'
-        '400': 
-          description: Некорректный запрос
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Пользователь не авторизован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '403':
-          description: Нет прав на просмотр очереди
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'                   
-        '404':
-          description: Очередь не найдена
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse' 
-        '500':
-          description: Неожиданная ошибка сервера
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'       
-
 components:
   securitySchemes:
     bearerAuth:
@@ -290,46 +262,14 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: 
+      required:
         - code
         - message
       properties:
-        code: 
+        code:
           type: string
         message:
           type: string
-
-    EnqueueRequest:
-      type: object
-      required: 
-        - id
-        - user
-      properties:
-        id: 
-          type: string
-          format: uuid
-        user:
-          $ref: '#/components/schemas/User'
-        
-    EnqueueResponse:
-      type: object
-      required:
-        - status
-      properties:
-        status: 
-          type: string
-          enum: 
-            - enqueued
-
-    DequeueResponse:
-      type: object
-      required:
-        - status
-      properties:
-        status: 
-          type: string
-          enum: 
-            - dequeued      
 
     UserPositionResponse:
       type: object
@@ -338,33 +278,11 @@ components:
       properties:
         position:
           type: integer
-          
-    SnapshotResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/Snapshot'
+          minimum: 1
 
-    User: 
-      type: object
-      required: 
-        - id
-        - first_name
-        - last_name
-        - has_ticket
-      properties:   
-        id:
-          type: string
-          format: uuid
-        first_name: 
-          type: string
-        last_name:
-          type: string
-        has_ticket: 
-          type: boolean
-
-    UserStatus:
+    ItemQueueMemberStatus:
       type: string
-      enum: 
+      enum:
         - waiting_in_line
         - acquired_purchase_rights
         - placed_an_order
@@ -374,34 +292,33 @@ components:
         - lost_purchase_rights
         - item_out_of_stock
 
-    UserQueueInfo:
-      type: object
-      properties:
-        item_id:
-          type: string
-        position:
-          type: integer
-        status:
-          $ref: '#/components/schemas/UserStatus'
-
-
-    QueueState:
+    ItemQueueState:
       type: string
       enum:
-        - queue_full
-        - queue_empty
-        - queue_partially_filled
-        
-    Snapshot:
+        - tickets_available
+        - tickets_partially_issued
+        - tickets_exhausted
+
+    ItemQueueStateResponse:
       type: object
       required:
-        - user
+        - state
+      properties:
+        state:
+          $ref: '#/components/schemas/ItemQueueState'
+
+    ItemQueueInfo:
+      type: object
+      required:
+        - item_id
         - position
         - status
       properties:
-        user:
-          $ref: '#/components/schemas/User'
+        item_id:
+          type: string
+          format: uuid
         position:
           type: integer
+          minimum: 1
         status:
-          type: string
+          $ref: '#/components/schemas/ItemQueueMemberStatus'
