@@ -30,7 +30,9 @@ CREATE TABLE public.idempotency_operations (
     response_body jsonb,
     expires_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    CONSTRAINT pk_idempotency_operations PRIMARY KEY (id)
+    CONSTRAINT pk_idempotency_operations PRIMARY KEY (id),
+    CONSTRAINT fk_idempotency_operations_ticket_id
+        FOREIGN KEY (ticket_id) REFERENCES public.tickets (id)
 );
 
 CREATE TABLE public.outbox_events (
