@@ -103,4 +103,62 @@ describe('Product integration', () => {
     })
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
+
+  it('notifies about restock when product is sold out', async () => {
+    const user = userEvent.setup()
+    localStorage.clear()
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/product/:id" element={<Product />} />
+      </Routes>,
+      {
+        route: '/product/p-1',
+        preloadedState: {
+          products: {
+            productItems: [{ ...product, count: 0 }],
+          },
+        },
+      },
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: 'Уведомить о поступлении' }),
+    )
+
+    expect(localStorage.getItem('notify:p-1')).toBe('1')
+    expect(
+      screen.getByRole('button', { name: 'Подписка оформлена' }),
+    ).toBeDisabled()
+  })
+
+  it('marks queue as sold out and opens modal when stock hits zero', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/product/:id" element={<Product />} />
+      </Routes>,
+      {
+        route: '/product/p-1',
+        preloadedState: {
+          products: {
+            productItems: [{ ...product, count: 0 }],
+          },
+          queue: {
+            queueItems: [
+              {
+                id: 'e-queued',
+                productId: 'p-1',
+                status: 'queued',
+                position: 2,
+              },
+            ],
+          },
+        },
+      },
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Упс, товар закончился' }),
+    ).toBeInTheDocument()
+  })
 })

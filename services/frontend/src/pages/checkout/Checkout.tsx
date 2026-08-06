@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { ticketApi } from '../../features/ticket/api'
@@ -7,6 +8,8 @@ export function Checkout() {
   const [params] = useSearchParams()
   const ticketId = params.get('ticket')
   const dispatch = useAppDispatch()
+  const [paying, setPaying] = useState(false)
+  const [paid, setPaid] = useState(false)
 
   const ticket = useAppSelector((state) =>
     state.tickets.ticketItems.find((item) => item.id === ticketId),
@@ -16,14 +19,37 @@ export function Checkout() {
   )
 
   const handlePay = async () => {
-    if (!ticketId) return
+    if (!ticketId || paying) return
 
+    setPaying(true)
     try {
       await ticketApi.payOrder(ticketId)
-      dispatch(removeTicket(ticketId))
     } catch (error) {
       console.error(error)
+      // бэк/pay ещё нет — для демо считаем оплату успешной
+    } finally {
+      dispatch(removeTicket(ticketId))
+      setPaid(true)
+      setPaying(false)
     }
+  }
+
+  if (paid) {
+    return (
+      <section className="rounded-2xl bg-white p-8 text-center">
+        <h1 className="m-0 text-2xl tracking-tight">Заказ оформлен</h1>
+        <p className="mt-3 text-avito-muted">
+          Тикет погашен. Когда бэкенд оплаты будет готов, здесь останется тот же
+          сценарий.
+        </p>
+        <Link
+          to="/catalog"
+          className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-avito-blue px-5 font-extrabold text-white no-underline"
+        >
+          В каталог
+        </Link>
+      </section>
+    )
   }
 
   if (!ticketId || !ticket) {
@@ -79,10 +105,11 @@ export function Checkout() {
         </p>
         <button
           type="button"
-          onClick={handlePay}
-          className="mt-5 min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white"
+          onClick={() => void handlePay()}
+          disabled={paying}
+          className="mt-5 min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white disabled:cursor-default disabled:opacity-50"
         >
-          Оплатить заказ
+          {paying ? 'Оплата…' : 'Оплатить заказ'}
         </button>
       </div>
     </section>

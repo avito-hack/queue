@@ -5,8 +5,8 @@ const joinQueue = async (productId: string) => {
   return response.data
 }
 
-const leaveQueue = async (productId: string) => {
-  const response = await api.post(`/queue/leave`, { productId })
+const leaveQueue = async (_productId: string) => {
+  const response = await api.delete('/v1/queue/dequeue')
   return response.data
 }
 

@@ -1,11 +1,18 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Header } from './components/layout/Header'
+import { useQueuePolling } from './features/queue/useQueuePolling'
+import { useExpiredTickets } from './features/ticket/useExpiredTickets'
+import { useTicketPolling } from './features/ticket/useTicketPolling'
 import { Catalog } from './pages/catalog/Catalog'
 import { Checkout } from './pages/checkout/Checkout'
 import { Product } from './pages/product/Product'
 import { Queue } from './pages/queue/Queue'
 
 function App() {
+  useQueuePolling()
+  useTicketPolling()
+  useExpiredTickets()
+
   return (
     <div className="min-h-screen">
       <Header />

@@ -1,12 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './Product.css'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import clockIcon from '../../assets/clock.svg'
 import { JoinSuccessModal } from '../../components/modals/JoinSuccessModal'
+import { SoldOutModal } from '../../components/modals/SoldOutModal'
 import { queueApi } from '../../features/queue/api'
-import { joinQueue as joinQueueAction } from '../../features/queue/queueSlice'
 import { getProductActionLabel } from '../../features/queue/lib'
+import {
+  joinQueue as joinQueueAction,
+  updateQueueItem,
+} from '../../features/queue/queueSlice'
 import type { QueueEntry } from '../../features/queue/types'
 
 const similarProducts = [
@@ -17,15 +21,18 @@ const similarProducts = [
 ]
 
 function pluralPeople(count: number): string {
-    const mod10 = count % 10
-    const mod100 = count % 100
-    if (mod10 === 1 && mod100 !== 11) return 'человек'
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-      return 'человека'
-    }
-    return 'человек'
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return 'человек'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return 'человека'
   }
-  
+  return 'человек'
+}
+
+function notifyStorageKey(productId: string) {
+  return `notify:${productId}`
+}
 
 export function Product() {
   const { id } = useParams<{ id: string }>()
@@ -33,20 +40,54 @@ export function Product() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const [joinedEntry, setJoinedEntry] = useState<QueueEntry | null>(null)
+  const [soldOutOpen, setSoldOutOpen] = useState(false)
+  const [notified, setNotified] = useState(
+    () => localStorage.getItem(notifyStorageKey(productId)) === '1',
+  )
+  const soldOutShownRef = useRef(false)
 
   const product = useAppSelector((state) =>
     state.products.productItems.find((p) => p.id === productId),
   )
-  
+
   const myQueueEntry = useAppSelector((state) =>
     state.queue.queueItems.find(
       (item) => item.productId === productId && item.status === 'queued',
+    ),
+  )
+  const mySoldoutEntry = useAppSelector((state) =>
+    state.queue.queueItems.find(
+      (item) => item.productId === productId && item.status === 'soldout',
     ),
   )
   const myTicket = useAppSelector((state) =>
     state.tickets.ticketItems.find((item) => item.productId === productId),
   )
   const alreadyInQueue = Boolean(myQueueEntry || myTicket)
+
+  useEffect(() => {
+    setNotified(localStorage.getItem(notifyStorageKey(productId)) === '1')
+    soldOutShownRef.current = false
+  }, [productId])
+
+  useEffect(() => {
+    if (!product || product.count > 0 || !myQueueEntry) return
+    dispatch(
+      updateQueueItem({
+        ...myQueueEntry,
+        status: 'soldout',
+        position: undefined,
+      }),
+    )
+  }, [dispatch, myQueueEntry, product])
+
+  useEffect(() => {
+    if (soldOutShownRef.current) return
+    if (mySoldoutEntry || (product && product.count === 0 && myQueueEntry)) {
+      soldOutShownRef.current = true
+      setSoldOutOpen(true)
+    }
+  }, [myQueueEntry, mySoldoutEntry, product])
 
   const completeJoin = (entry: QueueEntry) => {
     dispatch(joinQueueAction(entry))
@@ -70,6 +111,11 @@ export function Product() {
     }
   }
 
+  const handleNotify = () => {
+    localStorage.setItem(notifyStorageKey(productId), '1')
+    setNotified(true)
+  }
+
   if (!product) {
     return (
       <section className="rounded-2xl bg-white p-8 text-center text-avito-muted">
@@ -87,7 +133,9 @@ export function Product() {
   }
 
   const inStock = product.count > 0
-  const actionLabel = getProductActionLabel(inStock, myQueueEntry, myTicket)
+  const actionLabel = notified
+    ? 'Подписка оформлена'
+    : getProductActionLabel(inStock, myQueueEntry, myTicket)
   const priceLabel = `${product.price.toLocaleString('ru-RU')} ₽`
 
   return (
@@ -141,9 +189,7 @@ export function Product() {
             <div className="flex items-center justify-between gap-3.5 text-sm">
               <span className="text-avito-muted">В наличии</span>
               <strong
-                className={
-                  inStock ? 'text-avito-green' : 'text-avito-red'
-                }
+                className={inStock ? 'text-avito-green' : 'text-avito-red'}
               >
                 {inStock ? `${product.count} шт.` : 'нет в наличии'}
               </strong>
@@ -195,10 +241,15 @@ export function Product() {
           <div className="grid gap-2.5">
             <button
               type="button"
-              className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover"
+              disabled={!inStock && !myQueueEntry && !myTicket && notified}
+              className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-70 disabled:hover:translate-y-0"
               onClick={() => {
                 if (myQueueEntry || myTicket) {
                   navigate('/queue')
+                  return
+                }
+                if (!inStock) {
+                  handleNotify()
                   return
                 }
                 void handleJoinQueue(product.id)
@@ -222,7 +273,7 @@ export function Product() {
         </p>
       </section>
 
-      <section className="mt-[34px]">
+      <section id="similar-products" className="mt-[34px]">
         <h2 className="mb-[18px] text-2xl tracking-tight">Похожие товары</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {similarProducts.map((item) => (
@@ -257,7 +308,20 @@ export function Product() {
           navigate('/queue')
         }}
       />
+
+      <SoldOutModal
+        open={soldOutOpen}
+        productTitle={product.name}
+        notified={notified}
+        onClose={() => setSoldOutOpen(false)}
+        onNotify={handleNotify}
+        onSimilar={() => {
+          setSoldOutOpen(false)
+          document
+            .getElementById('similar-products')
+            ?.scrollIntoView({ behavior: 'smooth' })
+        }}
+      />
     </section>
   )
 }
-

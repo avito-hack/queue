@@ -67,10 +67,10 @@ describe('Checkout integration', () => {
       expect(ticketApi.payOrder).toHaveBeenCalledWith('t-1')
     })
     expect(store.getState().tickets.ticketItems).toEqual([])
-    expect(screen.getByText('Нет права на покупку')).toBeInTheDocument()
+    expect(screen.getByText('Заказ оформлен')).toBeInTheDocument()
   })
 
-  it('keeps ticket in store when pay API fails', async () => {
+  it('completes demo pay when API fails', async () => {
     const user = userEvent.setup()
     vi.mocked(ticketApi.payOrder).mockRejectedValue(new Error('offline'))
 
@@ -84,7 +84,7 @@ describe('Checkout integration', () => {
     await waitFor(() => {
       expect(ticketApi.payOrder).toHaveBeenCalledWith('t-1')
     })
-    expect(store.getState().tickets.ticketItems).toHaveLength(1)
-    expect(screen.getByText('Куртка для оплаты')).toBeInTheDocument()
+    expect(store.getState().tickets.ticketItems).toEqual([])
+    expect(screen.getByText('Заказ оформлен')).toBeInTheDocument()
   })
 })

@@ -1,17 +1,29 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../test/render'
+import { Checkout } from '../checkout/Checkout'
 import { Queue } from './Queue'
 
 vi.mock('../../features/ticket/api', () => ({
   ticketApi: {
     listTickets: vi.fn().mockResolvedValue({ ticket: [] }),
+    activateTicket: vi.fn(),
     payOrder: vi.fn(),
     declineTicket: vi.fn(),
   },
 }))
 
+vi.mock('../../features/queue/api', () => ({
+  queueApi: {
+    joinQueue: vi.fn(),
+    leaveQueue: vi.fn(),
+    getPosition: vi.fn(),
+  },
+}))
+
+import { queueApi } from '../../features/queue/api'
 import { ticketApi } from '../../features/ticket/api'
 
 const product = {
@@ -26,7 +38,9 @@ const product = {
 
 describe('Queue integration', () => {
   beforeEach(() => {
+    vi.mocked(ticketApi.activateTicket).mockReset()
     vi.mocked(ticketApi.declineTicket).mockReset()
+    vi.mocked(queueApi.leaveQueue).mockReset()
   })
 
   it('shows empty state when user has no queues', () => {
@@ -81,8 +95,10 @@ describe('Queue integration', () => {
     expect(screen.getByRole('button', { name: 'Выйти из очереди' })).toBeInTheDocument()
   })
 
-  it('leaves queue and removes tile from store', async () => {
+  it('confirms leave, calls dequeue API and removes tile', async () => {
     const user = userEvent.setup()
+    vi.mocked(queueApi.leaveQueue).mockResolvedValue(undefined)
+
     const { store } = renderWithProviders(<Queue />, {
       route: '/queue',
       preloadedState: {
@@ -102,10 +118,63 @@ describe('Queue integration', () => {
 
     await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }))
 
+    const dialog = screen.getByRole('dialog', { name: 'Выйти из очереди?' })
+    expect(dialog).toBeInTheDocument()
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Да, выйти из очереди' }),
+    )
+
+    await waitFor(() => {
+      expect(queueApi.leaveQueue).toHaveBeenCalledWith('p-1')
+    })
     expect(store.getState().queue.queueItems).toEqual([])
     expect(
       screen.getByText(/Вы ещё не вставали в очередь/i),
     ).toBeInTheDocument()
+  })
+
+  it('activates ticket then navigates to checkout', async () => {
+    const user = userEvent.setup()
+    vi.mocked(ticketApi.activateTicket).mockResolvedValue({
+      ticket_id: 'e-ticket',
+      status: 'activated',
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/queue" element={<Queue />} />
+        <Route path="/checkout" element={<Checkout />} />
+      </Routes>,
+      {
+        route: '/queue',
+        preloadedState: {
+          products: { productItems: [product] },
+          tickets: {
+            ticketItems: [
+              {
+                id: 'e-ticket',
+                productId: 'p-1',
+                expiresAt: '2099-01-01T00:00:00.000Z',
+              },
+            ],
+          },
+        },
+      },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Перейти к покупке' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Товар доступен для вас' })
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Перейти к покупке' }),
+    )
+
+    await waitFor(() => {
+      expect(ticketApi.activateTicket).toHaveBeenCalledWith('e-ticket')
+    })
+    expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
+    expect(screen.getByText(/Тикет: e-ticket/)).toBeInTheDocument()
   })
 
   it('declines ticket via API and removes it from store', async () => {

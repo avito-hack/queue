@@ -1,27 +1,79 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { LeaveConfirmModal } from '../../components/modals/LeaveConfirmModal'
 import { TicketPurchaseModal } from '../../components/modals/TicketPurchaseModal'
+import { queueApi } from '../../features/queue/api'
+import { isTicketExpired } from '../../features/queue/lib'
 import { leaveQueue } from '../../features/queue/queueSlice'
-import { useQueuePolling } from '../../features/queue/useQueuePolling'
 import { ticketApi } from '../../features/ticket/api'
 import { removeTicket } from '../../features/ticket/ticketSlice'
-import { useTicketPolling } from '../../features/ticket/useTicketPolling'
 import { QueueCard } from './QueueCard'
 import { QueueEmpty } from './QueueEmpty'
 import { SummaryTile } from './SummaryTile'
 import type { QueueTileView, TileKind } from './types'
 
 export function Queue() {
-  useQueuePolling()
-  useTicketPolling()
-
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const queueItems = useAppSelector((state) => state.queue.queueItems)
   const ticketItems = useAppSelector((state) => state.tickets.ticketItems)
   const productItems = useAppSelector((state) => state.products.productItems)
   const [ticketTile, setTicketTile] = useState<QueueTileView | null>(null)
+  const [leaveTile, setLeaveTile] = useState<QueueTileView | null>(null)
+  const [buying, setBuying] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+
+  const closeTicketModal = () => {
+    if (buying) return
+    setTicketTile(null)
+  }
+
+  const handleActivateAndBuy = () => {
+    if (!ticketTile || buying) return
+    const id = ticketTile.id
+    if (isTicketExpired(ticketTile.expiresAt)) {
+      dispatch(removeTicket(id))
+      setTicketTile(null)
+      return
+    }
+
+    void (async () => {
+      setBuying(true)
+      try {
+        await ticketApi.activateTicket(id)
+        setTicketTile(null)
+        navigate(`/checkout?ticket=${id}`)
+      } catch (error) {
+        console.error(error)
+        // Пока бэк может быть недоступен — как у join: не блокируем демо-checkout
+        setTicketTile(null)
+        navigate(`/checkout?ticket=${id}`)
+      } finally {
+        setBuying(false)
+      }
+    })()
+  }
+
+  const handleConfirmLeave = () => {
+    if (!leaveTile || leaving) return
+    const entryId = leaveTile.id
+    const productId = leaveTile.productId
+
+    void (async () => {
+      setLeaving(true)
+      try {
+        await queueApi.leaveQueue(productId)
+      } catch (error) {
+        console.error(error)
+        // бэк может быть недоступен — убираем из store для демо
+      } finally {
+        dispatch(leaveQueue(entryId))
+        setLeaveTile(null)
+        setLeaving(false)
+      }
+    })()
+  }
 
   const withProduct = (entry: {
     id: string
@@ -96,7 +148,7 @@ export function Queue() {
               key={`${tile.kind}-${tile.id}`}
               tile={tile}
               onOpenTicket={() => setTicketTile(tile)}
-              onLeaveQueue={() => dispatch(leaveQueue(tile.id))}
+              onLeaveQueue={() => setLeaveTile(tile)}
             />
           ))}
         </div>
@@ -107,15 +159,11 @@ export function Queue() {
         productTitle={ticketTile?.name ?? ''}
         productImage={ticketTile?.image ?? '🛒'}
         expiresAt={ticketTile?.expiresAt}
-        onClose={() => setTicketTile(null)}
-        onBuy={() => {
-          if (!ticketTile) return
-          const id = ticketTile.id
-          setTicketTile(null)
-          navigate(`/checkout?ticket=${id}`)
-        }}
+        buying={buying}
+        onClose={closeTicketModal}
+        onBuy={handleActivateAndBuy}
         onDecline={() => {
-          if (!ticketTile) return
+          if (!ticketTile || buying) return
           const id = ticketTile.id
           void (async () => {
             try {
@@ -128,6 +176,17 @@ export function Queue() {
             }
           })()
         }}
+      />
+
+      <LeaveConfirmModal
+        open={leaveTile !== null}
+        productTitle={leaveTile?.name ?? ''}
+        leaving={leaving}
+        onClose={() => {
+          if (leaving) return
+          setLeaveTile(null)
+        }}
+        onConfirm={handleConfirmLeave}
       />
     </section>
   )
