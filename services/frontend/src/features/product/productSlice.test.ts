@@ -1,18 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import reducer, { setProductItems } from './productSlice'
-import type { Product } from './types'
+import { makeProduct } from './testProduct'
 
-const products: Product[] = [
-  {
-    id: '1',
-    name: 'Кроссовки',
-    description: 'Drop',
-    price: 1000,
-    image: '👟',
-    count: 2,
-    queueCount: 5,
-  },
-]
+const products = [makeProduct({ title: 'Кроссовки' })]
 
 describe('productSlice', () => {
   it('starts with an empty list', () => {

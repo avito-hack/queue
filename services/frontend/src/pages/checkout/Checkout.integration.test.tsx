@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeProduct } from '../../features/product/testProduct'
 import { renderWithProviders } from '../../test/render'
 import { Checkout } from './Checkout'
 
@@ -26,15 +27,13 @@ const checkoutState = {
   },
   products: {
     productItems: [
-      {
+      makeProduct({
         id: 'p-1',
-        name: 'Куртка для оплаты',
-        description: 'mock',
-        price: 12800,
-        image: '🧥',
-        count: 1,
+        title: 'Куртка для оплаты',
+        availableQuantity: 1,
+        quantity: 1,
         queueCount: 0,
-      },
+      }),
     ],
   },
 }

@@ -7,6 +7,7 @@ import { queueApi } from '../../features/queue/api'
 import { isTicketExpired } from '../../features/queue/lib'
 import { leaveQueue } from '../../features/queue/queueSlice'
 import { ticketApi } from '../../features/ticket/api'
+import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigation'
 import { removeTicket } from '../../features/ticket/ticketSlice'
 import { QueueCard } from './QueueCard'
 import { QueueEmpty } from './QueueEmpty'
@@ -29,6 +30,10 @@ export function Queue() {
     setTicketTile(null)
   }
 
+  const goToDemoCheckout = (ticketId: string) => {
+    navigate(`/checkout?ticket=${ticketId}`)
+  }
+
   const handleActivateAndBuy = () => {
     if (!ticketTile || buying) return
     const id = ticketTile.id
@@ -41,14 +46,19 @@ export function Queue() {
     void (async () => {
       setBuying(true)
       try {
-        await ticketApi.activateTicket(id)
+        const result = await ticketApi.activateTicket(id)
         setTicketTile(null)
-        navigate(`/checkout?ticket=${id}`)
+        const target = resolveCheckoutNavigation(id, result.checkout_url)
+        if (target.kind === 'external') {
+          window.location.assign(target.url)
+          return
+        }
+        navigate(target.path)
       } catch (error) {
         console.error(error)
-        // Пока бэк может быть недоступен — как у join: не блокируем демо-checkout
+        // бэк недоступен — демо-заглушка своего checkout
         setTicketTile(null)
-        navigate(`/checkout?ticket=${id}`)
+        goToDemoCheckout(id)
       } finally {
         setBuying(false)
       }
@@ -85,7 +95,7 @@ export function Queue() {
     const product = productItems.find((p) => p.id === entry.productId)
     return {
       ...entry,
-      name: product?.name ?? `Товар ${entry.productId}`,
+      title: product?.title ?? `Товар ${entry.productId}`,
       image: product?.image ?? '🛒',
     }
   }
@@ -156,7 +166,7 @@ export function Queue() {
 
       <TicketPurchaseModal
         open={ticketTile !== null}
-        productTitle={ticketTile?.name ?? ''}
+        productTitle={ticketTile?.title ?? ''}
         productImage={ticketTile?.image ?? '🛒'}
         expiresAt={ticketTile?.expiresAt}
         buying={buying}
@@ -180,7 +190,7 @@ export function Queue() {
 
       <LeaveConfirmModal
         open={leaveTile !== null}
-        productTitle={leaveTile?.name ?? ''}
+        productTitle={leaveTile?.title ?? ''}
         leaving={leaving}
         onClose={() => {
           if (leaving) return

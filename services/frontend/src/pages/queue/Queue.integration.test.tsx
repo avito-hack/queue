@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeProduct } from '../../features/product/testProduct'
 import { renderWithProviders } from '../../test/render'
 import { Checkout } from '../checkout/Checkout'
 import { Queue } from './Queue'
@@ -26,15 +27,15 @@ vi.mock('../../features/queue/api', () => ({
 import { queueApi } from '../../features/queue/api'
 import { ticketApi } from '../../features/ticket/api'
 
-const product = {
+const product = makeProduct({
   id: 'p-1',
-  name: 'Кроссовки Northline Drop 01',
-  description: 'mock',
+  title: 'Кроссовки Northline Drop 01',
   price: 19990,
   image: '👟',
-  count: 3,
+  availableQuantity: 3,
+  quantity: 3,
   queueCount: 10,
-}
+})
 
 describe('Queue integration', () => {
   beforeEach(() => {
@@ -134,11 +135,13 @@ describe('Queue integration', () => {
     ).toBeInTheDocument()
   })
 
-  it('activates ticket then navigates to checkout', async () => {
+  it('activates ticket and follows checkout_url', async () => {
     const user = userEvent.setup()
     vi.mocked(ticketApi.activateTicket).mockResolvedValue({
       ticket_id: 'e-ticket',
       status: 'activated',
+      order_id: 'order-1',
+      checkout_url: '/checkout?ticket=e-ticket',
     })
 
     renderWithProviders(
@@ -175,6 +178,44 @@ describe('Queue integration', () => {
     })
     expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
     expect(screen.getByText(/Тикет: e-ticket/)).toBeInTheDocument()
+  })
+
+  it('opens demo checkout when activate fails', async () => {
+    const user = userEvent.setup()
+    vi.mocked(ticketApi.activateTicket).mockRejectedValue(new Error('offline'))
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/queue" element={<Queue />} />
+        <Route path="/checkout" element={<Checkout />} />
+      </Routes>,
+      {
+        route: '/queue',
+        preloadedState: {
+          products: { productItems: [product] },
+          tickets: {
+            ticketItems: [
+              {
+                id: 'e-ticket',
+                productId: 'p-1',
+                expiresAt: '2099-01-01T00:00:00.000Z',
+              },
+            ],
+          },
+        },
+      },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Перейти к покупке' }))
+    const dialog = screen.getByRole('dialog', { name: 'Товар доступен для вас' })
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Перейти к покупке' }),
+    )
+
+    await waitFor(() => {
+      expect(ticketApi.activateTicket).toHaveBeenCalledWith('e-ticket')
+    })
+    expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
   })
 
   it('declines ticket via API and removes it from store', async () => {

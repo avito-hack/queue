@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeProduct } from '../../features/product/testProduct'
 import { renderWithProviders } from '../../test/render'
 import { Product } from './Product'
 
@@ -14,15 +15,7 @@ vi.mock('../../features/queue/api', () => ({
 
 import { queueApi } from '../../features/queue/api'
 
-const product = {
-  id: 'p-1',
-  name: 'Куртка Northline Shell',
-  description: 'Лимитированная коллекция',
-  price: 12800,
-  image: '🧥',
-  count: 2,
-  queueCount: 5,
-}
+const product = makeProduct({ id: 'p-1' })
 
 function renderProductPage() {
   return renderWithProviders(
@@ -116,7 +109,7 @@ describe('Product integration', () => {
         route: '/product/p-1',
         preloadedState: {
           products: {
-            productItems: [{ ...product, count: 0 }],
+            productItems: [{ ...product, availableQuantity: 0, quantity: 0 }],
           },
         },
       },
@@ -141,7 +134,7 @@ describe('Product integration', () => {
         route: '/product/p-1',
         preloadedState: {
           products: {
-            productItems: [{ ...product, count: 0 }],
+            productItems: [{ ...product, availableQuantity: 0, quantity: 0 }],
           },
           queue: {
             queueItems: [

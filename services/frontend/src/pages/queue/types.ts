@@ -8,4 +8,6 @@ export type QueueTileView = {
   kind: TileKind
   position?: number
   expiresAt?: string
-} & Pick<Product, 'name' | 'image'>
+  title: string
+  image: string
+}

@@ -71,7 +71,7 @@ export function Product() {
   }, [productId])
 
   useEffect(() => {
-    if (!product || product.count > 0 || !myQueueEntry) return
+    if (!product || product.availableQuantity > 0 || !myQueueEntry) return
     dispatch(
       updateQueueItem({
         ...myQueueEntry,
@@ -83,7 +83,7 @@ export function Product() {
 
   useEffect(() => {
     if (soldOutShownRef.current) return
-    if (mySoldoutEntry || (product && product.count === 0 && myQueueEntry)) {
+    if (mySoldoutEntry || (product && product.availableQuantity === 0 && myQueueEntry)) {
       soldOutShownRef.current = true
       setSoldOutOpen(true)
     }
@@ -98,7 +98,7 @@ export function Product() {
     if (alreadyInQueue) return
 
     try {
-      const entry = (await queueApi.joinQueue(targetProductId)) as QueueEntry
+      const entry = await queueApi.joinQueue(targetProductId)
       completeJoin(entry)
     } catch (error) {
       console.error(error)
@@ -132,7 +132,8 @@ export function Product() {
     )
   }
 
-  const inStock = product.count > 0
+  const inStock = product.availableQuantity > 0
+  const queueCount = product.queueCount ?? 0
   const actionLabel = notified
     ? 'Подписка оформлена'
     : getProductActionLabel(inStock, myQueueEntry, myTicket)
@@ -149,7 +150,7 @@ export function Product() {
           Одежда и обувь
         </a>
         <span>›</span>
-        <span>{product.name}</span>
+        <span>{product.title}</span>
       </div>
 
       <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)]">
@@ -161,7 +162,7 @@ export function Product() {
             className="product-emoji z-[1] -rotate-8 select-none"
             aria-hidden="true"
           >
-            {product.image}
+            {product.image ?? '🛒'}
           </div>
           <div
             className="absolute bottom-[18px] left-1/2 z-[2] flex -translate-x-1/2 gap-1.5"
@@ -179,7 +180,7 @@ export function Product() {
             Лимитированный товар
           </div>
           <h1 className="m-0 text-[26px] leading-[1.14] tracking-tight sm:text-[30px]">
-            {product.name}
+            {product.title}
           </h1>
           <div className="mt-3.5 text-[27px] font-extrabold tracking-tight sm:text-[30px]">
             {priceLabel}
@@ -191,13 +192,13 @@ export function Product() {
               <strong
                 className={inStock ? 'text-avito-green' : 'text-avito-red'}
               >
-                {inStock ? `${product.count} шт.` : 'нет в наличии'}
+                {inStock ? `${product.availableQuantity} шт.` : 'нет в наличии'}
               </strong>
             </div>
             <div className="flex items-center justify-between gap-3.5 text-sm">
               <span className="text-avito-muted">Уже в очереди</span>
               <strong>
-                {product.queueCount} {pluralPeople(product.queueCount)}
+                {queueCount} {pluralPeople(queueCount)}
               </strong>
             </div>
           </div>
@@ -269,7 +270,7 @@ export function Product() {
       <section className="mt-[30px] rounded-[18px] bg-white p-6">
         <h2 className="mb-[18px] text-2xl tracking-tight">Описание</h2>
         <p className="m-0 leading-relaxed text-[#4d4d4d]">
-          {product.description}
+          {product.description ?? 'Описание появится позже.'}
         </p>
       </section>
 
@@ -301,7 +302,7 @@ export function Product() {
       <JoinSuccessModal
         open={joinedEntry !== null}
         position={joinedEntry?.position}
-        productTitle={product.name}
+        productTitle={product.title}
         onClose={() => setJoinedEntry(null)}
         onGoToQueues={() => {
           setJoinedEntry(null)
@@ -311,7 +312,7 @@ export function Product() {
 
       <SoldOutModal
         open={soldOutOpen}
-        productTitle={product.name}
+        productTitle={product.title}
         notified={notified}
         onClose={() => setSoldOutOpen(false)}
         onNotify={handleNotify}

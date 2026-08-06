@@ -32,7 +32,7 @@ export function QueueCard({
         </div>
 
         <div className="text-lg font-extrabold leading-snug text-avito-ink">
-          {tile.name}
+          {tile.title}
         </div>
 
         <div className="grid gap-2.5 text-sm text-[#555]">

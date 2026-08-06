@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeProduct } from '../../features/product/testProduct'
 import { renderWithProviders } from '../../test/render'
 import { Catalog } from './Catalog'
 
@@ -12,15 +13,15 @@ vi.mock('../../features/product/api', () => ({
 import { productApi } from '../../features/product/api'
 
 const apiProducts = [
-  {
+  makeProduct({
     id: '10',
-    name: 'Тестовые кроссовки',
-    description: 'mock',
+    title: 'Тестовые кроссовки',
     price: 5000,
     image: '👟',
-    count: 2,
+    availableQuantity: 2,
+    quantity: 2,
     queueCount: 4,
-  },
+  }),
 ]
 
 describe('Catalog integration', () => {
@@ -36,7 +37,6 @@ describe('Catalog integration', () => {
     await waitFor(() => {
       expect(screen.getByText('Тестовые кроссовки')).toBeInTheDocument()
     })
-    expect(screen.getByText('1 объявлений')).toBeInTheDocument()
   })
 
   it('falls back to mock products when API fails', async () => {

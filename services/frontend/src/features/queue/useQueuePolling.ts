@@ -1,18 +1,21 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { queueApi } from './api'
+import { queueItemsFromUserQueues } from './positionLib'
 import { updateQueueItem } from './queueSlice'
 
 const POLL_MS = 5000
 
-function currentUserId() {
-  return localStorage.getItem('authToken') ?? 'user-1'
-}
-
+/**
+ * Синхронизация позиций/soldout по GET /v1/user/queues
+ * (массив очередей пользователя с item_id + position).
+ */
 export function useQueuePolling(enabled = true) {
   const dispatch = useAppDispatch()
   const queueItems = useAppSelector((state) => state.queue.queueItems)
-  const hasQueued = queueItems.some((item) => item.status === 'queued')
+  const hasQueued = queueItems.some(
+    (item) => item.status === 'queued' || item.status === 'soldout',
+  )
   const queueItemsRef = useRef(queueItems)
   queueItemsRef.current = queueItems
 
@@ -23,12 +26,12 @@ export function useQueuePolling(enabled = true) {
 
     const sync = async () => {
       try {
-        const data = await queueApi.getPosition(currentUserId())
-        if (cancelled || typeof data?.position !== 'number') return
+        const infos = await queueApi.listUserQueues()
+        if (cancelled) return
 
-        for (const item of queueItemsRef.current) {
-          if (item.status !== 'queued') continue
-          dispatch(updateQueueItem({ ...item, position: data.position }))
+        const updates = queueItemsFromUserQueues(queueItemsRef.current, infos)
+        for (const item of updates) {
+          dispatch(updateQueueItem(item))
         }
       } catch {
         // бэк ещё не готов

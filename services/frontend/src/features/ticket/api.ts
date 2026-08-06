@@ -1,5 +1,12 @@
 import { api } from '../../shared/api/client'
 
+export type ActivateTicketResponse = {
+  ticket_id?: string
+  status?: string
+  order_id?: string
+  checkout_url?: string
+}
+
 const listTickets = async () => {
   const response = await api.get('/v1/ticket/list')
   return response.data
@@ -10,8 +17,10 @@ const getTicket = async (ticketId: string) => {
   return response.data
 }
 
-const activateTicket = async (ticketId: string) => {
-  const response = await api.post(
+const activateTicket = async (
+  ticketId: string,
+): Promise<ActivateTicketResponse> => {
+  const response = await api.post<ActivateTicketResponse>(
     `/v1/ticket/${ticketId}/activate`,
     undefined,
     {
