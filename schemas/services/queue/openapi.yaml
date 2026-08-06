@@ -383,18 +383,7 @@ components:
           type: integer
         status:
           $ref: '#/components/schemas/UserStatus'
-        ticket_id:
-          type: string
-          nullable: true
-        ticket_status:
-          type: string
-          nullable: true
-        can_activate:
-          type: boolean
-        can_exit:
-          type: boolean
-        can_decline_ticket:
-          type: boolean
+
 
     QueueState:
       type: string
