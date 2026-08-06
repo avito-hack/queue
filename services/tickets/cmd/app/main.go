@@ -51,17 +51,24 @@ func run() error {
 	cancelDatabase()
 
 	ticketRepository := postgresql.NewTicketRepository(database)
+	activationRepository := postgresql.NewActivationRepository(database)
 	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
 	getTicket := usecase.NewGetTicket(ticketRepository, time.Now)
 	health := usecase.NewHealth(database)
-	handler := transporthttp.NewHandler(health, listTickets, getTicket)
+	avitoHTTPClient := &http.Client{Timeout: cfg.AvitoAdapter.Timeout}
 	tokenResolver, err := avitoadapter.NewUserTokenResolver(
 		cfg.AvitoAdapter.URL,
-		&http.Client{Timeout: cfg.AvitoAdapter.Timeout},
+		avitoHTTPClient,
 	)
 	if err != nil {
 		return fmt.Errorf("create Avito adapter user token resolver: %w", err)
 	}
+	orderCreator, err := avitoadapter.NewOrderCreator(cfg.AvitoAdapter.URL, avitoHTTPClient)
+	if err != nil {
+		return fmt.Errorf("create Avito adapter order creator: %w", err)
+	}
+	activateTicket := usecase.NewActivateTicket(activationRepository, orderCreator, time.Now)
+	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket)
 	router, err := transporthttp.NewRouter(handler, tokenResolver)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)

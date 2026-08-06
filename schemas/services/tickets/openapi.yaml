@@ -314,7 +314,6 @@ components:
           type: string
           format: uri-reference
           nullable: true
-          description: Ссылка на стандартный флоу оформления заказа
         finished_at:
           type: string
           format: date-time
@@ -350,7 +349,6 @@ components:
         checkout_url:
           type: string
           format: uri-reference
-          description: Ссылка на стандартный флоу оформления заказа
 
     V1TicketStateResponse:
       type: object

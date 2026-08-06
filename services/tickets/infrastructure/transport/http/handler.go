@@ -26,17 +26,28 @@ type TicketGetter interface {
 	Get(context.Context, uuid.UUID, uuid.UUID) (domain.Ticket, error)
 }
 
-type Handler struct {
-	healthChecker HealthChecker
-	ticketLister  TicketLister
-	ticketGetter  TicketGetter
+type TicketActivator interface {
+	Activate(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (usecase.ActivationResult, error)
 }
 
-func NewHandler(healthChecker HealthChecker, ticketLister TicketLister, ticketGetter TicketGetter) *Handler {
+type Handler struct {
+	healthChecker   HealthChecker
+	ticketLister    TicketLister
+	ticketGetter    TicketGetter
+	ticketActivator TicketActivator
+}
+
+func NewHandler(
+	healthChecker HealthChecker,
+	ticketLister TicketLister,
+	ticketGetter TicketGetter,
+	ticketActivator TicketActivator,
+) *Handler {
 	return &Handler{
-		healthChecker: healthChecker,
-		ticketLister:  ticketLister,
-		ticketGetter:  ticketGetter,
+		healthChecker:   healthChecker,
+		ticketLister:    ticketLister,
+		ticketGetter:    ticketGetter,
+		ticketActivator: ticketActivator,
 	}
 }
 
@@ -94,8 +105,46 @@ func (h *Handler) GetTicket(ctx context.Context, request server.GetTicketRequest
 	return server.GetTicket200JSONResponse(toV1Ticket(ticket)), nil
 }
 
-func (h *Handler) ActivateTicket(context.Context, server.ActivateTicketRequestObject) (server.ActivateTicketResponseObject, error) {
-	return server.ActivateTicket500JSONResponse{InternalErrorJSONResponse: notImplementedError()}, nil
+func (h *Handler) ActivateTicket(ctx context.Context, request server.ActivateTicketRequestObject) (server.ActivateTicketResponseObject, error) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		return server.ActivateTicket401JSONResponse{UnauthorizedJSONResponse: unauthorizedError()}, nil
+	}
+
+	result, err := h.ticketActivator.Activate(ctx, userID, request.TicketId, request.Params.IdempotencyKey)
+	switch {
+	case errors.Is(err, usecase.ErrInvalidActivation):
+		return server.ActivateTicket400JSONResponse{BadRequestJSONResponse: badRequestError(err.Error())}, nil
+	case errors.Is(err, usecase.ErrTicketNotFound):
+		return server.ActivateTicket404JSONResponse{TicketNotFoundJSONResponse: ticketNotFoundError()}, nil
+	case errors.Is(err, usecase.ErrTicketNotActivatable):
+		return activationConflictResponse("ticket_not_activatable", usecase.ErrTicketNotActivatable.Error()), nil
+	case errors.Is(err, usecase.ErrIdempotencyConflict):
+		return activationConflictResponse("idempotency_conflict", usecase.ErrIdempotencyConflict.Error()), nil
+	case errors.Is(err, usecase.ErrActivationInProgress):
+		return activationConflictResponse("activation_in_progress", usecase.ErrActivationInProgress.Error()), nil
+	case errors.Is(err, usecase.ErrTicketActivationExpired):
+		return server.ActivateTicket410JSONResponse{
+			Error:   "ticket_activation_expired",
+			Message: usecase.ErrTicketActivationExpired.Error(),
+		}, nil
+	case errors.Is(err, usecase.ErrOrderUnavailable):
+		slog.ErrorContext(ctx, "activate ticket order unavailable", "error", err)
+		return server.ActivateTicket503JSONResponse{
+			Error:   "checkout_unavailable",
+			Message: "checkout is temporarily unavailable",
+		}, nil
+	case err != nil:
+		slog.ErrorContext(ctx, "activate ticket", "error", err)
+		return server.ActivateTicket500JSONResponse{InternalErrorJSONResponse: internalServerError()}, nil
+	}
+
+	return server.ActivateTicket200JSONResponse{
+		TicketId:    result.TicketID,
+		Status:      server.V1TicketStatus(result.Status),
+		OrderId:     result.OrderID,
+		CheckoutUrl: result.CheckoutURL,
+	}, nil
 }
 
 func (h *Handler) DeclineTicket(context.Context, server.DeclineTicketRequestObject) (server.DeclineTicketResponseObject, error) {
@@ -161,6 +210,13 @@ func ticketNotFoundError() server.TicketNotFoundJSONResponse {
 	return server.TicketNotFoundJSONResponse{
 		Error:   "ticket_not_found",
 		Message: "ticket not found",
+	}
+}
+
+func activationConflictResponse(code, message string) server.ActivateTicket409JSONResponse {
+	return server.ActivateTicket409JSONResponse{
+		Error:   code,
+		Message: message,
 	}
 }
 

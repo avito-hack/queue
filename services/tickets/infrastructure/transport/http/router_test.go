@@ -37,6 +37,15 @@ type ticketGetterStub struct {
 	calls            int
 }
 
+type ticketActivatorStub struct {
+	result                 usecase.ActivationResult
+	err                    error
+	receivedUserID         uuid.UUID
+	receivedTicketID       uuid.UUID
+	receivedIdempotencyKey uuid.UUID
+	calls                  int
+}
+
 type userTokenResolverStub struct {
 	userID        uuid.UUID
 	err           error
@@ -71,13 +80,31 @@ func (s *ticketGetterStub) Get(_ context.Context, userID uuid.UUID, ticketID uui
 	return s.ticket, s.err
 }
 
+func (s *ticketActivatorStub) Activate(
+	_ context.Context,
+	userID uuid.UUID,
+	ticketID uuid.UUID,
+	idempotencyKey uuid.UUID,
+) (usecase.ActivationResult, error) {
+	s.calls++
+	s.receivedUserID = userID
+	s.receivedTicketID = ticketID
+	s.receivedIdempotencyKey = idempotencyKey
+
+	return s.result, s.err
+}
+
 func newTestHandler(lister TicketLister, getters ...TicketGetter) *Handler {
 	getter := TicketGetter(&ticketGetterStub{})
 	if len(getters) > 0 {
 		getter = getters[0]
 	}
 
-	return NewHandler(usecase.NewHealth(), lister, getter)
+	return NewHandler(usecase.NewHealth(), lister, getter, &ticketActivatorStub{})
+}
+
+func newTestHandlerWithActivator(activator TicketActivator) *Handler {
+	return NewHandler(usecase.NewHealth(), &ticketListerStub{}, &ticketGetterStub{}, activator)
 }
 
 func Test_GetHealthz_ReturnOK(t *testing.T) {
@@ -516,4 +543,200 @@ func Test_GetV1Ticket_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
 	assert.Zero(t, getter.calls)
+}
+
+func Test_PostV1TicketActivate_ReturnActivatedTicket(t *testing.T) {
+	// given
+	userID := uuid.New()
+	ticketID := uuid.New()
+	idempotencyKey := uuid.New()
+	orderID := uuid.New()
+	activator := &ticketActivatorStub{result: usecase.ActivationResult{
+		TicketID:    ticketID,
+		Status:      domain.TicketStatusActive,
+		OrderID:     orderID,
+		CheckoutURL: "/checkout?ticket=" + ticketID.String(),
+	}}
+	router, err := NewRouter(
+		newTestHandlerWithActivator(activator),
+		&userTokenResolverStub{userID: userID},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+ticketID.String()+"/activate", nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	request.Header.Set("Idempotency-Key", idempotencyKey.String())
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{
+		"ticket_id":"`+ticketID.String()+`",
+		"status":"active",
+		"order_id":"`+orderID.String()+`",
+		"checkout_url":"/checkout?ticket=`+ticketID.String()+`"
+	}`, recorder.Body.String())
+	assert.Equal(t, userID, activator.receivedUserID)
+	assert.Equal(t, ticketID, activator.receivedTicketID)
+	assert.Equal(t, idempotencyKey, activator.receivedIdempotencyKey)
+	assert.Equal(t, 1, activator.calls)
+}
+
+func Test_PostV1TicketActivate_UsecaseReturnsDomainError_ReturnMappedError(t *testing.T) {
+	// given
+	tests := []struct {
+		name       string
+		err        error
+		statusCode int
+		response   string
+	}{
+		{
+			name:       "invalid activation",
+			err:        usecase.ErrInvalidActivation,
+			statusCode: http.StatusBadRequest,
+			response:   `{"error":"bad_request","message":"invalid ticket activation"}`,
+		},
+		{
+			name:       "ticket not found",
+			err:        usecase.ErrTicketNotFound,
+			statusCode: http.StatusNotFound,
+			response:   `{"error":"ticket_not_found","message":"ticket not found"}`,
+		},
+		{
+			name:       "ticket not activatable",
+			err:        usecase.ErrTicketNotActivatable,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"ticket_not_activatable","message":"ticket is not activatable"}`,
+		},
+		{
+			name:       "idempotency conflict",
+			err:        usecase.ErrIdempotencyConflict,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"idempotency_conflict","message":"idempotency conflict"}`,
+		},
+		{
+			name:       "activation in progress",
+			err:        usecase.ErrActivationInProgress,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"activation_in_progress","message":"ticket activation is in progress"}`,
+		},
+		{
+			name:       "activation expired",
+			err:        usecase.ErrTicketActivationExpired,
+			statusCode: http.StatusGone,
+			response:   `{"error":"ticket_activation_expired","message":"ticket activation expired"}`,
+		},
+		{
+			name:       "order unavailable",
+			err:        usecase.ErrOrderUnavailable,
+			statusCode: http.StatusServiceUnavailable,
+			response:   `{"error":"checkout_unavailable","message":"checkout is temporarily unavailable"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ticketID := uuid.New()
+			activator := &ticketActivatorStub{err: test.err}
+			router, err := NewRouter(
+				newTestHandlerWithActivator(activator),
+				&userTokenResolverStub{userID: uuid.New()},
+			)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+ticketID.String()+"/activate", nil)
+			request.Header.Set("Authorization", "Bearer abc-token")
+			request.Header.Set("Idempotency-Key", uuid.NewString())
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, test.statusCode, recorder.Code)
+			assert.JSONEq(t, test.response, recorder.Body.String())
+			assert.Equal(t, 1, activator.calls)
+			assert.Equal(t, ticketID, activator.receivedTicketID)
+		})
+	}
+}
+
+func Test_PostV1TicketActivate_UsecaseReturnsError_ReturnInternalError(t *testing.T) {
+	// given
+	activator := &ticketActivatorStub{err: errors.New("database failed")}
+	router, err := NewRouter(
+		newTestHandlerWithActivator(activator),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+uuid.NewString()+"/activate", nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	request.Header.Set("Idempotency-Key", uuid.NewString())
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+}
+
+func Test_PostV1TicketActivate_InvalidRequest_ReturnBadRequest(t *testing.T) {
+	// given
+	tests := []struct {
+		name           string
+		ticketID       string
+		idempotencyKey string
+	}{
+		{name: "invalid ticket id", ticketID: "invalid", idempotencyKey: uuid.NewString()},
+		{name: "missing idempotency key", ticketID: uuid.NewString()},
+		{name: "invalid idempotency key", ticketID: uuid.NewString(), idempotencyKey: "invalid"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			activator := &ticketActivatorStub{}
+			router, err := NewRouter(
+				newTestHandlerWithActivator(activator),
+				&userTokenResolverStub{userID: uuid.New()},
+			)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+test.ticketID+"/activate", nil)
+			request.Header.Set("Authorization", "Bearer abc-token")
+			if test.idempotencyKey != "" {
+				request.Header.Set("Idempotency-Key", test.idempotencyKey)
+			}
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Zero(t, activator.calls)
+		})
+	}
+}
+
+func Test_PostV1TicketActivate_WithoutToken_ReturnUnauthorized(t *testing.T) {
+	// given
+	activator := &ticketActivatorStub{}
+	router, err := NewRouter(
+		newTestHandlerWithActivator(activator),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+uuid.NewString()+"/activate", nil)
+	request.Header.Set("Idempotency-Key", uuid.NewString())
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	assert.Zero(t, activator.calls)
 }

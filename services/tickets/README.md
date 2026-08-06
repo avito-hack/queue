@@ -10,6 +10,8 @@ Tickets ожидает `200` с телом `{"user_id":"<uuid>"}` для вал�
 
 Клиент avito-adapter генерируется из `../../schemas/services/avito-adapter/openapi.yaml` командой `make generate`.
 
+Активация тикета напрямую вызывает `CreateOrder` с идентификаторами тикета, объявления, SKU и пользователя. Ручки резервации в этом сценарии не вызываются.
+
 ## Запуск
 
 ```bash
@@ -52,6 +54,6 @@ docker run --rm \
 
 ## API
 
-Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list` и `GET /v1/ticket/{ticket_id}`. Остальные операции пока являются заглушками.
+Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list`, `GET /v1/ticket/{ticket_id}` и `POST /v1/ticket/{ticket_id}/activate`. Остальные операции пока являются заглушками.
 
 После изменения OpenAPI-схемы необходимо выполнить `make generate`.
