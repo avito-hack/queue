@@ -6,19 +6,20 @@ import { Checkout } from './Checkout'
 
 vi.mock('../../features/ticket/api', () => ({
   ticketApi: {
+    listTickets: vi.fn().mockResolvedValue({ ticket: [] }),
     payOrder: vi.fn(),
+    declineTicket: vi.fn(),
   },
 }))
 
 import { ticketApi } from '../../features/ticket/api'
 
 const checkoutState = {
-  queue: {
-    queueItems: [
+  tickets: {
+    ticketItems: [
       {
         id: 't-1',
         productId: 'p-1',
-        status: 'ticket' as const,
         expiresAt: '2026-08-05T12:10:00.000Z',
       },
     ],
@@ -65,7 +66,7 @@ describe('Checkout integration', () => {
     await waitFor(() => {
       expect(ticketApi.payOrder).toHaveBeenCalledWith('t-1')
     })
-    expect(store.getState().queue.queueItems).toEqual([])
+    expect(store.getState().tickets.ticketItems).toEqual([])
     expect(screen.getByText('Нет права на покупку')).toBeInTheDocument()
   })
 
@@ -83,7 +84,7 @@ describe('Checkout integration', () => {
     await waitFor(() => {
       expect(ticketApi.payOrder).toHaveBeenCalledWith('t-1')
     })
-    expect(store.getState().queue.queueItems).toHaveLength(1)
+    expect(store.getState().tickets.ticketItems).toHaveLength(1)
     expect(screen.getByText('Куртка для оплаты')).toBeInTheDocument()
   })
 })

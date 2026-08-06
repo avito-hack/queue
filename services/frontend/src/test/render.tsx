@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { RootState } from '../app/store'
 import productsReducer from '../features/product/productSlice'
 import queueReducer from '../features/queue/queueSlice'
+import ticketsReducer from '../features/ticket/ticketSlice'
 
 type RenderOptions = {
   route?: string
@@ -16,6 +17,7 @@ export function createTestStore(preloadedState?: Partial<RootState>) {
   return configureStore({
     reducer: {
       queue: queueReducer,
+      tickets: ticketsReducer,
       products: productsReducer,
     },
     preloadedState: preloadedState as RootState | undefined,

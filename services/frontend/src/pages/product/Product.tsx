@@ -6,10 +6,7 @@ import clockIcon from '../../assets/clock.svg'
 import { JoinSuccessModal } from '../../components/modals/JoinSuccessModal'
 import { queueApi } from '../../features/queue/api'
 import { joinQueue as joinQueueAction } from '../../features/queue/queueSlice'
-import {
-  ACTIVE_QUEUE_STATUSES,
-  getProductActionLabel,
-} from '../../features/queue/lib'
+import { getProductActionLabel } from '../../features/queue/lib'
 import type { QueueEntry } from '../../features/queue/types'
 
 const similarProducts = [
@@ -40,15 +37,16 @@ export function Product() {
   const product = useAppSelector((state) =>
     state.products.productItems.find((p) => p.id === productId),
   )
-
-  const myEntry = useAppSelector((state) =>
+  
+  const myQueueEntry = useAppSelector((state) =>
     state.queue.queueItems.find(
-      (item) =>
-        item.productId === productId &&
-        ACTIVE_QUEUE_STATUSES.includes(item.status),
+      (item) => item.productId === productId && item.status === 'queued',
     ),
   )
-  const alreadyInQueue = Boolean(myEntry)
+  const myTicket = useAppSelector((state) =>
+    state.tickets.ticketItems.find((item) => item.productId === productId),
+  )
+  const alreadyInQueue = Boolean(myQueueEntry || myTicket)
 
   const completeJoin = (entry: QueueEntry) => {
     dispatch(joinQueueAction(entry))
@@ -89,8 +87,7 @@ export function Product() {
   }
 
   const inStock = product.count > 0
-  const demandHigh = product.queueCount > product.count
-  const actionLabel = getProductActionLabel(inStock, myEntry)
+  const actionLabel = getProductActionLabel(inStock, myQueueEntry, myTicket)
   const priceLabel = `${product.price.toLocaleString('ru-RU')} ₽`
 
   return (
@@ -159,7 +156,7 @@ export function Product() {
             </div>
           </div>
 
-          {myEntry?.status === 'queued' && (
+          {myQueueEntry && (
             <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-avito-blue-soft p-3.5 text-sm leading-snug text-[#006ca8]">
               <div
                 className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white/70"
@@ -170,14 +167,14 @@ export function Product() {
               <div>
                 <strong>Вы в очереди</strong>
                 <span className="mt-1 block">
-                  Ваше место: {myEntry.position ?? '—'}. Мы сообщим, когда
+                  Ваше место: {myQueueEntry.position ?? '—'}. Мы сообщим, когда
                   появится право на покупку.
                 </span>
               </div>
             </div>
           )}
 
-          {myEntry?.status === 'ticket' && (
+          {myTicket && (
             <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-[#f0f9e7] p-3.5 text-sm leading-snug text-[#477b12]">
               <div
                 className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white/70"
@@ -195,29 +192,12 @@ export function Product() {
             </div>
           )}
 
-          {!myEntry && demandHigh && inStock && (
-            <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-[#fff8e6] p-3.5 text-sm leading-snug text-[#654300]">
-              <div
-                className="grid size-[34px] shrink-0 place-items-center rounded-full bg-[#ffe8a7]"
-                aria-hidden="true"
-              >
-                👥
-              </div>
-              <div>
-                <strong>Спрос выше остатка</strong>
-                <br />
-                Забронируйте место в очереди — мы сохраним порядок и сообщим,
-                когда товар станет доступен для покупки.
-              </div>
-            </div>
-          )}
-
           <div className="grid gap-2.5">
             <button
               type="button"
               className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover"
               onClick={() => {
-                if (myEntry) {
+                if (myQueueEntry || myTicket) {
                   navigate('/queue')
                   return
                 }

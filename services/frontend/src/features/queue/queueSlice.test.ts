@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import reducer, {
   joinQueue,
   leaveQueue,
+  removeQueuedByProductId,
   updateQueueItem,
 } from './queueSlice'
 import type { QueueEntry } from './types'
@@ -11,12 +12,6 @@ const queued: QueueEntry = {
   productId: 'p1',
   status: 'queued',
   position: 3,
-}
-
-const ticket: QueueEntry = {
-  ...queued,
-  status: 'ticket',
-  expiresAt: '2026-08-05T12:10:00.000Z',
 }
 
 describe('queueSlice', () => {
@@ -40,7 +35,14 @@ describe('queueSlice', () => {
 
   it('updates an existing entry', () => {
     const withOne = reducer(undefined, joinQueue(queued))
-    const state = reducer(withOne, updateQueueItem(ticket))
-    expect(state.queueItems).toEqual([ticket])
+    const updated = { ...queued, position: 1 }
+    const state = reducer(withOne, updateQueueItem(updated))
+    expect(state.queueItems).toEqual([updated])
+  })
+
+  it('removes queued entry by productId', () => {
+    const withOne = reducer(undefined, joinQueue(queued))
+    const state = reducer(withOne, removeQueuedByProductId('p1'))
+    expect(state.queueItems).toEqual([])
   })
 })

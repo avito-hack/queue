@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatCountdown, getProductActionLabel } from './lib'
 import type { QueueEntry } from './types'
+import type { TicketEntry } from '../ticket/types'
 
-const entry = (status: QueueEntry['status']): QueueEntry => ({
+const queued: QueueEntry = {
   id: 'e1',
   productId: 'p1',
-  status,
-})
+  status: 'queued',
+  position: 3,
+}
+
+const ticket: TicketEntry = {
+  id: 't1',
+  productId: 'p1',
+  expiresAt: '2026-08-05T12:10:00.000Z',
+}
 
 describe('getProductActionLabel', () => {
   it('returns join label when in stock and not in queue', () => {
@@ -18,15 +26,11 @@ describe('getProductActionLabel', () => {
   })
 
   it('returns queue label when already queued', () => {
-    expect(getProductActionLabel(true, entry('queued'))).toBe(
-      'Перейти к моим очередям',
-    )
+    expect(getProductActionLabel(true, queued)).toBe('Перейти к моим очередям')
   })
 
-  it('returns purchase label when ticket is ready', () => {
-    expect(getProductActionLabel(true, entry('ticket'))).toBe(
-      'Перейти к покупке',
-    )
+  it('returns purchase label when ticket exists', () => {
+    expect(getProductActionLabel(true, null, ticket)).toBe('Перейти к покупке')
   })
 })
 
@@ -50,5 +54,9 @@ describe('formatCountdown', () => {
 
   it('formats remaining minutes and seconds', () => {
     expect(formatCountdown('2026-08-05T12:05:07.000Z')).toBe('05:07')
+  })
+
+  it('formats hours when more than 60 minutes left', () => {
+    expect(formatCountdown('2026-08-05T14:05:07.000Z')).toBe('02:05:07')
   })
 })

@@ -7,7 +7,6 @@ function formatPrice(price: number) {
 
 export function CatalogCard({ product }: { product: Product }) {
   const inStock = product.count > 0
-  const highDemand = product.queueCount > product.count
 
   return (
     <Link
@@ -41,12 +40,6 @@ export function CatalogCard({ product }: { product: Product }) {
             <strong className="text-avito-ink">{product.queueCount}</strong>
           </div>
         </div>
-
-        {highDemand && inStock && (
-          <div className="mt-3 rounded-[12px] bg-[#fff8e6] px-3 py-2 text-[12px] font-bold text-[#654300]">
-            Спрос выше остатка — действует очередь
-          </div>
-        )}
 
         {!inStock && (
           <div className="mt-3 rounded-[12px] bg-[#fff0f2] px-3 py-2 text-[12px] font-bold text-[#b82334]">

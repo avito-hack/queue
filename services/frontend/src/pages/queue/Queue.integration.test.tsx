@@ -6,6 +6,7 @@ import { Queue } from './Queue'
 
 vi.mock('../../features/ticket/api', () => ({
   ticketApi: {
+    listTickets: vi.fn().mockResolvedValue({ ticket: [] }),
     payOrder: vi.fn(),
     declineTicket: vi.fn(),
   },
@@ -50,15 +51,18 @@ describe('Queue integration', () => {
               position: 3,
             },
             {
-              id: 'e-ticket',
-              productId: 'p-1',
-              status: 'ticket',
-              expiresAt: '2099-01-01T00:00:00.000Z',
-            },
-            {
               id: 'e-done',
               productId: 'p-1',
               status: 'soldout',
+            },
+          ],
+        },
+        tickets: {
+          ticketItems: [
+            {
+              id: 'e-ticket',
+              productId: 'p-1',
+              expiresAt: '2099-01-01T00:00:00.000Z',
             },
           ],
         },
@@ -112,12 +116,11 @@ describe('Queue integration', () => {
       route: '/queue',
       preloadedState: {
         products: { productItems: [product] },
-        queue: {
-          queueItems: [
+        tickets: {
+          ticketItems: [
             {
               id: 'e-ticket',
               productId: 'p-1',
-              status: 'ticket',
               expiresAt: '2099-01-01T00:00:00.000Z',
             },
           ],
@@ -131,7 +134,7 @@ describe('Queue integration', () => {
     await waitFor(() => {
       expect(ticketApi.declineTicket).toHaveBeenCalledWith('e-ticket')
     })
-    expect(store.getState().queue.queueItems).toEqual([])
+    expect(store.getState().tickets.ticketItems).toEqual([])
     expect(
       screen.getByText(/Вы ещё не вставали в очередь/i),
     ).toBeInTheDocument()

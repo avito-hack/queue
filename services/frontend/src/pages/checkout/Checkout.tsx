@@ -1,20 +1,18 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
-import { leaveQueue } from '../../features/queue/queueSlice'
 import { ticketApi } from '../../features/ticket/api'
+import { removeTicket } from '../../features/ticket/ticketSlice'
 
 export function Checkout() {
   const [params] = useSearchParams()
   const ticketId = params.get('ticket')
   const dispatch = useAppDispatch()
 
-  const entry = useAppSelector((state) =>
-    state.queue.queueItems.find(
-      (item) => item.id === ticketId && item.status === 'ticket',
-    ),
+  const ticket = useAppSelector((state) =>
+    state.tickets.ticketItems.find((item) => item.id === ticketId),
   )
   const product = useAppSelector((state) =>
-    state.products.productItems.find((p) => p.id === entry?.productId),
+    state.products.productItems.find((p) => p.id === ticket?.productId),
   )
 
   const handlePay = async () => {
@@ -22,14 +20,13 @@ export function Checkout() {
 
     try {
       await ticketApi.payOrder(ticketId)
-      dispatch(leaveQueue(ticketId))
+      dispatch(removeTicket(ticketId))
     } catch (error) {
       console.error(error)
     }
   }
 
-
-  if (!ticketId || !entry) {
+  if (!ticketId || !ticket) {
     return (
       <section className="rounded-2xl bg-white p-8 text-center">
         <h1 className="m-0 text-2xl tracking-tight">Нет права на покупку</h1>
@@ -61,7 +58,7 @@ export function Checkout() {
           Оформление заказа
         </div>
         <h1 className="mt-2 text-2xl tracking-tight">
-          {product?.name ?? `Товар ${entry.productId}`}
+          {product?.name ?? `Товар ${ticket.productId}`}
         </h1>
         <div className="mt-4 flex items-center gap-4 rounded-[14px] bg-[#f7f7f7] p-4">
           <div className="text-5xl" aria-hidden="true">
@@ -72,7 +69,7 @@ export function Checkout() {
               {product ? `${product.price.toLocaleString('ru-RU')} ₽` : '—'}
             </div>
             <div className="mt-1 text-sm text-avito-muted">
-              Тикет: {entry.id}
+              Тикет: {ticket.id}
             </div>
           </div>
         </div>
