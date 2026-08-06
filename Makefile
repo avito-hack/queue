@@ -24,7 +24,7 @@ generate-avito-adapter:
 
 lint: lint-tickets lint-avito-adapter lint-frontend lint-queue
 
-lint-tickets:
+lint-tickets: generate-tickets
 	cd services/tickets && $(LINTER) run
 
 lint-avito-adapter:
@@ -44,7 +44,7 @@ lint-queue:
 
 test: test-tickets test-avito-adapter test-frontend test-queue
 
-test-tickets:
+test-tickets: generate-tickets
 	cd services/tickets && $(GO) test ./...
 
 test-avito-adapter:
@@ -57,7 +57,7 @@ test-queue: lint-queue
 
 build: $(addprefix build-,$(GO_SERVICES)) build-frontend
 
-build-tickets:
+build-tickets: generate-tickets
 	mkdir -p $(BIN_DIR)
 	cd services/tickets && $(GO) build -o $(BIN_DIR)/tickets ./cmd/app
 

@@ -1,14 +1,20 @@
 # Tickets
 
-`tickets` — каркас сервиса прав на покупку лимитированных товаров.
+`tickets` — сервис прав на покупку лимитированных товаров.
 
-Сервис предоставляет strict Gin-server, сгенерированный из `api/openapi.yaml`, проверяет HTTP-запросы по OpenAPI-контракту, поддерживает healthcheck и graceful shutdown. Бизнес-операции пока возвращают `500` с кодом `not_implemented`.
+Сервис предоставляет strict Gin-server, сгенерированный из `api/openapi.yaml`, проверяет HTTP-запросы по OpenAPI-контракту, хранит тикеты в PostgreSQL, поддерживает healthcheck и graceful shutdown.
 
-Заглушка проверяет наличие непустого Bearer-токена. Валидация токена и получение `user_id` намеренно не реализованы.
+Пользовательский Bearer-токен валидируется через `POST /v1/users/validate` сервиса avito-adapter. Tickets передаёт токен в теле запроса и использует полученный `user_id`; локальной валидации токена в сервисе нет.
+
+Tickets ожидает `200` с телом `{"user_id":"<uuid>"}` для валидного токена и `401` для невалидного. Остальные статусы и некорректный ответ считаются ошибкой зависимости.
+
+Клиент avito-adapter генерируется из `../../schemas/services/avito-adapter/openapi.yaml` командой `make generate`.
 
 ## Запуск
 
 ```bash
+DATABASE_URL='postgres://tickets:password@localhost:5432/tickets?sslmode=disable' \
+AVITO_ADAPTER_URL='http://localhost:8081' \
 go run ./cmd/app
 ```
 
@@ -20,11 +26,14 @@ make test
 make run
 ```
 
-Для контейнерной сборки:
+Для контейнерной сборки из корня репозитория:
 
 ```bash
-docker build -f build/Dockerfile -t tickets .
-docker run --rm -p 8080:8080 tickets
+docker build -f services/tickets/build/Dockerfile -t tickets .
+docker run --rm \
+  -e DATABASE_URL="$DATABASE_URL" \
+  -e AVITO_ADAPTER_URL="$AVITO_ADAPTER_URL" \
+  -p 8080:8080 tickets
 ```
 
 ## Конфигурация
@@ -36,9 +45,13 @@ docker run --rm -p 8080:8080 tickets
 | `HTTP_READ_TIMEOUT` | `5s` |
 | `HTTP_WRITE_TIMEOUT` | `10s` |
 | `HTTP_SHUTDOWN_TIMEOUT` | `10s` |
+| `DATABASE_URL` | обязательная строка подключения к PostgreSQL |
+| `DATABASE_CONNECT_TIMEOUT` | `5s` |
+| `AVITO_ADAPTER_URL` | обязательный URL avito-adapter |
+| `AVITO_ADAPTER_TIMEOUT` | `3s` |
 
 ## API
 
-Контракт находится в `api/openapi.yaml`. Рабочая служебная ручка — `GET /healthz`. Все остальные операции являются заглушками.
+Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz` и `GET /v1/ticket/list`. Остальные операции пока являются заглушками.
 
 После изменения OpenAPI-схемы необходимо выполнить `make generate`.

@@ -9,8 +9,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/avito-hack/queue/services/tickets/config"
+	"github.com/avito-hack/queue/services/tickets/infrastructure/client/avitoadapter"
+	"github.com/avito-hack/queue/services/tickets/infrastructure/repository/postgresql"
 	transporthttp "github.com/avito-hack/queue/services/tickets/infrastructure/transport/http"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
@@ -28,9 +33,35 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	health := usecase.NewHealth()
-	handler := transporthttp.NewHandler(health)
-	router, err := transporthttp.NewRouter(handler)
+	databaseContext, cancelDatabase := context.WithTimeout(context.Background(), cfg.PostgreSQL.ConnectTimeout)
+	defer cancelDatabase()
+
+	databaseConfig, err := pgxpool.ParseConfig(cfg.PostgreSQL.URL)
+	if err != nil {
+		return fmt.Errorf("parse database config: %w", err)
+	}
+	database, err := pgxpool.NewWithConfig(databaseContext, databaseConfig)
+	if err != nil {
+		return fmt.Errorf("create database pool: %w", err)
+	}
+	defer database.Close()
+	if err := database.Ping(databaseContext); err != nil {
+		return fmt.Errorf("connect to database: %w", err)
+	}
+	cancelDatabase()
+
+	ticketRepository := postgresql.NewTicketRepository(database)
+	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
+	health := usecase.NewHealth(database)
+	handler := transporthttp.NewHandler(health, listTickets)
+	tokenResolver, err := avitoadapter.NewUserTokenResolver(
+		cfg.AvitoAdapter.URL,
+		&http.Client{Timeout: cfg.AvitoAdapter.Timeout},
+	)
+	if err != nil {
+		return fmt.Errorf("create Avito adapter user token resolver: %w", err)
+	}
+	router, err := transporthttp.NewRouter(handler, tokenResolver)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)
 	}
