@@ -1,7 +1,65 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      QUEUE_POSTGRES_DB: ${QUEUE_POSTGRES_DB}
+      QUEUE_POSTGRES_USER: ${QUEUE_POSTGRES_USER}
+      QUEUE_POSTGRES_PASSWORD: ${QUEUE_POSTGRES_PASSWORD}
+      TICKETS_POSTGRES_DB: ${TICKETS_POSTGRES_DB}
+      TICKETS_POSTGRES_USER: ${TICKETS_POSTGRES_USER}
+      TICKETS_POSTGRES_PASSWORD: ${TICKETS_POSTGRES_PASSWORD}
+      AVITO_ADAPTER_POSTGRES_DB: ${AVITO_ADAPTER_POSTGRES_DB}
+      AVITO_ADAPTER_POSTGRES_USER: ${AVITO_ADAPTER_POSTGRES_USER}
+      AVITO_ADAPTER_POSTGRES_PASSWORD: ${AVITO_ADAPTER_POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./.docker/postgresql/init.sh:/docker-entrypoint-initdb.d/01-create-service-databases.sh:ro
+      - ./.docker/postgresql/healthcheck.sh:/usr/local/bin/postgres-healthcheck:ro
+    healthcheck:
+      test: ["CMD", "sh", "/usr/local/bin/postgres-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  goose:
+    build:
+      context: ./.docker/goose
+      args:
+        GOOSE_VERSION: v3.27.1
+    environment:
+      GOOSE_DRIVER: postgres
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGSSLMODE: disable
+      NO_COLOR: "1"
+      QUEUE_POSTGRES_DB: ${QUEUE_POSTGRES_DB}
+      QUEUE_POSTGRES_USER: ${QUEUE_POSTGRES_USER}
+      QUEUE_POSTGRES_PASSWORD: ${QUEUE_POSTGRES_PASSWORD}
+      TICKETS_POSTGRES_DB: ${TICKETS_POSTGRES_DB}
+      TICKETS_POSTGRES_USER: ${TICKETS_POSTGRES_USER}
+      TICKETS_POSTGRES_PASSWORD: ${TICKETS_POSTGRES_PASSWORD}
+      AVITO_ADAPTER_POSTGRES_DB: ${AVITO_ADAPTER_POSTGRES_DB}
+      AVITO_ADAPTER_POSTGRES_USER: ${AVITO_ADAPTER_POSTGRES_USER}
+      AVITO_ADAPTER_POSTGRES_PASSWORD: ${AVITO_ADAPTER_POSTGRES_PASSWORD}
+    volumes:
+      - ./services/queue/postgresql/migrations:/migrations/queue:ro
+      - ./services/tickets/postgresql/migrations:/migrations/tickets:ro
+      - ./services/avito-adapter/postgresql/migrations:/migrations/avito-adapter:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   queue:
     build:
       context: ./services/queue
+    environment:
+      DATABASE_URL: postgres://${QUEUE_POSTGRES_USER}:${QUEUE_POSTGRES_PASSWORD}@postgres:5432/${QUEUE_POSTGRES_DB}?sslmode=disable
     expose:
       - "8080"
     healthcheck:
@@ -18,12 +76,19 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      goose:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   tickets:
     build:
       context: ./services/tickets
       dockerfile: build/Dockerfile
+    environment:
+      DATABASE_URL: postgres://${TICKETS_POSTGRES_USER}:${TICKETS_POSTGRES_PASSWORD}@postgres:5432/${TICKETS_POSTGRES_DB}?sslmode=disable
     expose:
       - "8080"
     healthcheck:
@@ -40,11 +105,18 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      goose:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   avito-adapter:
     build:
       context: ./services/avito-adapter
+    environment:
+      DATABASE_URL: postgres://${AVITO_ADAPTER_POSTGRES_USER}:${AVITO_ADAPTER_POSTGRES_PASSWORD}@postgres:5432/${AVITO_ADAPTER_POSTGRES_DB}?sslmode=disable
     expose:
       - "8080"
     healthcheck:
@@ -61,6 +133,11 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      goose:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   frontend:
@@ -116,3 +193,6 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+volumes:
+  postgres-data:
