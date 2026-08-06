@@ -29,6 +29,14 @@ type ticketListerStub struct {
 	calls          int
 }
 
+type ticketGetterStub struct {
+	ticket           domain.Ticket
+	err              error
+	receivedUserID   uuid.UUID
+	receivedTicketID uuid.UUID
+	calls            int
+}
+
 type userTokenResolverStub struct {
 	userID        uuid.UUID
 	err           error
@@ -55,10 +63,27 @@ func (s *ticketListerStub) List(_ context.Context, userID uuid.UUID, filter usec
 	return s.tickets, s.err
 }
 
+func (s *ticketGetterStub) Get(_ context.Context, userID uuid.UUID, ticketID uuid.UUID) (domain.Ticket, error) {
+	s.calls++
+	s.receivedUserID = userID
+	s.receivedTicketID = ticketID
+
+	return s.ticket, s.err
+}
+
+func newTestHandler(lister TicketLister, getters ...TicketGetter) *Handler {
+	getter := TicketGetter(&ticketGetterStub{})
+	if len(getters) > 0 {
+		getter = getters[0]
+	}
+
+	return NewHandler(usecase.NewHealth(), lister, getter)
+}
+
 func Test_GetHealthz_ReturnOK(t *testing.T) {
 	// given
 	router, err := NewRouter(
-		NewHandler(usecase.NewHealth(), &ticketListerStub{}),
+		newTestHandler(&ticketListerStub{}),
 		&userTokenResolverStub{userID: uuid.New()},
 	)
 	require.NoError(t, err)
@@ -103,7 +128,7 @@ func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
 		},
 	}}
 	resolver := &userTokenResolverStub{userID: userID}
-	router, err := NewRouter(NewHandler(usecase.NewHealth(), lister), resolver)
+	router, err := NewRouter(newTestHandler(lister), resolver)
 	require.NoError(t, err)
 	request := httptest.NewRequest(
 		http.MethodGet,
@@ -149,7 +174,7 @@ func Test_GetV1TicketList_WithoutTickets_ReturnEmptyArray(t *testing.T) {
 	userID := uuid.New()
 	lister := &ticketListerStub{tickets: []domain.Ticket{}}
 	router, err := NewRouter(
-		NewHandler(usecase.NewHealth(), lister),
+		newTestHandler(lister),
 		&userTokenResolverStub{userID: userID},
 	)
 	require.NoError(t, err)
@@ -169,7 +194,7 @@ func Test_GetV1TicketList_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	// given
 	lister := &ticketListerStub{}
 	router, err := NewRouter(
-		NewHandler(usecase.NewHealth(), lister),
+		newTestHandler(lister),
 		&userTokenResolverStub{userID: uuid.New()},
 	)
 	require.NoError(t, err)
@@ -189,7 +214,7 @@ func Test_GetV1TicketList_WithInvalidToken_ReturnUnauthorized(t *testing.T) {
 	// given
 	lister := &ticketListerStub{}
 	resolver := &userTokenResolverStub{err: identityauth.ErrInvalidToken}
-	router, err := NewRouter(NewHandler(usecase.NewHealth(), lister), resolver)
+	router, err := NewRouter(newTestHandler(lister), resolver)
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/list", nil)
 	request.Header.Set("Authorization", "Bearer invalid-token")
@@ -208,7 +233,7 @@ func Test_GetV1TicketList_AuthServiceReturnsError_ReturnInternalError(t *testing
 	// given
 	lister := &ticketListerStub{}
 	resolver := &userTokenResolverStub{err: errors.New("adapter unavailable")}
-	router, err := NewRouter(NewHandler(usecase.NewHealth(), lister), resolver)
+	router, err := NewRouter(newTestHandler(lister), resolver)
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/list", nil)
 	request.Header.Set("Authorization", "Bearer abc-token")
@@ -228,7 +253,7 @@ func Test_GetV1TicketList_WithCustomTokenResolver_ReturnTicketsForResolvedUser(t
 	userID := uuid.New()
 	lister := &ticketListerStub{tickets: []domain.Ticket{}}
 	resolver := &userTokenResolverStub{userID: userID}
-	router, err := NewRouter(NewHandler(usecase.NewHealth(), lister), resolver)
+	router, err := NewRouter(newTestHandler(lister), resolver)
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/list", nil)
 	request.Header.Set("Authorization", "Bearer   opaque-token ")
@@ -262,7 +287,7 @@ func Test_GetV1TicketList_WithAvitoAdapterResolver_ReturnTicketsForResolvedUser(
 	})}
 	resolver, err := avitoadapter.NewUserTokenResolver("http://avito-adapter:8080", client)
 	require.NoError(t, err)
-	router, err := NewRouter(NewHandler(usecase.NewHealth(), lister), resolver)
+	router, err := NewRouter(newTestHandler(lister), resolver)
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/list", nil)
 	request.Header.Set("Authorization", "Bearer abc-token")
@@ -288,7 +313,7 @@ func Test_GetV1TicketList_AvitoAdapterRejectsToken_ReturnUnauthorized(t *testing
 	})}
 	resolver, err := avitoadapter.NewUserTokenResolver("http://avito-adapter:8080", client)
 	require.NoError(t, err)
-	router, err := NewRouter(NewHandler(usecase.NewHealth(), lister), resolver)
+	router, err := NewRouter(newTestHandler(lister), resolver)
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/list", nil)
 	request.Header.Set("Authorization", "Bearer invalid-token")
@@ -320,7 +345,7 @@ func Test_GetV1TicketList_WithInvalidFilter_ReturnBadRequest(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			lister := &ticketListerStub{}
 			router, err := NewRouter(
-				NewHandler(usecase.NewHealth(), lister),
+				newTestHandler(lister),
 				&userTokenResolverStub{userID: uuid.New()},
 			)
 			require.NoError(t, err)
@@ -342,7 +367,7 @@ func Test_GetV1TicketList_UsecaseReturnsError_ReturnInternalError(t *testing.T) 
 	// given
 	lister := &ticketListerStub{err: errors.New("database failed")}
 	router, err := NewRouter(
-		NewHandler(usecase.NewHealth(), lister),
+		newTestHandler(lister),
 		&userTokenResolverStub{userID: uuid.New()},
 	)
 	require.NoError(t, err)
@@ -356,4 +381,139 @@ func Test_GetV1TicketList_UsecaseReturnsError_ReturnInternalError(t *testing.T) 
 	// then
 	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
 	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+}
+
+func Test_GetV1Ticket_ReturnTicket(t *testing.T) {
+	// given
+	userID := uuid.New()
+	ticketID := uuid.New()
+	listingID := uuid.New()
+	skuID := uuid.New()
+	issuedAt := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	activationDeadline := issuedAt.Add(15 * time.Minute)
+	getter := &ticketGetterStub{ticket: domain.Ticket{
+		ID:                 ticketID,
+		ListingID:          listingID,
+		SKUID:              skuID,
+		Status:             domain.TicketStatusIssued,
+		IssuedAt:           issuedAt,
+		ActivationDeadline: activationDeadline,
+		AvailableActions: []domain.TicketAvailableAction{
+			domain.TicketAvailableActionActivate,
+			domain.TicketAvailableActionDecline,
+		},
+	}}
+	router, err := NewRouter(
+		newTestHandler(&ticketListerStub{}, getter),
+		&userTokenResolverStub{userID: userID},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/"+ticketID.String(), nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{
+		"id": "`+ticketID.String()+`",
+		"listing_id": "`+listingID.String()+`",
+		"sku_id": "`+skuID.String()+`",
+		"status": "issued",
+		"issued_at": "2026-08-06T10:00:00Z",
+		"activation_deadline": "2026-08-06T10:15:00Z",
+		"activated_at": null,
+		"order_id": null,
+		"checkout_url": null,
+		"finished_at": null,
+		"finish_reason": null,
+		"available_actions": ["activate", "decline"]
+	}`, recorder.Body.String())
+	assert.Equal(t, userID, getter.receivedUserID)
+	assert.Equal(t, ticketID, getter.receivedTicketID)
+	assert.Equal(t, 1, getter.calls)
+}
+
+func Test_GetV1Ticket_TicketNotFound_ReturnNotFound(t *testing.T) {
+	// given
+	ticketID := uuid.New()
+	getter := &ticketGetterStub{err: usecase.ErrTicketNotFound}
+	router, err := NewRouter(
+		newTestHandler(&ticketListerStub{}, getter),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/"+ticketID.String(), nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusNotFound, recorder.Code)
+	assert.JSONEq(t, `{"error":"ticket_not_found","message":"ticket not found"}`, recorder.Body.String())
+	assert.Equal(t, ticketID, getter.receivedTicketID)
+}
+
+func Test_GetV1Ticket_UsecaseReturnsError_ReturnInternalError(t *testing.T) {
+	// given
+	getter := &ticketGetterStub{err: errors.New("database failed")}
+	router, err := NewRouter(
+		newTestHandler(&ticketListerStub{}, getter),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/"+uuid.NewString(), nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+}
+
+func Test_GetV1Ticket_InvalidTicketID_ReturnBadRequest(t *testing.T) {
+	// given
+	getter := &ticketGetterStub{}
+	router, err := NewRouter(
+		newTestHandler(&ticketListerStub{}, getter),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/not-a-uuid", nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Zero(t, getter.calls)
+}
+
+func Test_GetV1Ticket_WithoutToken_ReturnUnauthorized(t *testing.T) {
+	// given
+	getter := &ticketGetterStub{}
+	router, err := NewRouter(
+		newTestHandler(&ticketListerStub{}, getter),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodGet, "/v1/ticket/"+uuid.NewString(), nil)
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	assert.Zero(t, getter.calls)
 }

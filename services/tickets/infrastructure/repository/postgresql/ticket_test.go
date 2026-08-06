@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,11 @@ type rowsStub struct {
 	closed   bool
 }
 
+type rowStub struct {
+	ticket  databaseTicket
+	scanErr error
+}
+
 func (s *rowsStub) Close() {
 	s.closed = true
 }
@@ -60,7 +66,22 @@ func (s *rowsStub) Scan(destinations ...any) error {
 		return s.scanErr
 	}
 
-	ticket := s.tickets[s.position-1]
+	scanDatabaseTicket(destinations, s.tickets[s.position-1])
+
+	return nil
+}
+
+func (s *rowStub) Scan(destinations ...any) error {
+	if s.scanErr != nil {
+		return s.scanErr
+	}
+
+	scanDatabaseTicket(destinations, s.ticket)
+
+	return nil
+}
+
+func scanDatabaseTicket(destinations []any, ticket databaseTicket) {
 	*destinations[0].(*pgtype.UUID) = ticket.id
 	*destinations[1].(*pgtype.UUID) = ticket.listingID
 	*destinations[2].(*pgtype.UUID) = ticket.skuID
@@ -72,12 +93,11 @@ func (s *rowsStub) Scan(destinations ...any) error {
 	*destinations[8].(*pgtype.Text) = ticket.checkoutURL
 	*destinations[9].(*pgtype.Timestamptz) = ticket.finishedAt
 	*destinations[10].(*pgtype.Text) = ticket.closeReason
-
-	return nil
 }
 
 type queryerStub struct {
 	rows          rows
+	row           scanner
 	err           error
 	receivedQuery string
 	receivedArgs  []any
@@ -88,6 +108,71 @@ func (s *queryerStub) Query(_ context.Context, query string, args ...any) (rows,
 	s.receivedArgs = args
 
 	return s.rows, s.err
+}
+
+func (s *queryerStub) QueryRow(_ context.Context, query string, args ...any) scanner {
+	s.receivedQuery = query
+	s.receivedArgs = args
+
+	return s.row
+}
+
+func TestTicketRepository_Get_ReturnTicket(t *testing.T) {
+	// given
+	userID := uuid.New()
+	ticketID := uuid.New()
+	listingID := uuid.New()
+	skuID := uuid.New()
+	issuedAt := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	activationDeadline := issuedAt.Add(15 * time.Minute)
+	queryer := &queryerStub{row: &rowStub{ticket: databaseTicket{
+		id:                 toPGUUID(ticketID),
+		listingID:          toPGUUID(listingID),
+		skuID:              toPGUUID(skuID),
+		status:             string(domain.TicketStatusIssued),
+		issuedAt:           issuedAt,
+		activationDeadline: activationDeadline,
+	}}}
+	repository := &TicketRepository{queryer: queryer}
+
+	// when
+	ticket, err := repository.Get(context.Background(), userID, ticketID)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, ticketID, ticket.ID)
+	assert.Equal(t, listingID, ticket.ListingID)
+	assert.Equal(t, skuID, ticket.SKUID)
+	assert.Equal(t, domain.TicketStatusIssued, ticket.Status)
+	assert.Equal(t, issuedAt, ticket.IssuedAt)
+	assert.Equal(t, activationDeadline, ticket.ActivationDeadline)
+	assert.Contains(t, queryer.receivedQuery, "WHERE user_id = $1 AND id = $2")
+	assert.Equal(t, []any{toPGUUID(userID), toPGUUID(ticketID)}, queryer.receivedArgs)
+}
+
+func TestTicketRepository_Get_TicketDoesNotExist_ReturnTicketNotFound(t *testing.T) {
+	// given
+	repository := &TicketRepository{queryer: &queryerStub{row: &rowStub{scanErr: pgx.ErrNoRows}}}
+
+	// when
+	_, err := repository.Get(context.Background(), uuid.New(), uuid.New())
+
+	// then
+	assert.ErrorIs(t, err, usecase.ErrTicketNotFound)
+}
+
+func TestTicketRepository_Get_ScanReturnsError_ReturnWrappedError(t *testing.T) {
+	// given
+	scanError := errors.New("scan failed")
+	repository := &TicketRepository{queryer: &queryerStub{row: &rowStub{scanErr: scanError}}}
+
+	// when
+	_, err := repository.Get(context.Background(), uuid.New(), uuid.New())
+
+	// then
+	require.Error(t, err)
+	assert.ErrorIs(t, err, scanError)
+	assert.Equal(t, "scan ticket: scan failed", err.Error())
 }
 
 func TestTicketRepository_List_ReturnTickets(t *testing.T) {

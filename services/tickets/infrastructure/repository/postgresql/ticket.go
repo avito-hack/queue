@@ -2,11 +2,13 @@ package postgresql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -14,8 +16,7 @@ import (
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
 
-const listTicketsQuery = `SELECT
-    id,
+const ticketColumns = `id,
     listing_id,
     sku_id,
     status,
@@ -25,19 +26,30 @@ const listTicketsQuery = `SELECT
     order_id,
     checkout_url,
     finished_at,
-    close_reason
+    close_reason`
+
+const listTicketsQuery = `SELECT ` + ticketColumns + `
 FROM public.tickets
 WHERE user_id = $1`
 
+const getTicketQuery = `SELECT ` + ticketColumns + `
+FROM public.tickets
+WHERE user_id = $1 AND id = $2`
+
+type scanner interface {
+	Scan(...any) error
+}
+
 type rows interface {
+	scanner
 	Close()
 	Err() error
 	Next() bool
-	Scan(...any) error
 }
 
 type queryer interface {
 	Query(context.Context, string, ...any) (rows, error)
+	QueryRow(context.Context, string, ...any) scanner
 }
 
 type poolQueryer struct {
@@ -48,12 +60,28 @@ func (q poolQueryer) Query(ctx context.Context, query string, args ...any) (rows
 	return q.pool.Query(ctx, query, args...)
 }
 
+func (q poolQueryer) QueryRow(ctx context.Context, query string, args ...any) scanner {
+	return q.pool.QueryRow(ctx, query, args...)
+}
+
 type TicketRepository struct {
 	queryer queryer
 }
 
 func NewTicketRepository(pool *pgxpool.Pool) *TicketRepository {
 	return &TicketRepository{queryer: poolQueryer{pool: pool}}
+}
+
+func (r *TicketRepository) Get(ctx context.Context, userID, ticketID uuid.UUID) (domain.Ticket, error) {
+	ticket, err := scanTicket(r.queryer.QueryRow(ctx, getTicketQuery, toPGUUID(userID), toPGUUID(ticketID)))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Ticket{}, usecase.ErrTicketNotFound
+	}
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+
+	return ticket, nil
 }
 
 func (r *TicketRepository) List(ctx context.Context, userID uuid.UUID, filter usecase.ListTicketsFilter) ([]domain.Ticket, error) {
@@ -105,7 +133,7 @@ func buildListTicketsQuery(userID uuid.UUID, filter usecase.ListTicketsFilter) (
 	return query.String(), args
 }
 
-func scanTicket(result rows) (domain.Ticket, error) {
+func scanTicket(result scanner) (domain.Ticket, error) {
 	var ticket domain.Ticket
 	var id pgtype.UUID
 	var listingID pgtype.UUID

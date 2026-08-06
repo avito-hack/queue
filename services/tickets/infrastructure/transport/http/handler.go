@@ -22,15 +22,21 @@ type TicketLister interface {
 	List(context.Context, uuid.UUID, usecase.ListTicketsFilter) ([]domain.Ticket, error)
 }
 
+type TicketGetter interface {
+	Get(context.Context, uuid.UUID, uuid.UUID) (domain.Ticket, error)
+}
+
 type Handler struct {
 	healthChecker HealthChecker
 	ticketLister  TicketLister
+	ticketGetter  TicketGetter
 }
 
-func NewHandler(healthChecker HealthChecker, ticketLister TicketLister) *Handler {
+func NewHandler(healthChecker HealthChecker, ticketLister TicketLister, ticketGetter TicketGetter) *Handler {
 	return &Handler{
 		healthChecker: healthChecker,
 		ticketLister:  ticketLister,
+		ticketGetter:  ticketGetter,
 	}
 }
 
@@ -70,8 +76,22 @@ func (h *Handler) ListTickets(ctx context.Context, request server.ListTicketsReq
 	return server.ListTickets200JSONResponse{Ticket: responseTickets}, nil
 }
 
-func (h *Handler) GetTicket(context.Context, server.GetTicketRequestObject) (server.GetTicketResponseObject, error) {
-	return server.GetTicket500JSONResponse{InternalErrorJSONResponse: notImplementedError()}, nil
+func (h *Handler) GetTicket(ctx context.Context, request server.GetTicketRequestObject) (server.GetTicketResponseObject, error) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		return server.GetTicket401JSONResponse{UnauthorizedJSONResponse: unauthorizedError()}, nil
+	}
+
+	ticket, err := h.ticketGetter.Get(ctx, userID, request.TicketId)
+	if errors.Is(err, usecase.ErrTicketNotFound) {
+		return server.GetTicket404JSONResponse{TicketNotFoundJSONResponse: ticketNotFoundError()}, nil
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "get ticket", "error", err)
+		return server.GetTicket500JSONResponse{InternalErrorJSONResponse: internalServerError()}, nil
+	}
+
+	return server.GetTicket200JSONResponse(toV1Ticket(ticket)), nil
 }
 
 func (h *Handler) ActivateTicket(context.Context, server.ActivateTicketRequestObject) (server.ActivateTicketResponseObject, error) {
@@ -134,6 +154,13 @@ func unauthorizedError() server.UnauthorizedJSONResponse {
 	return server.UnauthorizedJSONResponse{
 		Error:   "unauthorized",
 		Message: errBearerTokenInvalid.Error(),
+	}
+}
+
+func ticketNotFoundError() server.TicketNotFoundJSONResponse {
+	return server.TicketNotFoundJSONResponse{
+		Error:   "ticket_not_found",
+		Message: "ticket not found",
 	}
 }
 

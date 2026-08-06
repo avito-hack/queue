@@ -52,8 +52,9 @@ func run() error {
 
 	ticketRepository := postgresql.NewTicketRepository(database)
 	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
+	getTicket := usecase.NewGetTicket(ticketRepository, time.Now)
 	health := usecase.NewHealth(database)
-	handler := transporthttp.NewHandler(health, listTickets)
+	handler := transporthttp.NewHandler(health, listTickets, getTicket)
 	tokenResolver, err := avitoadapter.NewUserTokenResolver(
 		cfg.AvitoAdapter.URL,
 		&http.Client{Timeout: cfg.AvitoAdapter.Timeout},
