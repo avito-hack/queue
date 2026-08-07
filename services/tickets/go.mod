@@ -3,6 +3,7 @@ module github.com/avito-hack/queue/services/tickets
 go 1.26.0
 
 require (
+	github.com/bdragon300/go-asyncapi/run v0.0.0-20260111064117-e9ede27542aa
 	github.com/getkin/kin-openapi v0.127.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
