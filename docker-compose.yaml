@@ -67,7 +67,7 @@ services:
     build:
       context: ./services/frontend
       args:
-        VITE_API_URL: ""
+        VITE_API_URL: "/v1/api"
     expose:
       - "80"
     healthcheck:
