@@ -8,13 +8,12 @@ import (
 )
 
 type Config struct {
-	HTTP             HTTPConfig
-	PostgreSQL       PostgreSQLConfig
-	AvitoAdapter     AvitoAdapterConfig
-	RabbitMQ         RabbitMQConfig
-	Ticket           TicketConfig
-	Workers          WorkerConfig
-	ServiceAuthToken string
+	HTTP         HTTPConfig
+	PostgreSQL   PostgreSQLConfig
+	AvitoAdapter AvitoAdapterConfig
+	RabbitMQ     RabbitMQConfig
+	Ticket       TicketConfig
+	Workers      WorkerConfig
 }
 
 type HTTPConfig struct {
@@ -137,11 +136,6 @@ func Load() (Config, error) {
 	if rabbitMQURL == "" {
 		return Config{}, fmt.Errorf("RABBITMQ_URL is required")
 	}
-	serviceAuthToken := value("SERVICE_AUTH_TOKEN", "")
-	if serviceAuthToken == "" {
-		return Config{}, fmt.Errorf("SERVICE_AUTH_TOKEN is required")
-	}
-
 	return Config{
 		HTTP: HTTPConfig{
 			Host:            value("HTTP_HOST", "0.0.0.0"),
@@ -174,7 +168,6 @@ func Load() (Config, error) {
 			OutboxRetryDelay:          outboxRetryDelay,
 			OutboxConcurrency:         outboxConcurrency,
 		},
-		ServiceAuthToken: serviceAuthToken,
 	}, nil
 }
 

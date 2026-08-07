@@ -14,14 +14,9 @@ import (
 func NewRouter(
 	handler *Handler,
 	resolver identityauth.UserTokenResolver,
-	serviceTokens ...string,
 ) (*gin.Engine, error) {
 	if resolver == nil {
 		return nil, fmt.Errorf("create router: user token resolver is nil")
-	}
-	serviceToken := ""
-	if len(serviceTokens) > 0 {
-		serviceToken = serviceTokens[0]
 	}
 
 	spec, err := server.GetSwagger()
@@ -37,7 +32,7 @@ func NewRouter(
 		middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
 			ErrorHandler: validationErrorHandler,
 			Options: openapi3filter.Options{
-				AuthenticationFunc: authenticateWith(resolver, serviceToken),
+				AuthenticationFunc: authenticateWith(resolver),
 			},
 		}),
 	)

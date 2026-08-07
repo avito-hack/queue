@@ -106,7 +106,7 @@ func run() error {
 		time.Now,
 	)
 	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket, declineTicket, issueTicket)
-	router, err := transporthttp.NewRouter(handler, tokenResolver, cfg.ServiceAuthToken)
+	router, err := transporthttp.NewRouter(handler, tokenResolver)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)
 	}

@@ -18,7 +18,6 @@ Tickets ожидает `200` с телом `{"user_id":"<uuid>"}` для вал�
 DATABASE_URL='postgres://tickets:password@localhost:5432/tickets?sslmode=disable' \
 AVITO_ADAPTER_URL='http://localhost:8081' \
 RABBITMQ_URL='amqp://tickets:password@localhost:5672/' \
-SERVICE_AUTH_TOKEN='queue-to-tickets-secret' \
 go run ./cmd/app
 ```
 
@@ -38,7 +37,6 @@ docker run --rm \
   -e DATABASE_URL="$DATABASE_URL" \
   -e AVITO_ADAPTER_URL="$AVITO_ADAPTER_URL" \
   -e RABBITMQ_URL="$RABBITMQ_URL" \
-  -e SERVICE_AUTH_TOKEN="$SERVICE_AUTH_TOKEN" \
   -p 8080:8080 tickets
 ```
 
@@ -57,7 +55,6 @@ docker run --rm \
 | `AVITO_ADAPTER_TIMEOUT` | `3s` |
 | `RABBITMQ_URL` | обязательный URL RabbitMQ |
 | `RABBITMQ_EXCHANGE` | `domain.events` |
-| `SERVICE_AUTH_TOKEN` | обязательный токен queue → tickets |
 | `TICKET_ACTIVATION_TTL` | `15m` |
 | `TICKET_MAINTENANCE_INTERVAL` | `1s` |
 | `ACTIVATION_RECOVERY_TIMEOUT` | `1m` |
