@@ -69,42 +69,58 @@ func TestTicket_ActionsAt_ReturnAvailableActions(t *testing.T) {
 }
 
 func TestTicketStatus_Valid_ReturnValidity(t *testing.T) {
-	// given
 	tests := []struct {
+		name     string
 		status   TicketStatus
 		expected bool
 	}{
-		{status: TicketStatusIssued, expected: true},
-		{status: TicketStatusActive, expected: true},
-		{status: TicketStatusRedeemed, expected: true},
-		{status: TicketStatusClosed, expected: true},
-		{status: TicketStatus("unknown"), expected: false},
+		{name: "issued", status: TicketStatusIssued, expected: true},
+		{name: "active", status: TicketStatusActive, expected: true},
+		{name: "redeemed", status: TicketStatusRedeemed, expected: true},
+		{name: "closed", status: TicketStatusClosed, expected: true},
+		{name: "unknown", status: TicketStatus("unknown"), expected: false},
 	}
 
 	for _, test := range tests {
-		// when / then
-		assert.Equal(t, test.expected, test.status.Valid())
+		t.Run(test.name, func(t *testing.T) {
+			// given
+			status := test.status
+
+			// when
+			valid := status.Valid()
+
+			// then
+			assert.Equal(t, test.expected, valid)
+		})
 	}
 }
 
 func TestTicketCloseReason_Valid_ReturnValidity(t *testing.T) {
-	// given
 	tests := []struct {
+		name     string
 		reason   TicketCloseReason
 		expected bool
 	}{
-		{reason: TicketCloseReasonPaymentSucceeded, expected: true},
-		{reason: TicketCloseReasonActivationTimeout, expected: true},
-		{reason: TicketCloseReasonUserDeclined, expected: true},
-		{reason: TicketCloseReasonListingClosed, expected: true},
-		{reason: TicketCloseReasonSKUClosed, expected: true},
-		{reason: TicketCloseReasonReservationReleased, expected: true},
-		{reason: TicketCloseReasonSystemCancelled, expected: true},
-		{reason: TicketCloseReason("unknown"), expected: false},
+		{name: "payment succeeded", reason: TicketCloseReasonPaymentSucceeded, expected: true},
+		{name: "activation timeout", reason: TicketCloseReasonActivationTimeout, expected: true},
+		{name: "user declined", reason: TicketCloseReasonUserDeclined, expected: true},
+		{name: "listing closed", reason: TicketCloseReasonListingClosed, expected: true},
+		{name: "SKU closed", reason: TicketCloseReasonSKUClosed, expected: true},
+		{name: "reservation released", reason: TicketCloseReasonReservationReleased, expected: true},
+		{name: "system cancelled", reason: TicketCloseReasonSystemCancelled, expected: true},
+		{name: "unknown", reason: TicketCloseReason("unknown"), expected: false},
 	}
 
 	for _, test := range tests {
-		// when / then
-		assert.Equal(t, test.expected, test.reason.Valid())
+		t.Run(test.name, func(t *testing.T) {
+			// given
+			reason := test.reason
+
+			// when
+			valid := reason.Valid()
+
+			// then
+			assert.Equal(t, test.expected, valid)
+		})
 	}
 }

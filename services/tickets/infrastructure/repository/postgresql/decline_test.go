@@ -370,7 +370,6 @@ func TestDeclineRepository_Decline_TicketNotFound_ReturnNotFound(t *testing.T) {
 }
 
 func TestDeclineRepository_Decline_IneligibleTicket_ReturnNotDeclinable(t *testing.T) {
-	// given
 	now := time.Date(2026, time.August, 7, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name     string

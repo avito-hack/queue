@@ -255,7 +255,6 @@ func TestIssueRepository_Issue_ExistingQueueEntry_ReturnExistingAndNoOutbox(t *t
 }
 
 func TestIssueRepository_Issue_ExistingQueueEntryWithDifferentScope_ReturnNotIssuable(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	tests := []struct {
 		name   string
@@ -297,7 +296,6 @@ func TestIssueRepository_Issue_ExistingQueueEntryWithDifferentScope_ReturnNotIss
 }
 
 func TestIssueRepository_Issue_OperationScopeConflict_ReturnIdempotencyConflict(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	tests := []struct {
 		name        string
@@ -332,7 +330,6 @@ func TestIssueRepository_Issue_OperationScopeConflict_ReturnIdempotencyConflict(
 }
 
 func TestIssueRepository_Issue_OperationInInvalidState_ReturnInvariantError(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	tests := []struct {
 		name          string
@@ -366,7 +363,6 @@ func TestIssueRepository_Issue_OperationInInvalidState_ReturnInvariantError(t *t
 }
 
 func TestIssueRepository_Issue_CompletedOperationWithInvalidResponse_ReturnError(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	validResult := newIssueResult(command, uuid.New(), false)
 	validBody, err := encodeIssueResult(validResult)
@@ -439,7 +435,6 @@ func TestIssueRepository_Issue_OperationWithNullRequiredUUID_ReturnError(t *test
 }
 
 func TestIssueRepository_Issue_DatabasePathError_Rollback(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	testError := errors.New("database failed")
 	tests := []struct {
@@ -530,7 +525,6 @@ func TestIssueRepository_Issue_DatabasePathError_Rollback(t *testing.T) {
 }
 
 func TestIssueRepository_Issue_CompleteOrOutboxWriteFailure_Rollback(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	testError := errors.New("write failed")
 	tests := []struct {
@@ -599,7 +593,6 @@ func TestIssueRepository_Issue_CompleteOrOutboxWriteFailure_Rollback(t *testing.
 }
 
 func TestIssueRepository_Issue_InvalidExistingTicketRow_ReturnError(t *testing.T) {
-	// given
 	command := issueCommandForTest()
 	tests := []struct {
 		name          string
@@ -668,7 +661,7 @@ func TestIssueRepository_Issue_InvalidExistingTicketRow_ReturnError(t *testing.T
 	}
 }
 
-func TestIssueRepository_Issue_BeginCommitAndRollbackErrors(t *testing.T) {
+func TestIssueRepository_Issue_BeginFails_ReturnWrappedError(t *testing.T) {
 	// given
 	command := issueCommandForTest()
 	beginError := errors.New("begin failed")
@@ -681,32 +674,38 @@ func TestIssueRepository_Issue_BeginCommitAndRollbackErrors(t *testing.T) {
 	// then
 	assert.EqualError(t, err, "begin issue transaction: begin failed")
 	assert.Equal(t, 1, beginner.calls)
+}
 
+func TestIssueRepository_Issue_CommitFails_RollbackTransaction(t *testing.T) {
 	// given
+	command := issueCommandForTest()
 	commitError := errors.New("commit failed")
 	transaction := issueSuccessfulTransaction()
 	transaction.commitErr = commitError
-	repository = newIssueRepositoryForTest(transaction, uuid.New(), uuid.New(), uuid.New())
+	repository := newIssueRepositoryForTest(transaction, uuid.New(), uuid.New(), uuid.New())
 
 	// when
-	_, err = repository.Issue(context.Background(), command)
+	_, err := repository.Issue(context.Background(), command)
 
 	// then
 	assert.EqualError(t, err, "commit issue transaction: commit failed")
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Equal(t, 1, transaction.rollbackCalls)
+}
 
+func TestIssueRepository_Issue_RollbackFails_ReturnOperationAndRollbackErrors(t *testing.T) {
 	// given
+	command := issueCommandForTest()
 	queryError := errors.New("query failed")
 	rollbackError := errors.New("rollback failed")
-	transaction = &activationTransactionStub{
+	transaction := &activationTransactionStub{
 		rows:        []activationRow{activationScanErrorRow(queryError)},
 		rollbackErr: rollbackError,
 	}
-	repository = newIssueRepositoryForTest(transaction)
+	repository := newIssueRepositoryForTest(transaction)
 
 	// when
-	_, err = repository.Issue(context.Background(), command)
+	_, err := repository.Issue(context.Background(), command)
 
 	// then
 	require.Error(t, err)
@@ -731,28 +730,47 @@ func TestIssueRepository_Issue_RequestCanceled_RollbackWithDetachedContext(t *te
 	assert.NoError(t, transaction.rollbackCtxErr)
 }
 
-func TestIssueRequestHash_UsesOnlyOrderedScopeUUIDs(t *testing.T) {
+func TestIssueRequestHash_IdempotencyKeyAndTimesChanged_ReturnSameHash(t *testing.T) {
 	// given
 	command := issueCommandForTest()
 	original := issueRequestHash(command)
-
-	// when / then
 	changedKeyAndTimes := command
 	changedKeyAndTimes.IdempotencyKey = uuid.New()
 	changedKeyAndTimes.IssuedAt = command.IssuedAt.Add(time.Hour)
 	changedKeyAndTimes.ActivationDeadline = command.ActivationDeadline.Add(time.Hour)
-	assert.Equal(t, original, issueRequestHash(changedKeyAndTimes))
 
-	mutations := []func(*usecase.IssueTicketCommand){
-		func(value *usecase.IssueTicketCommand) { value.QueueEntryID = uuid.New() },
-		func(value *usecase.IssueTicketCommand) { value.UserID = uuid.New() },
-		func(value *usecase.IssueTicketCommand) { value.ListingID = uuid.New() },
-		func(value *usecase.IssueTicketCommand) { value.SKUID = uuid.New() },
+	// when
+	actual := issueRequestHash(changedKeyAndTimes)
+
+	// then
+	assert.Equal(t, original, actual)
+}
+
+func TestIssueRequestHash_ScopeUUIDChanged_ReturnDifferentHash(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*usecase.IssueTicketCommand)
+	}{
+		{name: "queue entry", mutate: func(value *usecase.IssueTicketCommand) { value.QueueEntryID = uuid.New() }},
+		{name: "user", mutate: func(value *usecase.IssueTicketCommand) { value.UserID = uuid.New() }},
+		{name: "listing", mutate: func(value *usecase.IssueTicketCommand) { value.ListingID = uuid.New() }},
+		{name: "SKU", mutate: func(value *usecase.IssueTicketCommand) { value.SKUID = uuid.New() }},
 	}
-	for _, mutate := range mutations {
-		changed := command
-		mutate(&changed)
-		assert.NotEqual(t, original, issueRequestHash(changed))
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// given
+			command := issueCommandForTest()
+			original := issueRequestHash(command)
+			changed := command
+			test.mutate(&changed)
+
+			// when
+			actual := issueRequestHash(changed)
+
+			// then
+			assert.NotEqual(t, original, actual)
+		})
 	}
 }
 
