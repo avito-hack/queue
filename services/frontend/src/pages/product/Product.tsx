@@ -11,7 +11,7 @@ import {
   joinQueue as joinQueueAction,
   updateQueueItem,
 } from '../../features/queue/queueSlice'
-import type { QueueEntry } from '../../features/queue/types'
+import type { ItemQueueState, QueueEntry } from '../../features/queue/types'
 
 const similarProducts = [
   { emoji: '👟', price: '14 500 ₽', title: 'Кроссовки Northline Base' },
@@ -34,6 +34,13 @@ function notifyStorageKey(productId: string) {
   return `notify:${productId}`
 }
 
+function queueStateHint(state: ItemQueueState | null): string | null {
+  if (state === 'tickets_available') return 'тикеты доступны'
+  if (state === 'tickets_partially_issued') return 'тикеты частично выданы'
+  if (state === 'tickets_exhausted') return 'тикеты закончились'
+  return null
+}
+
 export function Product() {
   const { id } = useParams<{ id: string }>()
   const productId = id ?? ''
@@ -42,6 +49,7 @@ export function Product() {
   const [joinedEntry, setJoinedEntry] = useState<QueueEntry | null>(null)
   const [soldOutDismissed, setSoldOutDismissed] = useState(false)
   const [prevProductId, setPrevProductId] = useState(productId)
+  const [queueState, setQueueState] = useState<ItemQueueState | null>(null)
   const [notified, setNotified] = useState(
     () => localStorage.getItem(notifyStorageKey(productId)) === '1',
   )
@@ -71,7 +79,25 @@ export function Product() {
     setNotified(localStorage.getItem(notifyStorageKey(productId)) === '1')
     setSoldOutDismissed(false)
     setJoinedEntry(null)
+    setQueueState(null)
   }
+
+  // /state в OpenAPI без length — тянем enum; число «уже в очереди» пока из listing/mock.
+  useEffect(() => {
+    if (!productId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const data = await queueApi.getItemQueueState(productId)
+        if (!cancelled) setQueueState(data.state)
+      } catch {
+        if (!cancelled) setQueueState(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [productId])
 
   useEffect(() => {
     if (!product || product.availableQuantity > 0 || !myQueueEntry) return
@@ -135,6 +161,7 @@ export function Product() {
 
   const inStock = product.availableQuantity > 0
   const queueCount = product.queueCount ?? 0
+  const stateHint = queueStateHint(queueState)
   const actionLabel = notified
     ? 'Подписка оформлена'
     : getProductActionLabel(inStock, myQueueEntry, myTicket)
@@ -202,6 +229,12 @@ export function Product() {
                 {queueCount} {pluralPeople(queueCount)}
               </strong>
             </div>
+            {stateHint && (
+              <div className="flex items-center justify-between gap-3.5 text-sm">
+                <span className="text-avito-muted">Очередь</span>
+                <strong>{stateHint}</strong>
+              </div>
+            )}
           </div>
 
           {myQueueEntry && (

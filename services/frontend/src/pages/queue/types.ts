@@ -1,3 +1,5 @@
+import type { TicketAvailableAction } from '../../features/ticket/types'
+
 export type TileKind = 'queued' | 'ticket' | 'soldout'
 
 export type QueueTileView = {
@@ -8,4 +10,5 @@ export type QueueTileView = {
   expiresAt?: string
   title: string
   image: string
+  availableActions?: TicketAvailableAction[]
 }

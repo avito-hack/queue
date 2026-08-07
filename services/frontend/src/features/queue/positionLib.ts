@@ -1,37 +1,67 @@
-import type { QueueEntry, QueueStatus } from './types'
+import type {
+  ItemQueueMemberStatus,
+  ItemQueueState,
+  QueueEntry,
+  QueueStatus,
+} from './types'
 
 /** GET /v1/queue/{itemID}/position */
 export type UserPositionResponse = {
   position: number
 }
 
-/** Элемент GET /v1/user/queues */
-export type UserQueueInfo = {
+/** GET /v1/queue/{itemID}/state — в OpenAPI нет длины очереди, только state. */
+export type ItemQueueStateResponse = {
+  state: ItemQueueState
+}
+
+/** Элемент GET /v1/user/queues (schema ItemQueueInfo). */
+export type ItemQueueInfo = {
+  item_id: string
+  position: number
+  status: ItemQueueMemberStatus
+}
+
+/** @deprecated используй ItemQueueInfo */
+export type UserQueueInfo = Partial<ItemQueueInfo> & {
   item_id?: string
   position?: number
   status?: string
-  ticket_id?: string | null
-  ticket_status?: string | null
-  can_activate?: boolean
-  can_exit?: boolean
-  can_decline_ticket?: boolean
 }
 
-function queueStatusFromUserStatus(status?: string): QueueStatus | null {
+export type QueueUserQueuesSync = {
+  updates: QueueEntry[]
+  removeProductIds: string[]
+}
+
+function queueStatusFromMemberStatus(
+  status?: string,
+): QueueStatus | 'remove' | null {
   if (status === 'waiting_in_line') return 'queued'
   if (status === 'item_out_of_stock') return 'soldout'
+  if (
+    status === 'acquired_purchase_rights' ||
+    status === 'placed_an_order' ||
+    status === 'purchased_an_item' ||
+    status === 'voluntarily_left_the_line' ||
+    status === 'given_up_purchase_rights' ||
+    status === 'lost_purchase_rights'
+  ) {
+    return 'remove'
+  }
   return null
 }
 
 /**
  * Обновить локальные queued/soldout плитки по массиву /v1/user/queues.
- * Позиция всегда привязана к item_id — не размазываем одно число на все.
+ * Терминальные статусы → removeProductIds (тикет/выход из линии).
  */
 export function queueItemsFromUserQueues(
   queueItems: QueueEntry[],
   infos: UserQueueInfo[],
-): QueueEntry[] {
+): QueueUserQueuesSync {
   const updates: QueueEntry[] = []
+  const removeProductIds: string[] = []
 
   for (const item of queueItems) {
     if (item.status !== 'queued' && item.status !== 'soldout') continue
@@ -39,24 +69,36 @@ export function queueItemsFromUserQueues(
     const info = infos.find((row) => row.item_id === item.productId)
     if (!info) continue
 
-    const nextStatus = queueStatusFromUserStatus(info.status)
+    const nextStatus = queueStatusFromMemberStatus(info.status)
     if (!nextStatus) continue
+
+    if (nextStatus === 'remove') {
+      if (!removeProductIds.includes(item.productId)) {
+        removeProductIds.push(item.productId)
+      }
+      continue
+    }
 
     const next: QueueEntry = {
       ...item,
       status: nextStatus,
+      memberStatus: info.status as ItemQueueMemberStatus | undefined,
       position:
         nextStatus === 'queued' && typeof info.position === 'number'
           ? info.position
           : undefined,
     }
 
-    if (next.position !== item.position || next.status !== item.status) {
+    if (
+      next.position !== item.position ||
+      next.status !== item.status ||
+      next.memberStatus !== item.memberStatus
+    ) {
       updates.push(next)
     }
   }
 
-  return updates
+  return { updates, removeProductIds }
 }
 
 /** Применить { position } к конкретной очереди itemId. */

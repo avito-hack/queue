@@ -7,6 +7,8 @@ type TicketPurchaseModalProps = {
   expiresAt?: string
   buying?: boolean
   buyError?: string | null
+  canActivate?: boolean
+  canDecline?: boolean
   onClose: () => void
   onBuy: () => void
   onDecline: () => void
@@ -19,6 +21,8 @@ export function TicketPurchaseModal({
   expiresAt,
   buying = false,
   buyError = null,
+  canActivate = true,
+  canDecline = true,
   onClose,
   onBuy,
   onDecline,
@@ -95,22 +99,26 @@ export function TicketPurchaseModal({
         )}
 
         <div className="grid gap-2.5">
-          <button
-            type="button"
-            disabled={expired || buying}
-            className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-50 disabled:hover:translate-y-0"
-            onClick={onBuy}
-          >
-            {buying ? 'Активация…' : 'Перейти к покупке'}
-          </button>
-          <button
-            type="button"
-            disabled={buying}
-            className="min-h-12 w-full cursor-pointer rounded-xl bg-[#fff0f2] px-[18px] py-3 font-extrabold text-avito-red disabled:cursor-default disabled:opacity-50"
-            onClick={onDecline}
-          >
-            Отказаться от покупки
-          </button>
+          {canActivate && (
+            <button
+              type="button"
+              disabled={expired || buying}
+              className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-50 disabled:hover:translate-y-0"
+              onClick={onBuy}
+            >
+              {buying ? 'Активация…' : 'Перейти к покупке'}
+            </button>
+          )}
+          {canDecline && (
+            <button
+              type="button"
+              disabled={buying}
+              className="min-h-12 w-full cursor-pointer rounded-xl bg-[#fff0f2] px-[18px] py-3 font-extrabold text-avito-red disabled:cursor-default disabled:opacity-50"
+              onClick={onDecline}
+            >
+              Отказаться от покупки
+            </button>
+          )}
         </div>
       </div>
     </div>

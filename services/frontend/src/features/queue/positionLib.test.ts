@@ -25,18 +25,50 @@ describe('queueItemsFromUserQueues', () => {
         { item_id: 'listing-a', position: 3, status: 'waiting_in_line' },
         { item_id: 'listing-b', position: 9, status: 'waiting_in_line' },
       ]),
-    ).toEqual([
-      { ...a, position: 3 },
-      { ...b, position: 9 },
-    ])
+    ).toEqual({
+      updates: [
+        { ...a, position: 3, memberStatus: 'waiting_in_line' },
+        { ...b, position: 9, memberStatus: 'waiting_in_line' },
+      ],
+      removeProductIds: [],
+    })
   })
 
   it('marks soldout when status is item_out_of_stock', () => {
     expect(
       queueItemsFromUserQueues([a], [
-        { item_id: 'listing-a', status: 'item_out_of_stock' },
+        {
+          item_id: 'listing-a',
+          position: 1,
+          status: 'item_out_of_stock',
+        },
       ]),
-    ).toEqual([{ ...a, status: 'soldout', position: undefined }])
+    ).toEqual({
+      updates: [
+        {
+          ...a,
+          status: 'soldout',
+          position: undefined,
+          memberStatus: 'item_out_of_stock',
+        },
+      ],
+      removeProductIds: [],
+    })
+  })
+
+  it('removes tile when user acquired purchase rights', () => {
+    expect(
+      queueItemsFromUserQueues([a], [
+        {
+          item_id: 'listing-a',
+          position: 1,
+          status: 'acquired_purchase_rights',
+        },
+      ]),
+    ).toEqual({
+      updates: [],
+      removeProductIds: ['listing-a'],
+    })
   })
 })
 

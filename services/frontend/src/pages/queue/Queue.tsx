@@ -9,6 +9,7 @@ import { leaveQueue } from '../../features/queue/queueSlice'
 import { ticketApi } from '../../features/ticket/api'
 import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigation'
 import { removeTicket } from '../../features/ticket/ticketSlice'
+import { ticketAllows } from '../../features/ticket/types'
 import { QueueCard } from './QueueCard'
 import { QueueEmpty } from './QueueEmpty'
 import { SummaryTile } from './SummaryTile'
@@ -36,6 +37,9 @@ export function Queue() {
 
   const handleActivateAndBuy = () => {
     if (!ticketTile || buying) return
+    if (!ticketAllows(ticketTile, 'activate') && !ticketAllows(ticketTile, 'checkout')) {
+      return
+    }
     const id = ticketTile.id
     if (isTicketExpired(ticketTile.expiresAt)) {
       dispatch(removeTicket(id))
@@ -91,6 +95,7 @@ export function Queue() {
     kind: TileKind
     position?: number
     expiresAt?: string
+    availableActions?: QueueTileView['availableActions']
   }): QueueTileView => {
     const product = productItems.find((p) => p.id === entry.productId)
     return {
@@ -115,6 +120,7 @@ export function Queue() {
         productId: ticket.productId,
         kind: 'ticket',
         expiresAt: ticket.expiresAt,
+        availableActions: ticket.availableActions,
       }),
     ),
   ]
@@ -170,10 +176,16 @@ export function Queue() {
         productImage={ticketTile?.image ?? '🛒'}
         expiresAt={ticketTile?.expiresAt}
         buying={buying}
+        canActivate={
+          ticketAllows(ticketTile, 'activate') ||
+          ticketAllows(ticketTile, 'checkout')
+        }
+        canDecline={ticketAllows(ticketTile, 'decline')}
         onClose={closeTicketModal}
         onBuy={handleActivateAndBuy}
         onDecline={() => {
           if (!ticketTile || buying) return
+          if (!ticketAllows(ticketTile, 'decline')) return
           const id = ticketTile.id
           void (async () => {
             try {

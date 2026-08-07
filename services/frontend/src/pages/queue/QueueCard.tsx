@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useCountdown } from '../../features/queue/useCountdown'
+import { ticketAllows } from '../../features/ticket/types'
 import { metaRows, statusLabel, statusStyles } from './queueTileLib'
 import type { QueueTileView } from './types'
 
@@ -45,7 +46,10 @@ export function QueueCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-3 pt-2">
-          {tile.kind === 'ticket' && (
+          {tile.kind === 'ticket' &&
+            (ticketAllows(tile, 'activate') ||
+              ticketAllows(tile, 'checkout') ||
+              ticketAllows(tile, 'decline')) && (
             <button
               type="button"
               className="min-h-10 w-full cursor-pointer rounded-[10px] bg-avito-blue px-3 py-2 text-[13px] font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover"

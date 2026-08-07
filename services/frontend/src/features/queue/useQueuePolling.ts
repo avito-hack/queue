@@ -2,13 +2,13 @@ import { useEffect, useEffectEvent } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { queueApi } from './api'
 import { queueItemsFromUserQueues } from './positionLib'
-import { updateQueueItem } from './queueSlice'
+import { removeQueuedByProductId, updateQueueItem } from './queueSlice'
 
 const POLL_MS = 5000
 
 /**
  * Синхронизация позиций/soldout по GET /v1/user/queues
- * (массив очередей пользователя с item_id + position).
+ * (массив ItemQueueInfo: item_id + position + status).
  */
 export function useQueuePolling(enabled = true) {
   const dispatch = useAppDispatch()
@@ -20,7 +20,13 @@ export function useQueuePolling(enabled = true) {
   const sync = useEffectEvent(async () => {
     try {
       const infos = await queueApi.listUserQueues()
-      const updates = queueItemsFromUserQueues(queueItems, infos)
+      const { updates, removeProductIds } = queueItemsFromUserQueues(
+        queueItems,
+        infos,
+      )
+      for (const productId of removeProductIds) {
+        dispatch(removeQueuedByProductId(productId))
+      }
       for (const item of updates) {
         dispatch(updateQueueItem(item))
       }
