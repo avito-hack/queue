@@ -53,6 +53,7 @@ func run() error {
 	ticketRepository := postgresql.NewTicketRepository(database)
 	activationRepository := postgresql.NewActivationRepository(database)
 	declineRepository := postgresql.NewDeclineRepository(database)
+	issueRepository := postgresql.NewIssueRepository(database)
 	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
 	getTicket := usecase.NewGetTicket(ticketRepository, time.Now)
 	health := usecase.NewHealth(database)
@@ -70,7 +71,8 @@ func run() error {
 	}
 	activateTicket := usecase.NewActivateTicket(activationRepository, orderCreator, time.Now)
 	declineTicket := usecase.NewDeclineTicket(declineRepository, time.Now)
-	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket, declineTicket)
+	issueTicket := usecase.NewIssueTicket(issueRepository, cfg.Ticket.ActivationTTL, time.Now)
+	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket, declineTicket, issueTicket)
 	router, err := transporthttp.NewRouter(handler, tokenResolver)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)

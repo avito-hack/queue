@@ -12,10 +12,12 @@ import (
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
 
-const notImplementedMessage = "tickets service is not implemented"
-
 type HealthChecker interface {
 	Check(context.Context) error
+}
+
+type TicketIssuer interface {
+	Issue(context.Context, usecase.IssueTicketRequest, uuid.UUID) (usecase.IssueTicketResult, error)
 }
 
 type TicketLister interface {
@@ -40,6 +42,7 @@ type Handler struct {
 	ticketGetter    TicketGetter
 	ticketActivator TicketActivator
 	ticketDecliner  TicketDecliner
+	ticketIssuer    TicketIssuer
 }
 
 func NewHandler(
@@ -48,6 +51,7 @@ func NewHandler(
 	ticketGetter TicketGetter,
 	ticketActivator TicketActivator,
 	ticketDecliner TicketDecliner,
+	ticketIssuer TicketIssuer,
 ) *Handler {
 	return &Handler{
 		healthChecker:   healthChecker,
@@ -55,6 +59,7 @@ func NewHandler(
 		ticketGetter:    ticketGetter,
 		ticketActivator: ticketActivator,
 		ticketDecliner:  ticketDecliner,
+		ticketIssuer:    ticketIssuer,
 	}
 }
 
@@ -66,8 +71,39 @@ func (h *Handler) GetHealth(ctx context.Context, _ server.GetHealthRequestObject
 	return server.GetHealth200Response{}, nil
 }
 
-func (h *Handler) IssueTicket(context.Context, server.IssueTicketRequestObject) (server.IssueTicketResponseObject, error) {
-	return server.IssueTicket500JSONResponse{InternalErrorJSONResponse: notImplementedError()}, nil
+func (h *Handler) IssueTicket(ctx context.Context, request server.IssueTicketRequestObject) (server.IssueTicketResponseObject, error) {
+	if request.Body == nil {
+		return server.IssueTicket400JSONResponse{
+			BadRequestJSONResponse: badRequestError("request body is required"),
+		}, nil
+	}
+
+	result, err := h.ticketIssuer.Issue(ctx, usecase.IssueTicketRequest{
+		QueueEntryID: request.Body.QueueEntryId,
+		UserID:       request.Body.UserId,
+		ListingID:    request.Body.ListingId,
+		SKUID:        request.Body.SkuId,
+	}, request.Params.IdempotencyKey)
+	switch {
+	case errors.Is(err, usecase.ErrInvalidTicketIssue):
+		return server.IssueTicket400JSONResponse{
+			BadRequestJSONResponse: badRequestError(err.Error()),
+		}, nil
+	case errors.Is(err, usecase.ErrTicketNotIssuable):
+		return issueConflictResponse("ticket_not_issuable", usecase.ErrTicketNotIssuable.Error()), nil
+	case errors.Is(err, usecase.ErrIdempotencyConflict):
+		return issueConflictResponse("idempotency_conflict", usecase.ErrIdempotencyConflict.Error()), nil
+	case err != nil:
+		slog.ErrorContext(ctx, "issue ticket", "error", err)
+		return server.IssueTicket500JSONResponse{InternalErrorJSONResponse: internalServerError()}, nil
+	}
+
+	ticket := toV1Ticket(result.Ticket)
+	if result.Created {
+		return server.IssueTicket201JSONResponse(ticket), nil
+	}
+
+	return server.IssueTicket200JSONResponse(ticket), nil
 }
 
 func (h *Handler) ListTickets(ctx context.Context, request server.ListTicketsRequestObject) (server.ListTicketsResponseObject, error) {
@@ -259,16 +295,16 @@ func declineConflictResponse(code, message string) server.DeclineTicket409JSONRe
 	}
 }
 
+func issueConflictResponse(code, message string) server.IssueTicket409JSONResponse {
+	return server.IssueTicket409JSONResponse{
+		Error:   code,
+		Message: message,
+	}
+}
+
 func internalServerError() server.InternalErrorJSONResponse {
 	return server.InternalErrorJSONResponse{
 		Error:   "internal_error",
 		Message: "internal server error",
-	}
-}
-
-func notImplementedError() server.InternalErrorJSONResponse {
-	return server.InternalErrorJSONResponse{
-		Error:   "not_implemented",
-		Message: notImplementedMessage,
 	}
 }

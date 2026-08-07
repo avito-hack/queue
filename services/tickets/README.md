@@ -51,9 +51,10 @@ docker run --rm \
 | `DATABASE_CONNECT_TIMEOUT` | `5s` |
 | `AVITO_ADAPTER_URL` | обязательный URL avito-adapter |
 | `AVITO_ADAPTER_TIMEOUT` | `3s` |
+| `TICKET_ACTIVATION_TTL` | `15m` |
 
 ## API
 
-Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list`, `GET /v1/ticket/{ticket_id}`, `POST /v1/ticket/{ticket_id}/activate` и `POST /v1/ticket/{ticket_id}/decline`. Остальные операции пока являются заглушками.
+Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list`, `GET /v1/ticket/{ticket_id}`, `POST /v1/ticket/{ticket_id}/activate`, `POST /v1/ticket/{ticket_id}/decline` и `POST /internal/v1/ticket/issue`.
 
 После изменения OpenAPI-схемы необходимо выполнить `make generate`.

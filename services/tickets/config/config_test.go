@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -26,6 +27,20 @@ func TestLoad_ReturnConfig(t *testing.T) {
 	assert.Equal(t, 2*time.Second, config.PostgreSQL.ConnectTimeout)
 	assert.Equal(t, "http://avito-adapter:8080", config.AvitoAdapter.URL)
 	assert.Equal(t, 3*time.Second, config.AvitoAdapter.Timeout)
+	assert.Equal(t, 12*time.Minute, config.Ticket.ActivationTTL)
+}
+
+func TestLoad_DefaultTicketActivationTTL_ReturnFifteenMinutes(t *testing.T) {
+	// given
+	setValidEnvironment(t)
+	require.NoError(t, os.Unsetenv("TICKET_ACTIVATION_TTL"))
+
+	// when
+	config, err := Load()
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 15*time.Minute, config.Ticket.ActivationTTL)
 }
 
 func TestLoad_InvalidDependencyTimeout_ReturnError(t *testing.T) {
@@ -39,6 +54,8 @@ func TestLoad_InvalidDependencyTimeout_ReturnError(t *testing.T) {
 		{name: "negative database timeout", variable: "DATABASE_CONNECT_TIMEOUT", value: "-1s"},
 		{name: "zero adapter timeout", variable: "AVITO_ADAPTER_TIMEOUT", value: "0s"},
 		{name: "negative adapter timeout", variable: "AVITO_ADAPTER_TIMEOUT", value: "-1s"},
+		{name: "zero activation TTL", variable: "TICKET_ACTIVATION_TTL", value: "0s"},
+		{name: "negative activation TTL", variable: "TICKET_ACTIVATION_TTL", value: "-1s"},
 	}
 
 	for _, test := range tests {
@@ -84,4 +101,5 @@ func setValidEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_CONNECT_TIMEOUT", "2s")
 	t.Setenv("AVITO_ADAPTER_URL", "http://avito-adapter:8080")
 	t.Setenv("AVITO_ADAPTER_TIMEOUT", "3s")
+	t.Setenv("TICKET_ACTIVATION_TTL", "12m")
 }

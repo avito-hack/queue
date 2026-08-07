@@ -11,6 +11,7 @@ type Config struct {
 	HTTP         HTTPConfig
 	PostgreSQL   PostgreSQLConfig
 	AvitoAdapter AvitoAdapterConfig
+	Ticket       TicketConfig
 }
 
 type HTTPConfig struct {
@@ -29,6 +30,10 @@ type PostgreSQLConfig struct {
 type AvitoAdapterConfig struct {
 	URL     string
 	Timeout time.Duration
+}
+
+type TicketConfig struct {
+	ActivationTTL time.Duration
 }
 
 func Load() (Config, error) {
@@ -66,6 +71,13 @@ func Load() (Config, error) {
 	if avitoAdapterTimeout <= 0 {
 		return Config{}, fmt.Errorf("AVITO_ADAPTER_TIMEOUT must be positive")
 	}
+	activationTTL, err := durationValue("TICKET_ACTIVATION_TTL", 15*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+	if activationTTL <= 0 {
+		return Config{}, fmt.Errorf("TICKET_ACTIVATION_TTL must be positive")
+	}
 
 	databaseURL := value("DATABASE_URL", "")
 	if databaseURL == "" {
@@ -92,6 +104,9 @@ func Load() (Config, error) {
 		AvitoAdapter: AvitoAdapterConfig{
 			URL:     avitoAdapterURL,
 			Timeout: avitoAdapterTimeout,
+		},
+		Ticket: TicketConfig{
+			ActivationTTL: activationTTL,
 		},
 	}, nil
 }

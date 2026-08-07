@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/avito-hack/queue/services/tickets/gen/server"
 	"github.com/avito-hack/queue/services/tickets/infrastructure/client/avitoadapter"
 	identityauth "github.com/avito-hack/queue/services/tickets/internal/auth"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -51,6 +52,14 @@ type ticketDeclinerStub struct {
 	err                    error
 	receivedUserID         uuid.UUID
 	receivedTicketID       uuid.UUID
+	receivedIdempotencyKey uuid.UUID
+	calls                  int
+}
+
+type ticketIssuerStub struct {
+	result                 usecase.IssueTicketResult
+	err                    error
+	receivedRequest        usecase.IssueTicketRequest
 	receivedIdempotencyKey uuid.UUID
 	calls                  int
 }
@@ -117,21 +126,65 @@ func (s *ticketDeclinerStub) Decline(
 	return s.result, s.err
 }
 
+func (s *ticketIssuerStub) Issue(
+	_ context.Context,
+	request usecase.IssueTicketRequest,
+	idempotencyKey uuid.UUID,
+) (usecase.IssueTicketResult, error) {
+	s.calls++
+	s.receivedRequest = request
+	s.receivedIdempotencyKey = idempotencyKey
+
+	return s.result, s.err
+}
+
 func newTestHandler(lister TicketLister, getters ...TicketGetter) *Handler {
 	getter := TicketGetter(&ticketGetterStub{})
 	if len(getters) > 0 {
 		getter = getters[0]
 	}
 
-	return NewHandler(usecase.NewHealth(), lister, getter, &ticketActivatorStub{}, &ticketDeclinerStub{})
+	return NewHandler(
+		usecase.NewHealth(),
+		lister,
+		getter,
+		&ticketActivatorStub{},
+		&ticketDeclinerStub{},
+		&ticketIssuerStub{},
+	)
 }
 
 func newTestHandlerWithActivator(activator TicketActivator) *Handler {
-	return NewHandler(usecase.NewHealth(), &ticketListerStub{}, &ticketGetterStub{}, activator, &ticketDeclinerStub{})
+	return NewHandler(
+		usecase.NewHealth(),
+		&ticketListerStub{},
+		&ticketGetterStub{},
+		activator,
+		&ticketDeclinerStub{},
+		&ticketIssuerStub{},
+	)
 }
 
 func newTestHandlerWithDecliner(decliner TicketDecliner) *Handler {
-	return NewHandler(usecase.NewHealth(), &ticketListerStub{}, &ticketGetterStub{}, &ticketActivatorStub{}, decliner)
+	return NewHandler(
+		usecase.NewHealth(),
+		&ticketListerStub{},
+		&ticketGetterStub{},
+		&ticketActivatorStub{},
+		decliner,
+		&ticketIssuerStub{},
+	)
+}
+
+func newTestHandlerWithIssuer(issuer TicketIssuer) *Handler {
+	return NewHandler(
+		usecase.NewHealth(),
+		&ticketListerStub{},
+		&ticketGetterStub{},
+		&ticketActivatorStub{},
+		&ticketDeclinerStub{},
+		issuer,
+	)
 }
 
 func Test_GetHealthz_ReturnOK(t *testing.T) {
@@ -150,6 +203,269 @@ func Test_GetHealthz_ReturnOK(t *testing.T) {
 	// then
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Empty(t, recorder.Body.String())
+}
+
+func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
+	// given
+	tests := []struct {
+		name       string
+		created    bool
+		statusCode int
+	}{
+		{name: "new ticket", created: true, statusCode: http.StatusCreated},
+		{name: "replayed ticket", created: false, statusCode: http.StatusOK},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			queueEntryID := uuid.New()
+			userID := uuid.New()
+			ticketID := uuid.New()
+			listingID := uuid.New()
+			skuID := uuid.New()
+			idempotencyKey := uuid.New()
+			issuedAt := time.Date(2026, time.August, 8, 10, 0, 0, 0, time.UTC)
+			activationDeadline := issuedAt.Add(15 * time.Minute)
+			issuer := &ticketIssuerStub{result: usecase.IssueTicketResult{
+				Ticket: domain.Ticket{
+					ID:                 ticketID,
+					ListingID:          listingID,
+					SKUID:              skuID,
+					Status:             domain.TicketStatusIssued,
+					IssuedAt:           issuedAt,
+					ActivationDeadline: activationDeadline,
+					AvailableActions: []domain.TicketAvailableAction{
+						domain.TicketAvailableActionActivate,
+						domain.TicketAvailableActionDecline,
+					},
+				},
+				QueueEntryID: queueEntryID,
+				UserID:       userID,
+				Created:      test.created,
+			}}
+			resolver := &userTokenResolverStub{userID: uuid.New()}
+			router, err := NewRouter(newTestHandlerWithIssuer(issuer), resolver)
+			require.NoError(t, err)
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/internal/v1/ticket/issue",
+				strings.NewReader(`{
+					"queue_entry_id":"`+queueEntryID.String()+`",
+					"user_id":"`+userID.String()+`",
+					"listing_id":"`+listingID.String()+`",
+					"sku_id":"`+skuID.String()+`"
+				}`),
+			)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Authorization", "Bearer queue-service-token")
+			request.Header.Set("Idempotency-Key", idempotencyKey.String())
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, test.statusCode, recorder.Code)
+			assert.JSONEq(t, `{
+				"id":"`+ticketID.String()+`",
+				"listing_id":"`+listingID.String()+`",
+				"sku_id":"`+skuID.String()+`",
+				"status":"issued",
+				"issued_at":"2026-08-08T10:00:00Z",
+				"activation_deadline":"2026-08-08T10:15:00Z",
+				"activated_at":null,
+				"order_id":null,
+				"checkout_url":null,
+				"finished_at":null,
+				"finish_reason":null,
+				"available_actions":["activate","decline"]
+			}`, recorder.Body.String())
+			assert.Equal(t, usecase.IssueTicketRequest{
+				QueueEntryID: queueEntryID,
+				UserID:       userID,
+				ListingID:    listingID,
+				SKUID:        skuID,
+			}, issuer.receivedRequest)
+			assert.Equal(t, idempotencyKey, issuer.receivedIdempotencyKey)
+			assert.Equal(t, 1, issuer.calls)
+			assert.Empty(t, resolver.receivedToken)
+		})
+	}
+}
+
+func Test_PostInternalV1TicketIssue_UsecaseReturnsDomainError_ReturnMappedError(t *testing.T) {
+	// given
+	tests := []struct {
+		name       string
+		err        error
+		statusCode int
+		response   string
+	}{
+		{
+			name:       "invalid issue",
+			err:        usecase.ErrInvalidTicketIssue,
+			statusCode: http.StatusBadRequest,
+			response:   `{"error":"bad_request","message":"` + usecase.ErrInvalidTicketIssue.Error() + `"}`,
+		},
+		{
+			name:       "ticket not issuable",
+			err:        usecase.ErrTicketNotIssuable,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"ticket_not_issuable","message":"` + usecase.ErrTicketNotIssuable.Error() + `"}`,
+		},
+		{
+			name:       "idempotency conflict",
+			err:        usecase.ErrIdempotencyConflict,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"idempotency_conflict","message":"` + usecase.ErrIdempotencyConflict.Error() + `"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			issuer := &ticketIssuerStub{err: test.err}
+			router, err := NewRouter(
+				newTestHandlerWithIssuer(issuer),
+				&userTokenResolverStub{userID: uuid.New()},
+			)
+			require.NoError(t, err)
+			request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, test.statusCode, recorder.Code)
+			assert.JSONEq(t, test.response, recorder.Body.String())
+			assert.Equal(t, 1, issuer.calls)
+		})
+	}
+}
+
+func Test_PostInternalV1TicketIssue_UsecaseReturnsError_ReturnInternalError(t *testing.T) {
+	// given
+	issuer := &ticketIssuerStub{err: errors.New("database failed")}
+	router, err := NewRouter(
+		newTestHandlerWithIssuer(issuer),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	assert.Equal(t, 1, issuer.calls)
+}
+
+func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T) {
+	// given
+	validBody := `{
+		"queue_entry_id":"` + uuid.NewString() + `",
+		"user_id":"` + uuid.NewString() + `",
+		"listing_id":"` + uuid.NewString() + `",
+		"sku_id":"` + uuid.NewString() + `"
+	}`
+	tests := []struct {
+		name           string
+		body           string
+		idempotencyKey string
+	}{
+		{name: "missing body", idempotencyKey: uuid.NewString()},
+		{name: "malformed body", body: `{`, idempotencyKey: uuid.NewString()},
+		{name: "extra field", body: strings.TrimSuffix(validBody, "}") + `,"extra":true}`, idempotencyKey: uuid.NewString()},
+		{name: "missing idempotency key", body: validBody},
+		{name: "invalid idempotency key", body: validBody, idempotencyKey: "invalid"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			issuer := &ticketIssuerStub{}
+			router, err := NewRouter(
+				newTestHandlerWithIssuer(issuer),
+				&userTokenResolverStub{userID: uuid.New()},
+			)
+			require.NoError(t, err)
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/internal/v1/ticket/issue",
+				strings.NewReader(test.body),
+			)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Authorization", "Bearer queue-service-token")
+			if test.idempotencyKey != "" {
+				request.Header.Set("Idempotency-Key", test.idempotencyKey)
+			}
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Zero(t, issuer.calls)
+		})
+	}
+}
+
+func Test_PostInternalV1TicketIssue_WithoutBearer_ReturnUnauthorized(t *testing.T) {
+	// given
+	issuer := &ticketIssuerStub{}
+	router, err := NewRouter(
+		newTestHandlerWithIssuer(issuer),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
+	request.Header.Del("Authorization")
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	assert.Zero(t, issuer.calls)
+}
+
+func Test_IssueTicket_NilBody_ReturnBadRequest(t *testing.T) {
+	// given
+	issuer := &ticketIssuerStub{}
+	handler := newTestHandlerWithIssuer(issuer)
+
+	// when
+	response, err := handler.IssueTicket(context.Background(), server.IssueTicketRequestObject{})
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, server.IssueTicket400JSONResponse{
+		BadRequestJSONResponse: badRequestError("request body is required"),
+	}, response)
+	assert.Zero(t, issuer.calls)
+}
+
+func newIssueTicketHTTPRequest(queueEntryID, userID, listingID, skuID uuid.UUID) *http.Request {
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/v1/ticket/issue",
+		strings.NewReader(`{
+			"queue_entry_id":"`+queueEntryID.String()+`",
+			"user_id":"`+userID.String()+`",
+			"listing_id":"`+listingID.String()+`",
+			"sku_id":"`+skuID.String()+`"
+		}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer queue-service-token")
+	request.Header.Set("Idempotency-Key", uuid.NewString())
+
+	return request
 }
 
 func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
