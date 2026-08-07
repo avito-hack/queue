@@ -55,6 +55,24 @@ services:
         condition: service_healthy
     restart: "no"
 
+  rabbitmq:
+    image: rabbitmq:4.3.4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-tickets}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-tickets}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
   queue:
     build:
       context: ./services/queue
@@ -90,6 +108,7 @@ services:
     environment:
       DATABASE_URL: postgres://${TICKETS_POSTGRES_USER}:${TICKETS_POSTGRES_PASSWORD}@postgres:5432/${TICKETS_POSTGRES_DB}?sslmode=disable
       AVITO_ADAPTER_URL: http://avito-adapter:8080
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tickets}:${RABBITMQ_PASSWORD:-tickets}@rabbitmq:5672/
     expose:
       - "8080"
     healthcheck:
@@ -111,6 +130,8 @@ services:
         condition: service_healthy
       goose:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
       avito-adapter:
         condition: service_healthy
     restart: unless-stopped
@@ -199,3 +220,4 @@ services:
 
 volumes:
   postgres-data:
+  rabbitmq-data:
