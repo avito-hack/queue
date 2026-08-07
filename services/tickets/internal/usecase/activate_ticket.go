@@ -199,6 +199,6 @@ func validActivationResult(result ActivationResult, ticketID uuid.UUID) bool {
 	return err == nil &&
 		checkoutURL == result.CheckoutURL &&
 		result.TicketID == ticketID &&
-		result.Status == domain.TicketStatusActive &&
+		result.Status == domain.TicketStatusRedeemed &&
 		result.OrderID != uuid.Nil
 }

@@ -17,22 +17,20 @@ import (
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
 
-func TestIssueRepository_Issue_NewQueueEntry_CreateTicketOperationAndOutbox(t *testing.T) {
+func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing.T) {
 	// given
 	command := issueCommandForTest()
 	operationID := uuid.New()
 	ticketID := uuid.New()
-	eventID := uuid.New()
 	transaction := &activationTransactionStub{
 		rows: []activationRow{activationScanErrorRow(pgx.ErrNoRows)},
 		execResults: []activationExecResult{
 			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
 			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
 			{commandTag: pgconn.NewCommandTag("UPDATE 1")},
-			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
 		},
 	}
-	repository := newIssueRepositoryForTest(transaction, operationID, ticketID, eventID)
+	repository := newIssueRepositoryForTest(transaction, operationID, ticketID)
 
 	// when
 	result, err := repository.Issue(context.Background(), command)
@@ -59,7 +57,7 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketOperationAndOutbox(t *t
 		issueOperation,
 		toPGUUID(command.IdempotencyKey),
 	}, transaction.queryCalls[0].args)
-	require.Len(t, transaction.execCalls, 4)
+	require.Len(t, transaction.execCalls, 3)
 	assert.Contains(t, transaction.execCalls[0].query, "ticket_id")
 	assert.Contains(t, transaction.execCalls[0].query, "NULL")
 	assert.Contains(t, transaction.execCalls[0].query, "ON CONFLICT (actor_id, operation, idempotency_key)")
@@ -106,21 +104,6 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketOperationAndOutbox(t *t
 		"finish_reason":null
 	}`, string(transaction.execCalls[2].args[2].([]byte)))
 	assert.Equal(t, command.IssuedAt, transaction.execCalls[2].args[3])
-	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[3].args[0])
-	assert.Equal(t, issueOutboxAggregateType, transaction.execCalls[3].args[1])
-	assert.Equal(t, toPGUUID(ticketID), transaction.execCalls[3].args[2])
-	assert.Equal(t, issueOutboxEventType, transaction.execCalls[3].args[3])
-	assert.Equal(t, issueOutboxState, transaction.execCalls[3].args[5])
-	assert.Equal(t, command.IssuedAt, transaction.execCalls[3].args[6])
-	assert.JSONEq(t, `{
-		"ticket_id":"`+ticketID.String()+`",
-		"queue_entry_id":"`+command.QueueEntryID.String()+`",
-		"user_id":"`+command.UserID.String()+`",
-		"listing_id":"`+command.ListingID.String()+`",
-		"sku_id":"`+command.SKUID.String()+`",
-		"issued_at":"2026-08-07T12:00:00Z",
-		"activation_deadline":"2026-08-07T12:15:00Z"
-	}`, string(transaction.execCalls[3].args[4].([]byte)))
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Zero(t, transaction.rollbackCalls)
 }
@@ -524,7 +507,7 @@ func TestIssueRepository_Issue_DatabasePathError_Rollback(t *testing.T) {
 	}
 }
 
-func TestIssueRepository_Issue_CompleteOrOutboxWriteFailure_Rollback(t *testing.T) {
+func TestIssueRepository_Issue_CompleteOperationFailure_Rollback(t *testing.T) {
 	command := issueCommandForTest()
 	testError := errors.New("write failed")
 	tests := []struct {
@@ -549,26 +532,6 @@ func TestIssueRepository_Issue_CompleteOrOutboxWriteFailure_Rollback(t *testing.
 				{commandTag: pgconn.NewCommandTag("UPDATE 0")},
 			},
 			expectedError: "complete issue operation: unexpected affected rows 0",
-		},
-		{
-			name: "outbox error",
-			execResults: []activationExecResult{
-				{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
-				{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
-				{commandTag: pgconn.NewCommandTag("UPDATE 1")},
-				{err: testError},
-			},
-			expectedError: "insert issue event: write failed",
-		},
-		{
-			name: "outbox no rows",
-			execResults: []activationExecResult{
-				{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
-				{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
-				{commandTag: pgconn.NewCommandTag("UPDATE 1")},
-				{commandTag: pgconn.NewCommandTag("INSERT 0 0")},
-			},
-			expectedError: "insert issue event: unexpected affected rows 0",
 		},
 	}
 

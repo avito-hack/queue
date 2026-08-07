@@ -26,9 +26,6 @@ const (
 	issueOperationTTL             = 24 * time.Hour
 	issueCreatedResponseStatus    = 201
 	issueExistingResponseStatus   = 200
-	issueOutboxAggregateType      = "ticket"
-	issueOutboxEventType          = "ticket.issued"
-	issueOutboxState              = "pending"
 	issueRollbackTimeout          = 5 * time.Second
 	issueLiveTicketConstraint     = "uq_tickets_live_user_listing"
 )
@@ -100,18 +97,6 @@ SET state = 'completed',
     response_body = $3,
     updated_at = $4
 WHERE id = $1 AND state = 'processing'`
-
-const insertIssueOutboxQuery = `INSERT INTO public.outbox_events (
-    id,
-    aggregate_type,
-    aggregate_id,
-    event_type,
-    payload,
-    status,
-    attempts,
-    available_at,
-    published_at
-) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, NULL)`
 
 type IssueRepository struct {
 	transactions activationTransactionBeginner
@@ -230,35 +215,6 @@ func (r *IssueRepository) issue(
 		)
 	}
 
-	if !result.Created {
-		return result, nil
-	}
-
-	outboxPayload, err := encodeIssueOutbox(result, command.IssuedAt, command.ActivationDeadline)
-	if err != nil {
-		return usecase.IssueTicketResult{}, fmt.Errorf("encode issue event: %w", err)
-	}
-	commandTag, err = transaction.Exec(
-		ctx,
-		insertIssueOutboxQuery,
-		toPGUUID(r.newID()),
-		issueOutboxAggregateType,
-		toPGUUID(result.Ticket.ID),
-		issueOutboxEventType,
-		outboxPayload,
-		issueOutboxState,
-		command.IssuedAt,
-	)
-	if err != nil {
-		return usecase.IssueTicketResult{}, fmt.Errorf("insert issue event: %w", err)
-	}
-	if commandTag.RowsAffected() != 1 {
-		return usecase.IssueTicketResult{}, fmt.Errorf(
-			"insert issue event: unexpected affected rows %d",
-			commandTag.RowsAffected(),
-		)
-	}
-
 	return result, nil
 }
 
@@ -285,16 +241,6 @@ type issueResultJSON struct {
 	CheckoutURL        *string                   `json:"checkout_url"`
 	FinishedAt         *time.Time                `json:"finished_at"`
 	FinishReason       *domain.TicketCloseReason `json:"finish_reason"`
-}
-
-type issueOutboxJSON struct {
-	TicketID           uuid.UUID `json:"ticket_id"`
-	QueueEntryID       uuid.UUID `json:"queue_entry_id"`
-	UserID             uuid.UUID `json:"user_id"`
-	ListingID          uuid.UUID `json:"listing_id"`
-	SKUID              uuid.UUID `json:"sku_id"`
-	IssuedAt           time.Time `json:"issued_at"`
-	ActivationDeadline time.Time `json:"activation_deadline"`
 }
 
 func findIssueOperation(
@@ -593,22 +539,6 @@ func validIssueSnapshot(result usecase.IssueTicketResult) bool {
 	}
 
 	return result.Ticket.CloseReason == nil || result.Ticket.CloseReason.Valid()
-}
-
-func encodeIssueOutbox(
-	result usecase.IssueTicketResult,
-	issuedAt time.Time,
-	activationDeadline time.Time,
-) ([]byte, error) {
-	return json.Marshal(issueOutboxJSON{
-		TicketID:           result.Ticket.ID,
-		QueueEntryID:       result.QueueEntryID,
-		UserID:             result.UserID,
-		ListingID:          result.Ticket.ListingID,
-		SKUID:              result.Ticket.SKUID,
-		IssuedAt:           issuedAt,
-		ActivationDeadline: activationDeadline,
-	})
 }
 
 func inIssueTransaction[T any](

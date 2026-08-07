@@ -864,7 +864,7 @@ func Test_GetV1Ticket_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	assert.Zero(t, getter.calls)
 }
 
-func Test_PostV1TicketActivate_ReturnActivatedTicket(t *testing.T) {
+func Test_PostV1TicketActivate_ReturnRedeemedTicket(t *testing.T) {
 	// given
 	userID := uuid.New()
 	ticketID := uuid.New()
@@ -872,7 +872,7 @@ func Test_PostV1TicketActivate_ReturnActivatedTicket(t *testing.T) {
 	orderID := uuid.New()
 	activator := &ticketActivatorStub{result: usecase.ActivationResult{
 		TicketID:    ticketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     orderID,
 		CheckoutURL: "/checkout?ticket=" + ticketID.String(),
 	}}
@@ -893,7 +893,7 @@ func Test_PostV1TicketActivate_ReturnActivatedTicket(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
-		"status":"active",
+		"status":"redeemed",
 		"order_id":"`+orderID.String()+`",
 		"checkout_url":"/checkout?ticket=`+ticketID.String()+`"
 	}`, recorder.Body.String())

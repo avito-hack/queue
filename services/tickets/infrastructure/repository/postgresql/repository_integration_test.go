@@ -59,7 +59,7 @@ func Test_IssueRepository_ConcurrentSameQueueEntry_CreateOneTicket(t *testing.T)
 	require.Equal(t, 1, created)
 	require.Equal(t, results[0].value.Ticket.ID, results[1].value.Ticket.ID)
 	require.Equal(t, 1, integrationRowCount(t, "public.tickets"))
-	require.Equal(t, 1, integrationRowCount(t, "public.outbox_events"))
+	require.Zero(t, integrationRowCount(t, "public.outbox_events"))
 }
 
 func Test_ActivationRepository_ConcurrentPrepare_CreateOneOperation(t *testing.T) {
@@ -125,7 +125,7 @@ func Test_ActivationRepository_ConcurrentComplete_PersistOneOrder(t *testing.T) 
 	}
 	require.Equal(t, results[0].value, results[1].value)
 	require.Contains(t, []uuid.UUID{orders[0].ID, orders[1].ID}, results[0].value.OrderID)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.activated'"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.redeemed'"))
 
 	var orderID uuid.UUID
 	require.NoError(t, integrationPool.QueryRow(
@@ -168,7 +168,7 @@ func Test_DeclineRepository_ConcurrentDecline_CloseTicketOnce(t *testing.T) {
 	}
 	require.Equal(t, 1, succeeded)
 	require.Equal(t, 1, notDeclinable)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.declined'"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.closed'"))
 }
 
 func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
@@ -193,53 +193,7 @@ func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
 	require.NotNil(t, ticket.CloseReason)
 	require.Equal(t, domain.TicketCloseReasonActivationTimeout, *ticket.CloseReason)
 	require.NotNil(t, ticket.FinishedAt)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.expired'"))
-}
-
-func Test_LifecycleRepository_PaymentSucceeded_RedeemTicketIdempotently(t *testing.T) {
-	// given
-	truncateIntegrationTables(t)
-	issued := issueIntegrationTicket(t)
-	activationRepository := NewActivationRepository(integrationPool)
-	prepared, err := activationRepository.Prepare(context.Background(), usecase.PrepareActivationCommand{
-		UserID:         issued.UserID,
-		TicketID:       issued.Ticket.ID,
-		IdempotencyKey: uuid.New(),
-		Now:            issued.Ticket.IssuedAt.Add(time.Minute),
-	})
-	require.NoError(t, err)
-	orderID := uuid.New()
-	_, err = activationRepository.Complete(
-		context.Background(),
-		prepared.OperationID,
-		usecase.CreatedOrder{ID: orderID, CheckoutURL: "/checkout/paid"},
-		issued.Ticket.IssuedAt.Add(2*time.Minute),
-	)
-	require.NoError(t, err)
-	event := usecase.LifecycleEvent{
-		ID:         uuid.New(),
-		Type:       usecase.LifecycleEventPaymentSucceeded,
-		Source:     "avito",
-		OccurredAt: issued.Ticket.IssuedAt.Add(3 * time.Minute),
-		OrderID:    orderID,
-		Payload:    []byte(`{"order_id":"` + orderID.String() + `"}`),
-	}
-	repository := NewLifecycleRepository(integrationPool)
-
-	// when
-	err = repository.ProcessLifecycleEvent(context.Background(), event)
-	replayErr := repository.ProcessLifecycleEvent(context.Background(), event)
-
-	// then
-	require.NoError(t, err)
-	require.NoError(t, replayErr)
-	ticket, err := NewTicketRepository(integrationPool).Get(context.Background(), issued.UserID, issued.Ticket.ID)
-	require.NoError(t, err)
-	require.Equal(t, domain.TicketStatusRedeemed, ticket.Status)
-	require.NotNil(t, ticket.CloseReason)
-	require.Equal(t, domain.TicketCloseReasonPaymentSucceeded, *ticket.CloseReason)
-	require.Equal(t, 1, integrationRowCount(t, "public.inbox_events"))
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.redeemed'"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.closed'"))
 }
 
 func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testing.T) {
@@ -291,9 +245,16 @@ func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testi
 func Test_OutboxRepository_ClaimRetryAndPublish_ChangeDeliveryState(t *testing.T) {
 	// given
 	truncateIntegrationTables(t)
-	issueIntegrationTicket(t)
-	repository := NewOutboxRepository(integrationPool)
+	issued := issueIntegrationTicket(t)
 	now := time.Date(2026, time.August, 7, 12, 0, 0, 0, time.UTC)
+	expired, err := NewLifecycleRepository(integrationPool).ExpireIssued(
+		context.Background(),
+		issued.Ticket.ActivationDeadline.Add(time.Second),
+		1,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, expired)
+	repository := NewOutboxRepository(integrationPool)
 
 	// when
 	claimed, err := repository.Claim(context.Background(), now, 10, time.Minute)

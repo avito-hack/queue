@@ -194,7 +194,7 @@ func TestActivationRepository_Prepare_CompletedOperation_ReturnReplay(t *testing
 	idempotencyKey := uuid.New()
 	expected := usecase.ActivationResult{
 		TicketID:    ticketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     uuid.New(),
 		CheckoutURL: "/checkout/replayed",
 	}
@@ -376,7 +376,7 @@ func TestActivationRepository_Prepare_ConcurrentSameKeyCompletion_ReturnReplay(t
 	ticketID := uuid.New()
 	expected := usecase.ActivationResult{
 		TicketID:    ticketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     uuid.New(),
 		CheckoutURL: "/checkout/concurrent",
 	}
@@ -572,7 +572,7 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ActivationResult{
 		TicketID:    ticketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     order.ID,
 		CheckoutURL: order.CheckoutURL,
 	}, result)
@@ -594,7 +594,7 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 	assert.Equal(t, activationResponseStatus, transaction.execCalls[1].args[1])
 	assert.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
-		"status":"active",
+		"status":"redeemed",
 		"order_id":"`+order.ID.String()+`",
 		"checkout_url":"/checkout/created"
 	}`, string(transaction.execCalls[1].args[2].([]byte)))
@@ -609,7 +609,8 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 		"user_id":"`+userID.String()+`",
 		"order_id":"`+order.ID.String()+`",
 		"checkout_url":"/checkout/created",
-		"activated_at":"2026-08-07T10:00:01Z"
+		"status":"redeemed",
+		"redeemed_at":"2026-08-07T10:00:01Z"
 	}`, string(transaction.execCalls[2].args[4].([]byte)))
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Zero(t, transaction.rollbackCalls)
@@ -654,7 +655,7 @@ func TestActivationRepository_Complete_CompletedOperation_ReturnReplay(t *testin
 	operationID := uuid.New()
 	expected := usecase.ActivationResult{
 		TicketID:    uuid.New(),
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     uuid.New(),
 		CheckoutURL: "/checkout/replayed",
 	}

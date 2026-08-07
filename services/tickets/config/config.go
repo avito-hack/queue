@@ -42,7 +42,6 @@ type TicketConfig struct {
 type RabbitMQConfig struct {
 	URL      string
 	Exchange string
-	Queue    string
 }
 
 type WorkerConfig struct {
@@ -53,7 +52,6 @@ type WorkerConfig struct {
 	OutboxLease               time.Duration
 	OutboxRetryDelay          time.Duration
 	OutboxConcurrency         int
-	LifecycleConcurrency      int
 }
 
 func Load() (Config, error) {
@@ -126,11 +124,6 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	lifecycleConcurrency, err := positiveInt("LIFECYCLE_CONCURRENCY", 4)
-	if err != nil {
-		return Config{}, err
-	}
-
 	databaseURL := value("DATABASE_URL", "")
 	if databaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
@@ -168,7 +161,6 @@ func Load() (Config, error) {
 		RabbitMQ: RabbitMQConfig{
 			URL:      rabbitMQURL,
 			Exchange: value("RABBITMQ_EXCHANGE", "domain.events"),
-			Queue:    value("RABBITMQ_LIFECYCLE_QUEUE", "tickets.lifecycle"),
 		},
 		Ticket: TicketConfig{
 			ActivationTTL: activationTTL,
@@ -181,7 +173,6 @@ func Load() (Config, error) {
 			OutboxLease:               outboxLease,
 			OutboxRetryDelay:          outboxRetryDelay,
 			OutboxConcurrency:         outboxConcurrency,
-			LifecycleConcurrency:      lifecycleConcurrency,
 		},
 		ServiceAuthToken: serviceAuthToken,
 	}, nil

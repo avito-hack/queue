@@ -108,7 +108,7 @@ func Test_ActivateTicket_EligibleTicket_ReturnActivationResult(t *testing.T) {
 	order := CreatedOrder{ID: orderID, CheckoutURL: "/checkout/" + orderID.String()}
 	expected := ActivationResult{
 		TicketID:    ticketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     orderID,
 		CheckoutURL: order.CheckoutURL,
 	}
@@ -151,7 +151,7 @@ func Test_ActivateTicket_CompletedOperation_ReturnReplayWithoutCreatingOrder(t *
 	idempotencyKey := uuid.New()
 	replay := ActivationResult{
 		TicketID:    ticketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     uuid.New(),
 		CheckoutURL: "/checkout/replayed",
 	}
@@ -252,7 +252,7 @@ func Test_ActivateTicket_InvalidReplay_ReturnError(t *testing.T) {
 	idempotencyKey := uuid.New()
 	replay := ActivationResult{
 		TicketID:    uuid.New(),
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     uuid.New(),
 		CheckoutURL: "/checkout/replayed",
 	}
@@ -406,7 +406,7 @@ func Test_ActivateTicket_OrderUnavailable_RetrySameOperation(t *testing.T) {
 	order := CreatedOrder{ID: uuid.New(), CheckoutURL: "/checkout/retried"}
 	expected := ActivationResult{
 		TicketID:    prepared.Order.TicketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     order.ID,
 		CheckoutURL: order.CheckoutURL,
 	}
@@ -576,7 +576,7 @@ func Test_ActivateTicket_CompleteReturnsInvalidResult_ReturnError(t *testing.T) 
 		prepared: prepared,
 		completeResult: ActivationResult{
 			TicketID:    prepared.Order.TicketID,
-			Status:      domain.TicketStatusActive,
+			Status:      domain.TicketStatusRedeemed,
 			OrderID:     uuid.New(),
 			CheckoutURL: order.CheckoutURL,
 		},

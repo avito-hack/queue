@@ -28,7 +28,7 @@ const (
 	activationOperationTTL             = 24 * time.Hour
 	activationResponseStatus           = 200
 	activationOutboxAggregateType      = "ticket"
-	activationOutboxEventType          = "ticket.activated"
+	activationOutboxEventType          = "ticket.redeemed"
 	activationOutboxState              = "pending"
 	activationTicketConstraint         = "uq_idempotency_operations_ticket_operation"
 	activationRollbackTimeout          = 5 * time.Second
@@ -98,10 +98,11 @@ const insertActivationOperationQuery = `INSERT INTO public.idempotency_operation
 ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING`
 
 const activateTicketQuery = `UPDATE public.tickets
-SET status = 'active',
+SET status = 'redeemed',
     activated_at = $3,
     order_id = $4,
     checkout_url = $5,
+    finished_at = $3,
     updated_at = $3,
     version = version + 1
 WHERE id = $1 AND user_id = $2 AND status = 'issued'`
@@ -348,7 +349,7 @@ func (r *ActivationRepository) complete(
 
 	result := usecase.ActivationResult{
 		TicketID:    operation.TicketID,
-		Status:      domain.TicketStatusActive,
+		Status:      domain.TicketStatusRedeemed,
 		OrderID:     order.ID,
 		CheckoutURL: order.CheckoutURL,
 	}
@@ -438,11 +439,12 @@ type activationResultJSON struct {
 }
 
 type activationOutboxJSON struct {
-	TicketID    uuid.UUID `json:"ticket_id"`
-	UserID      uuid.UUID `json:"user_id"`
-	OrderID     uuid.UUID `json:"order_id"`
-	CheckoutURL string    `json:"checkout_url"`
-	ActivatedAt time.Time `json:"activated_at"`
+	TicketID    uuid.UUID           `json:"ticket_id"`
+	UserID      uuid.UUID           `json:"user_id"`
+	OrderID     uuid.UUID           `json:"order_id"`
+	CheckoutURL string              `json:"checkout_url"`
+	Status      domain.TicketStatus `json:"status"`
+	RedeemedAt  time.Time           `json:"redeemed_at"`
 }
 
 func findActivationOperation(
@@ -741,7 +743,7 @@ func decodeActivationResult(operation activationOperationRecord) (usecase.Activa
 		return usecase.ActivationResult{}, fmt.Errorf("decode activation response: %w", err)
 	}
 	if response.TicketID != operation.TicketID ||
-		response.Status != domain.TicketStatusActive ||
+		response.Status != domain.TicketStatusRedeemed ||
 		response.OrderID == uuid.Nil ||
 		response.CheckoutURL == "" {
 		return usecase.ActivationResult{}, fmt.Errorf("activation operation has invalid response")
@@ -765,7 +767,8 @@ func encodeActivationOutbox(
 		UserID:      userID,
 		OrderID:     result.OrderID,
 		CheckoutURL: result.CheckoutURL,
-		ActivatedAt: activatedAt,
+		Status:      domain.TicketStatusRedeemed,
+		RedeemedAt:  activatedAt,
 	})
 }
 

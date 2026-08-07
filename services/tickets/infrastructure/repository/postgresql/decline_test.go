@@ -120,8 +120,9 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 		"listing_id":"`+listingID.String()+`",
 		"sku_id":"`+skuID.String()+`",
 		"user_id":"`+userID.String()+`",
-		"reason":"user_declined",
-		"declined_at":"2026-08-07T12:00:00Z"
+		"status":"closed",
+		"close_reason":"user_declined",
+		"finished_at":"2026-08-07T12:00:00Z"
 	}`, string(transaction.execCalls[3].args[4].([]byte)))
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Zero(t, transaction.rollbackCalls)

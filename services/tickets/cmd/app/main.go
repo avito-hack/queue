@@ -84,8 +84,6 @@ func run() error {
 		cfg.Workers.ActivationRecoveryTimeout,
 		time.Now,
 	)
-	processLifecycleEvent := usecase.NewProcessLifecycleEvent(lifecycleRepository)
-
 	rabbitConnection, err := amqp.Dial(cfg.RabbitMQ.URL)
 	if err != nil {
 		return fmt.Errorf("connect to RabbitMQ: %w", err)
@@ -96,17 +94,6 @@ func run() error {
 		return fmt.Errorf("create outbox publisher: %w", err)
 	}
 	defer func() { _ = publisher.Close() }()
-	lifecycleConsumer, err := brokerrabbit.NewLifecycleConsumer(
-		rabbitConnection,
-		cfg.RabbitMQ.Exchange,
-		cfg.RabbitMQ.Queue,
-		cfg.Workers.LifecycleConcurrency,
-		processLifecycleEvent,
-	)
-	if err != nil {
-		return fmt.Errorf("create lifecycle consumer: %w", err)
-	}
-	defer func() { _ = lifecycleConsumer.Close() }()
 	maintenanceWorker := worker.NewMaintenance(maintainTickets, cfg.Workers.MaintenanceInterval)
 	outboxWorker := worker.NewOutbox(
 		outboxRepository,
@@ -140,7 +127,7 @@ func run() error {
 		serverError <- httpServer.ListenAndServe()
 	}()
 
-	workerError := make(chan error, 3)
+	workerError := make(chan error, 2)
 	var workerWaitGroup sync.WaitGroup
 	startWorker := func(name string, run func(context.Context) error) {
 		workerWaitGroup.Add(1)
@@ -157,7 +144,6 @@ func run() error {
 	}
 	startWorker("maintenance", maintenanceWorker.Run)
 	startWorker("outbox", outboxWorker.Run)
-	startWorker("lifecycle", lifecycleConsumer.Run)
 
 	var runError error
 	select {

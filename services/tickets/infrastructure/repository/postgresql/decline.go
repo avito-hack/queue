@@ -26,7 +26,7 @@ const (
 	declineOperationTTL             = 24 * time.Hour
 	declineResponseStatus           = 200
 	declineOutboxAggregateType      = "ticket"
-	declineOutboxEventType          = "ticket.declined"
+	declineOutboxEventType          = "ticket.closed"
 	declineOutboxState              = "pending"
 	declineTicketConstraint         = "uq_idempotency_operations_ticket_operation"
 	declineRollbackTimeout          = 5 * time.Second
@@ -294,8 +294,9 @@ type declineOutboxJSON struct {
 	ListingID    uuid.UUID                `json:"listing_id"`
 	SKUID        uuid.UUID                `json:"sku_id"`
 	UserID       uuid.UUID                `json:"user_id"`
-	Reason       domain.TicketCloseReason `json:"reason"`
-	DeclinedAt   time.Time                `json:"declined_at"`
+	Status       domain.TicketStatus      `json:"status"`
+	CloseReason  domain.TicketCloseReason `json:"close_reason"`
+	FinishedAt   time.Time                `json:"finished_at"`
 }
 
 func findDeclineOperation(
@@ -501,8 +502,9 @@ func encodeDeclineOutbox(
 		ListingID:    ticket.ListingID,
 		SKUID:        ticket.SKUID,
 		UserID:       userID,
-		Reason:       domain.TicketCloseReasonUserDeclined,
-		DeclinedAt:   declinedAt,
+		Status:       domain.TicketStatusClosed,
+		CloseReason:  domain.TicketCloseReasonUserDeclined,
+		FinishedAt:   declinedAt,
 	})
 }
 

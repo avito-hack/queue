@@ -44,7 +44,7 @@ ALTER TABLE public.tickets
             OR
             (status = 'active' AND activated_at IS NOT NULL AND order_id IS NOT NULL AND checkout_url IS NOT NULL AND finished_at IS NULL AND close_reason IS NULL)
             OR
-            (status = 'redeemed' AND activated_at IS NOT NULL AND order_id IS NOT NULL AND checkout_url IS NOT NULL AND finished_at IS NOT NULL AND close_reason = 'payment_succeeded')
+            (status = 'redeemed' AND activated_at IS NOT NULL AND order_id IS NOT NULL AND checkout_url IS NOT NULL AND finished_at IS NOT NULL AND close_reason IS NULL)
             OR
             (status = 'closed' AND finished_at IS NOT NULL AND close_reason IS NOT NULL)
         );

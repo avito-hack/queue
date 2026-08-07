@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
-	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
 
 const selectExpiredTicketsQuery = `SELECT id, queue_entry_id, user_id, listing_id, sku_id
@@ -41,22 +40,6 @@ UPDATE public.idempotency_operations AS operation
 SET state = 'failed', updated_at = $3
 FROM candidates
 WHERE operation.id = candidates.id AND operation.state = 'processing'`
-
-const insertInboxEventQuery = `INSERT INTO public.inbox_events (
-    event_id,
-    event_type,
-    source,
-    payload,
-    status,
-    received_at,
-    processed_at,
-    last_error
-) VALUES ($1, $2, $3, $4, 'processing', $5, NULL, NULL)
-ON CONFLICT (event_id) DO NOTHING`
-
-const completeInboxEventQuery = `UPDATE public.inbox_events
-SET status = 'processed', processed_at = $2, last_error = NULL
-WHERE event_id = $1 AND status = 'processing'`
 
 const insertLifecycleOutboxQuery = `INSERT INTO public.outbox_events (
     id,
@@ -101,7 +84,7 @@ func (r *LifecycleRepository) ExpireIssued(ctx context.Context, now time.Time, l
 				ticket,
 				domain.TicketStatusClosed,
 				domain.TicketCloseReasonActivationTimeout,
-				"ticket.expired",
+				"ticket.closed",
 				now,
 			); err != nil {
 				return err
@@ -129,50 +112,6 @@ func (r *LifecycleRepository) RecoverStaleActivations(
 	}
 
 	return int(commandTag.RowsAffected()), nil
-}
-
-func (r *LifecycleRepository) ProcessLifecycleEvent(ctx context.Context, event usecase.LifecycleEvent) error {
-	return pgx.BeginFunc(ctx, r.pool, func(transaction pgx.Tx) error {
-		payload := event.Payload
-		if len(payload) == 0 {
-			payload = []byte("{}")
-		}
-		commandTag, err := transaction.Exec(
-			ctx,
-			insertInboxEventQuery,
-			toPGUUID(event.ID),
-			string(event.Type),
-			event.Source,
-			payload,
-			r.clock(),
-		)
-		if err != nil {
-			return fmt.Errorf("insert inbox event: %w", err)
-		}
-		if commandTag.RowsAffected() == 0 {
-			return nil
-		}
-
-		tickets, status, reason, outboxType, err := transitionTicketsForLifecycleEvent(ctx, transaction, event)
-		if err != nil {
-			return err
-		}
-		for _, ticket := range tickets {
-			if err := r.insertLifecycleOutbox(ctx, transaction, ticket, status, reason, outboxType, event.OccurredAt); err != nil {
-				return err
-			}
-		}
-
-		commandTag, err = transaction.Exec(ctx, completeInboxEventQuery, toPGUUID(event.ID), r.clock())
-		if err != nil {
-			return fmt.Errorf("complete inbox event: %w", err)
-		}
-		if commandTag.RowsAffected() != 1 {
-			return fmt.Errorf("complete inbox event: unexpected affected rows %d", commandTag.RowsAffected())
-		}
-
-		return nil
-	})
 }
 
 type lifecycleTicket struct {
@@ -219,85 +158,6 @@ func selectLifecycleTickets(
 	}
 
 	return tickets, nil
-}
-
-func transitionTicketsForLifecycleEvent(
-	ctx context.Context,
-	transaction pgx.Tx,
-	event usecase.LifecycleEvent,
-) ([]lifecycleTicket, domain.TicketStatus, domain.TicketCloseReason, string, error) {
-	query, argument, status, reason, outboxType := lifecycleTransition(event)
-	tickets, err := selectLifecycleTickets(ctx, transaction, query, argument, event.OccurredAt)
-	if err != nil {
-		return nil, "", "", "", fmt.Errorf("transition tickets for %s: %w", event.Type, err)
-	}
-
-	return tickets, status, reason, outboxType, nil
-}
-
-func lifecycleTransition(event usecase.LifecycleEvent) (
-	string,
-	uuid.UUID,
-	domain.TicketStatus,
-	domain.TicketCloseReason,
-	string,
-) {
-	const returning = ` RETURNING id, queue_entry_id, user_id, listing_id, sku_id`
-	switch event.Type {
-	case usecase.LifecycleEventPaymentSucceeded:
-		return `UPDATE public.tickets
-SET status = 'redeemed', close_reason = 'payment_succeeded', finished_at = $2, updated_at = $2, version = version + 1
-WHERE order_id = $1 AND status = 'active'` + returning,
-			event.OrderID,
-			domain.TicketStatusRedeemed,
-			domain.TicketCloseReasonPaymentSucceeded,
-			"ticket.redeemed"
-	case usecase.LifecycleEventReservationReleased:
-		return closeActiveTicketBy("order_id"),
-			event.OrderID,
-			domain.TicketStatusClosed,
-			domain.TicketCloseReasonReservationReleased,
-			"ticket.closed"
-	case usecase.LifecycleEventListingClosed:
-		return closeOpenTicketsBy("listing_id"),
-			event.ListingID,
-			domain.TicketStatusClosed,
-			domain.TicketCloseReasonListingClosed,
-			"ticket.closed"
-	case usecase.LifecycleEventSKUClosed:
-		return `UPDATE public.tickets
-SET status = 'closed', close_reason = 'sku_closed', finished_at = $2, updated_at = $2, version = version + 1
-WHERE sku_id = $1 AND status IN ('issued', 'active')` + returning,
-			event.SKUID,
-			domain.TicketStatusClosed,
-			domain.TicketCloseReasonSKUClosed,
-			"ticket.closed"
-	default:
-		return closeOpenTicketsBy("id"),
-			event.TicketID,
-			domain.TicketStatusClosed,
-			domain.TicketCloseReasonSystemCancelled,
-			"ticket.closed"
-	}
-}
-
-func closeActiveTicketBy(column string) string {
-	return `UPDATE public.tickets
-SET status = 'closed', close_reason = 'reservation_released', finished_at = $2, updated_at = $2, version = version + 1
-WHERE ` + column + ` = $1 AND status = 'active'
-RETURNING id, queue_entry_id, user_id, listing_id, sku_id`
-}
-
-func closeOpenTicketsBy(column string) string {
-	reason := "listing_closed"
-	if column == "id" {
-		reason = "system_cancelled"
-	}
-
-	return `UPDATE public.tickets
-SET status = 'closed', close_reason = '` + reason + `', finished_at = $2, updated_at = $2, version = version + 1
-WHERE ` + column + ` = $1 AND status IN ('issued', 'active')
-RETURNING id, queue_entry_id, user_id, listing_id, sku_id`
 }
 
 func (r *LifecycleRepository) insertLifecycleOutbox(
