@@ -57,7 +57,6 @@ docker run --rm \
 | `AVITO_ADAPTER_TIMEOUT` | `3s` |
 | `RABBITMQ_URL` | обязательный URL RabbitMQ |
 | `RABBITMQ_EXCHANGE` | `domain.events` |
-| `RABBITMQ_LIFECYCLE_QUEUE` | `tickets.lifecycle` |
 | `SERVICE_AUTH_TOKEN` | обязательный токен queue → tickets |
 | `TICKET_ACTIVATION_TTL` | `15m` |
 | `TICKET_MAINTENANCE_INTERVAL` | `1s` |
@@ -67,10 +66,13 @@ docker run --rm \
 | `OUTBOX_LEASE` | `30s` |
 | `OUTBOX_RETRY_DELAY` | `5s` |
 | `OUTBOX_CONCURRENCY` | `4` |
-| `LIFECYCLE_CONCURRENCY` | `4` |
 
 ## API
 
 Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list`, `GET /v1/ticket/{ticket_id}`, `POST /v1/ticket/{ticket_id}/activate`, `POST /v1/ticket/{ticket_id}/decline` и `POST /internal/v1/ticket/issue`.
 
 После изменения OpenAPI-схемы необходимо выполнить `make generate`.
+
+## События
+
+Контракт исходящих событий находится в `events/events.yaml`. Tickets публикует `ticket.closed` после отказа или истечения срока активации и `ticket.redeemed` после успешного создания заказа. Оплата заказа и жизненный цикл резервации остаются внутри стандартных сервисов Авито и не обрабатываются tickets.
