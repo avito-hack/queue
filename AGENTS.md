@@ -127,6 +127,7 @@ func Test_Something_ReturnSomething(t *testing.T) {
     ...
 }
 ```
+- Только один given, when, then на тест
 - Сервисы генерят себе клиентов из schemas/ через oapi-codegen
 - Сервисы генерят Strict Server для роутера Gin через oapi-codegen
 - Сервисы используют валидаторы REST запросов через oapi-codegen middleware
