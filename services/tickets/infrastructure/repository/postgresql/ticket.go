@@ -4,64 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
 
-const ticketColumns = `id,
-    listing_id,
-    sku_id,
-    status,
-    issued_at,
-    activation_deadline,
-    activated_at,
-    order_id,
-    checkout_url,
-    finished_at,
-    close_reason`
-
-const listTicketsQuery = `SELECT ` + ticketColumns + `
-FROM public.tickets
-WHERE user_id = $1`
-
-const getTicketQuery = `SELECT ` + ticketColumns + `
-FROM public.tickets
-WHERE user_id = $1 AND id = $2`
-
-type scanner interface {
-	Scan(...any) error
-}
-
-type rows interface {
-	scanner
-	Close()
-	Err() error
-	Next() bool
-}
-
 type queryer interface {
-	Query(context.Context, string, ...any) (rows, error)
-	QueryRow(context.Context, string, ...any) scanner
-}
-
-type poolQueryer struct {
-	pool *pgxpool.Pool
-}
-
-func (q poolQueryer) Query(ctx context.Context, query string, args ...any) (rows, error) {
-	return q.pool.Query(ctx, query, args...)
-}
-
-func (q poolQueryer) QueryRow(ctx context.Context, query string, args ...any) scanner {
-	return q.pool.QueryRow(ctx, query, args...)
+	GetTicket(context.Context, sqlgen.GetTicketParams) (sqlgen.GetTicketRow, error)
+	ListTickets(context.Context, sqlgen.ListTicketsParams) ([]sqlgen.ListTicketsRow, error)
 }
 
 type TicketRepository struct {
@@ -69,11 +26,14 @@ type TicketRepository struct {
 }
 
 func NewTicketRepository(pool *pgxpool.Pool) *TicketRepository {
-	return &TicketRepository{queryer: poolQueryer{pool: pool}}
+	return &TicketRepository{queryer: sqlgen.New(pool)}
 }
 
 func (r *TicketRepository) Get(ctx context.Context, userID, ticketID uuid.UUID) (domain.Ticket, error) {
-	ticket, err := scanTicket(r.queryer.QueryRow(ctx, getTicketQuery, toPGUUID(userID), toPGUUID(ticketID)))
+	row, err := r.queryer.GetTicket(ctx, sqlgen.GetTicketParams{
+		UserID: toPGUUID(userID),
+		ID:     toPGUUID(ticketID),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Ticket{}, usecase.ErrTicketNotFound
 	}
@@ -81,94 +41,97 @@ func (r *TicketRepository) Get(ctx context.Context, userID, ticketID uuid.UUID) 
 		return domain.Ticket{}, err
 	}
 
-	return ticket, nil
+	return ticketFromGetRow(row)
 }
 
 func (r *TicketRepository) List(ctx context.Context, userID uuid.UUID, filter usecase.ListTicketsFilter) ([]domain.Ticket, error) {
-	query, args := buildListTicketsQuery(userID, filter)
-	result, err := r.queryer.Query(ctx, query, args...)
+	params := sqlgen.ListTicketsParams{UserID: toPGUUID(userID)}
+	if filter.Status != nil {
+		params.Status = toPGText(string(*filter.Status))
+	}
+	if filter.ListingID != nil {
+		params.ListingID = toPGUUID(*filter.ListingID)
+	}
+	if filter.SKUID != nil {
+		params.SkuID = toPGUUID(*filter.SKUID)
+	}
+
+	rows, err := r.queryer.ListTickets(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("query tickets: %w", err)
 	}
-	defer result.Close()
 
-	tickets := make([]domain.Ticket, 0)
-	for result.Next() {
-		ticket, err := scanTicket(result)
+	tickets := make([]domain.Ticket, 0, len(rows))
+	for _, row := range rows {
+		ticket, err := ticketFromListRow(row)
 		if err != nil {
 			return nil, err
 		}
 		tickets = append(tickets, ticket)
 	}
-	if err := result.Err(); err != nil {
-		return nil, fmt.Errorf("read tickets: %w", err)
-	}
 
 	return tickets, nil
 }
 
-func buildListTicketsQuery(userID uuid.UUID, filter usecase.ListTicketsFilter) (string, []any) {
-	var query strings.Builder
-	query.WriteString(listTicketsQuery)
-	args := []any{toPGUUID(userID)}
-
-	if filter.Status != nil {
-		args = append(args, string(*filter.Status))
-		query.WriteString(" AND status = $")
-		query.WriteString(strconv.Itoa(len(args)))
-	}
-	if filter.ListingID != nil {
-		args = append(args, toPGUUID(*filter.ListingID))
-		query.WriteString(" AND listing_id = $")
-		query.WriteString(strconv.Itoa(len(args)))
-	}
-	if filter.SKUID != nil {
-		args = append(args, toPGUUID(*filter.SKUID))
-		query.WriteString(" AND sku_id = $")
-		query.WriteString(strconv.Itoa(len(args)))
-	}
-
-	query.WriteString(" ORDER BY issued_at DESC, id DESC")
-
-	return query.String(), args
+func ticketFromGetRow(row sqlgen.GetTicketRow) (domain.Ticket, error) {
+	return ticketFromFields(
+		row.ID,
+		row.ListingID,
+		row.SkuID,
+		row.Status,
+		row.IssuedAt,
+		row.ActivationDeadline,
+		row.ActivatedAt,
+		row.OrderID,
+		row.CheckoutUrl,
+		row.FinishedAt,
+		row.CloseReason,
+	)
 }
 
-func scanTicket(result scanner) (domain.Ticket, error) {
-	var ticket domain.Ticket
-	var id pgtype.UUID
-	var listingID pgtype.UUID
-	var skuID pgtype.UUID
-	var status string
-	var activatedAt pgtype.Timestamptz
-	var orderID pgtype.UUID
-	var checkoutURL pgtype.Text
-	var finishedAt pgtype.Timestamptz
-	var closeReason pgtype.Text
-
-	err := result.Scan(
-		&id,
-		&listingID,
-		&skuID,
-		&status,
-		&ticket.IssuedAt,
-		&ticket.ActivationDeadline,
-		&activatedAt,
-		&orderID,
-		&checkoutURL,
-		&finishedAt,
-		&closeReason,
+func ticketFromListRow(row sqlgen.ListTicketsRow) (domain.Ticket, error) {
+	return ticketFromFields(
+		row.ID,
+		row.ListingID,
+		row.SkuID,
+		row.Status,
+		row.IssuedAt,
+		row.ActivationDeadline,
+		row.ActivatedAt,
+		row.OrderID,
+		row.CheckoutUrl,
+		row.FinishedAt,
+		row.CloseReason,
 	)
-	if err != nil {
-		return domain.Ticket{}, fmt.Errorf("scan ticket: %w", err)
-	}
+}
 
+func ticketFromFields(
+	id pgtype.UUID,
+	listingID pgtype.UUID,
+	skuID pgtype.UUID,
+	status string,
+	issuedAt pgtype.Timestamptz,
+	activationDeadline pgtype.Timestamptz,
+	activatedAt pgtype.Timestamptz,
+	orderID pgtype.UUID,
+	checkoutURL pgtype.Text,
+	finishedAt pgtype.Timestamptz,
+	closeReason pgtype.Text,
+) (domain.Ticket, error) {
 	if !id.Valid || !listingID.Valid || !skuID.Valid {
 		return domain.Ticket{}, fmt.Errorf("scan ticket: required UUID is null")
 	}
-	ticket.ID = uuid.UUID(id.Bytes)
-	ticket.ListingID = uuid.UUID(listingID.Bytes)
-	ticket.SKUID = uuid.UUID(skuID.Bytes)
-	ticket.Status = domain.TicketStatus(status)
+	if !issuedAt.Valid || !activationDeadline.Valid {
+		return domain.Ticket{}, fmt.Errorf("scan ticket: required timestamp is null")
+	}
+	ticket := domain.Ticket{
+		ID:                 uuid.UUID(id.Bytes),
+		ListingID:          uuid.UUID(listingID.Bytes),
+		SKUID:              uuid.UUID(skuID.Bytes),
+		Status:             domain.TicketStatus(status),
+		IssuedAt:           issuedAt.Time,
+		ActivationDeadline: activationDeadline.Time,
+	}
 	if !ticket.Status.Valid() {
 		return domain.Ticket{}, fmt.Errorf("scan ticket: unknown status %q", status)
 	}
@@ -202,4 +165,16 @@ func scanTicket(result scanner) (domain.Ticket, error) {
 
 func toPGUUID(value uuid.UUID) pgtype.UUID {
 	return pgtype.UUID{Bytes: value, Valid: true}
+}
+
+func toPGTimestamptz(value time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: value, Valid: true}
+}
+
+func toPGText(value string) pgtype.Text {
+	return pgtype.Text{String: value, Valid: true}
+}
+
+func toPGInt4(value int) pgtype.Int4 {
+	return pgtype.Int4{Int32: int32(value), Valid: true}
 }

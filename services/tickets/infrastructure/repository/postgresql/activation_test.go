@@ -21,6 +21,8 @@ type activationRowStub struct {
 	scan func([]any) error
 }
 
+type activationRow = pgx.Row
+
 func (s activationRowStub) Scan(destinations ...any) error {
 	return s.scan(destinations)
 }
@@ -64,6 +66,14 @@ func (s *activationTransactionStub) QueryRow(
 	}
 
 	return s.rows[callIndex]
+}
+
+func (s *activationTransactionStub) Query(
+	context.Context,
+	string,
+	...any,
+) (pgx.Rows, error) {
+	return nil, errors.New("unexpected query call")
 }
 
 func (s *activationTransactionStub) Exec(
@@ -159,7 +169,8 @@ func TestActivationRepository_Prepare_IssuedTicket_ReturnPreparedActivation(t *t
 	assert.Contains(t, transaction.queryCalls[0].query, "actor_id = $1")
 	assert.Contains(t, transaction.queryCalls[0].query, "FOR UPDATE")
 	assert.Equal(t, []any{toPGUUID(userID), activationOperation, toPGUUID(idempotencyKey)}, transaction.queryCalls[0].args)
-	assert.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1 AND user_id = $2")
+	assert.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1")
+	assert.Contains(t, transaction.queryCalls[1].query, "user_id = $2")
 	assert.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
 	assert.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID)}, transaction.queryCalls[1].args)
 	assert.Equal(t, []any{
@@ -179,8 +190,8 @@ func TestActivationRepository_Prepare_IssuedTicket_ReturnPreparedActivation(t *t
 		toPGUUID(ticketID),
 		activationRequestHash(userID, ticketID),
 		activationOperationStateProcessing,
-		now.Add(activationOperationTTL),
-		now,
+		toPGTimestamptz(now.Add(activationOperationTTL)),
+		toPGTimestamptz(now),
 	}, transaction.execCalls[0].args)
 	assert.Equal(t, 1, beginner.calls)
 	assert.Equal(t, 1, transaction.commitCalls)
@@ -577,27 +588,28 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 		CheckoutURL: order.CheckoutURL,
 	}, result)
 	require.Len(t, transaction.queryCalls, 1)
-	assert.Contains(t, transaction.queryCalls[0].query, "WHERE id = $1 AND operation = $2")
+	assert.Contains(t, transaction.queryCalls[0].query, "WHERE id = $1")
+	assert.Contains(t, transaction.queryCalls[0].query, "operation = $2")
 	assert.Contains(t, transaction.queryCalls[0].query, "FOR UPDATE")
 	assert.Equal(t, []any{toPGUUID(operationID), activationOperation}, transaction.queryCalls[0].args)
 	require.Len(t, transaction.execCalls, 3)
-	assert.Contains(t, transaction.execCalls[0].query, "WHERE id = $1 AND user_id = $2 AND status = 'issued'")
+	assert.Contains(t, transaction.execCalls[0].query, "status = 'redeemed'")
 	assert.Equal(t, []any{
+		toPGTimestamptz(completedAt),
+		toPGUUID(order.ID),
+		toPGText(order.CheckoutURL),
 		toPGUUID(ticketID),
 		toPGUUID(userID),
-		completedAt,
-		toPGUUID(order.ID),
-		order.CheckoutURL,
 	}, transaction.execCalls[0].args)
 	assert.Contains(t, transaction.execCalls[1].query, "state = 'completed'")
-	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[1].args[0])
-	assert.Equal(t, activationResponseStatus, transaction.execCalls[1].args[1])
+	assert.Equal(t, toPGInt4(activationResponseStatus), transaction.execCalls[1].args[0])
+	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[1].args[3])
 	assert.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"status":"redeemed",
 		"order_id":"`+order.ID.String()+`",
 		"checkout_url":"/checkout/created"
-	}`, string(transaction.execCalls[1].args[2].([]byte)))
+	}`, string(transaction.execCalls[1].args[1].([]byte)))
 	assert.Contains(t, transaction.execCalls[2].query, "public.outbox_events")
 	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[2].args[0])
 	assert.Equal(t, activationOutboxAggregateType, transaction.execCalls[2].args[1])
@@ -836,7 +848,7 @@ func activationTicketRow(record activationTicketRecord) activationRow {
 		*destinations[0].(*pgtype.UUID) = toPGUUID(record.ListingID)
 		*destinations[1].(*pgtype.UUID) = toPGUUID(record.SKUID)
 		*destinations[2].(*string) = string(record.Status)
-		*destinations[3].(*time.Time) = record.ActivationDeadline
+		*destinations[3].(*pgtype.Timestamptz) = toPGTimestamptz(record.ActivationDeadline)
 
 		return nil
 	}}

@@ -10,48 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 )
-
-const selectExpiredTicketsQuery = `SELECT id, queue_entry_id, user_id, listing_id, sku_id
-FROM public.tickets
-WHERE status = 'issued' AND activation_deadline <= $1
-ORDER BY activation_deadline, id
-FOR UPDATE SKIP LOCKED
-LIMIT $2`
-
-const closeExpiredTicketQuery = `UPDATE public.tickets
-SET status = 'closed',
-    close_reason = 'activation_timeout',
-    finished_at = $2,
-    updated_at = $2,
-    version = version + 1
-WHERE id = $1 AND status = 'issued' AND activation_deadline <= $2`
-
-const recoverStaleActivationsQuery = `WITH candidates AS (
-    SELECT id
-    FROM public.idempotency_operations
-    WHERE operation = 'activate_ticket' AND state = 'processing' AND updated_at <= $1
-    ORDER BY updated_at, id
-    FOR UPDATE SKIP LOCKED
-    LIMIT $2
-)
-UPDATE public.idempotency_operations AS operation
-SET state = 'failed', updated_at = $3
-FROM candidates
-WHERE operation.id = candidates.id AND operation.state = 'processing'`
-
-const insertLifecycleOutboxQuery = `INSERT INTO public.outbox_events (
-    id,
-    aggregate_type,
-    aggregate_id,
-    event_type,
-    payload,
-    status,
-    attempts,
-    available_at,
-    published_at
-) VALUES ($1, 'ticket', $2, $3, $4, 'pending', 0, $5, NULL)`
 
 type LifecycleRepository struct {
 	pool  *pgxpool.Pool
@@ -66,16 +27,27 @@ func NewLifecycleRepository(pool *pgxpool.Pool) *LifecycleRepository {
 func (r *LifecycleRepository) ExpireIssued(ctx context.Context, now time.Time, limit int) (int, error) {
 	expired := 0
 	err := pgx.BeginFunc(ctx, r.pool, func(transaction pgx.Tx) error {
-		tickets, err := selectLifecycleTickets(ctx, transaction, selectExpiredTicketsQuery, now, limit)
+		queries := sqlgen.New(transaction)
+		rows, err := queries.SelectExpiredTickets(ctx, sqlgen.SelectExpiredTicketsParams{
+			ExpiredAt: toPGTimestamptz(now),
+			BatchSize: int32(limit),
+		})
+		if err != nil {
+			return fmt.Errorf("select expired tickets: %w", err)
+		}
+		tickets, err := lifecycleTickets(rows)
 		if err != nil {
 			return fmt.Errorf("select expired tickets: %w", err)
 		}
 		for _, ticket := range tickets {
-			commandTag, err := transaction.Exec(ctx, closeExpiredTicketQuery, toPGUUID(ticket.ID), now)
+			rowsAffected, err := queries.CloseExpiredTicket(ctx, sqlgen.CloseExpiredTicketParams{
+				FinishedAt: toPGTimestamptz(now),
+				ID:         toPGUUID(ticket.ID),
+			})
 			if err != nil {
 				return fmt.Errorf("close expired ticket: %w", err)
 			}
-			if commandTag.RowsAffected() == 0 {
+			if rowsAffected == 0 {
 				continue
 			}
 			if err := r.insertLifecycleOutbox(
@@ -106,12 +78,16 @@ func (r *LifecycleRepository) RecoverStaleActivations(
 	staleBefore time.Time,
 	limit int,
 ) (int, error) {
-	commandTag, err := r.pool.Exec(ctx, recoverStaleActivationsQuery, staleBefore, limit, r.clock())
+	rowsAffected, err := sqlgen.New(r.pool).RecoverStaleActivations(ctx, sqlgen.RecoverStaleActivationsParams{
+		UpdatedAt:   toPGTimestamptz(r.clock()),
+		StaleBefore: toPGTimestamptz(staleBefore),
+		BatchSize:   int32(limit),
+	})
 	if err != nil {
 		return 0, fmt.Errorf("recover stale activation operations: %w", err)
 	}
 
-	return int(commandTag.RowsAffected()), nil
+	return int(rowsAffected), nil
 }
 
 type lifecycleTicket struct {
@@ -133,28 +109,19 @@ type lifecycleOutboxPayload struct {
 	FinishedAt   time.Time                `json:"finished_at"`
 }
 
-func selectLifecycleTickets(
-	ctx context.Context,
-	transaction pgx.Tx,
-	query string,
-	args ...any,
-) ([]lifecycleTicket, error) {
-	rows, err := transaction.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	tickets := make([]lifecycleTicket, 0)
-	for rows.Next() {
-		var ticket lifecycleTicket
-		if err := rows.Scan(&ticket.ID, &ticket.QueueEntryID, &ticket.UserID, &ticket.ListingID, &ticket.SKUID); err != nil {
-			return nil, err
+func lifecycleTickets(rows []sqlgen.SelectExpiredTicketsRow) ([]lifecycleTicket, error) {
+	tickets := make([]lifecycleTicket, 0, len(rows))
+	for _, row := range rows {
+		if !row.ID.Valid || !row.QueueEntryID.Valid || !row.UserID.Valid || !row.ListingID.Valid || !row.SkuID.Valid {
+			return nil, fmt.Errorf("expired ticket has null required UUID")
 		}
-		tickets = append(tickets, ticket)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		tickets = append(tickets, lifecycleTicket{
+			ID:           uuid.UUID(row.ID.Bytes),
+			QueueEntryID: uuid.UUID(row.QueueEntryID.Bytes),
+			UserID:       uuid.UUID(row.UserID.Bytes),
+			ListingID:    uuid.UUID(row.ListingID.Bytes),
+			SKUID:        uuid.UUID(row.SkuID.Bytes),
+		})
 	}
 
 	return tickets, nil
@@ -182,20 +149,18 @@ func (r *LifecycleRepository) insertLifecycleOutbox(
 	if err != nil {
 		return fmt.Errorf("encode lifecycle event: %w", err)
 	}
-	commandTag, err := transaction.Exec(
-		ctx,
-		insertLifecycleOutboxQuery,
-		toPGUUID(r.newID()),
-		toPGUUID(ticket.ID),
-		eventType,
-		payload,
-		finishedAt,
-	)
+	rowsAffected, err := sqlgen.New(transaction).InsertLifecycleOutbox(ctx, sqlgen.InsertLifecycleOutboxParams{
+		ID:          toPGUUID(r.newID()),
+		AggregateID: toPGUUID(ticket.ID),
+		EventType:   eventType,
+		Payload:     payload,
+		AvailableAt: toPGTimestamptz(finishedAt),
+	})
 	if err != nil {
 		return fmt.Errorf("insert lifecycle event: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
-		return fmt.Errorf("insert lifecycle event: unexpected affected rows %d", commandTag.RowsAffected())
+	if rowsAffected != 1 {
+		return fmt.Errorf("insert lifecycle event: unexpected affected rows %d", rowsAffected)
 	}
 
 	return nil

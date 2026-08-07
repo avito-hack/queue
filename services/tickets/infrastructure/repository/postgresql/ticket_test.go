@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
@@ -31,11 +32,10 @@ type databaseTicket struct {
 }
 
 type rowsStub struct {
-	tickets  []databaseTicket
-	position int
-	scanErr  error
-	rowsErr  error
-	closed   bool
+	tickets []databaseTicket
+	scanErr error
+	rowsErr error
+	closed  bool
 }
 
 type rowStub struct {
@@ -43,78 +43,80 @@ type rowStub struct {
 	scanErr error
 }
 
-func (s *rowsStub) Close() {
-	s.closed = true
-}
-
-func (s *rowsStub) Err() error {
-	return s.rowsErr
-}
-
-func (s *rowsStub) Next() bool {
-	if s.position >= len(s.tickets) {
-		s.closed = true
-		return false
-	}
-	s.position++
-
-	return true
-}
-
-func (s *rowsStub) Scan(destinations ...any) error {
-	if s.scanErr != nil {
-		return s.scanErr
-	}
-
-	scanDatabaseTicket(destinations, s.tickets[s.position-1])
-
-	return nil
-}
-
-func (s *rowStub) Scan(destinations ...any) error {
-	if s.scanErr != nil {
-		return s.scanErr
-	}
-
-	scanDatabaseTicket(destinations, s.ticket)
-
-	return nil
-}
-
-func scanDatabaseTicket(destinations []any, ticket databaseTicket) {
-	*destinations[0].(*pgtype.UUID) = ticket.id
-	*destinations[1].(*pgtype.UUID) = ticket.listingID
-	*destinations[2].(*pgtype.UUID) = ticket.skuID
-	*destinations[3].(*string) = ticket.status
-	*destinations[4].(*time.Time) = ticket.issuedAt
-	*destinations[5].(*time.Time) = ticket.activationDeadline
-	*destinations[6].(*pgtype.Timestamptz) = ticket.activatedAt
-	*destinations[7].(*pgtype.UUID) = ticket.orderID
-	*destinations[8].(*pgtype.Text) = ticket.checkoutURL
-	*destinations[9].(*pgtype.Timestamptz) = ticket.finishedAt
-	*destinations[10].(*pgtype.Text) = ticket.closeReason
-}
-
 type queryerStub struct {
-	rows          rows
-	row           scanner
-	err           error
-	receivedQuery string
-	receivedArgs  []any
+	rows               *rowsStub
+	row                *rowStub
+	err                error
+	receivedGetParams  sqlgen.GetTicketParams
+	receivedListParams sqlgen.ListTicketsParams
 }
 
-func (s *queryerStub) Query(_ context.Context, query string, args ...any) (rows, error) {
-	s.receivedQuery = query
-	s.receivedArgs = args
+func (s *queryerStub) GetTicket(_ context.Context, params sqlgen.GetTicketParams) (sqlgen.GetTicketRow, error) {
+	s.receivedGetParams = params
+	if s.err != nil {
+		return sqlgen.GetTicketRow{}, s.err
+	}
+	if s.row.scanErr != nil {
+		return sqlgen.GetTicketRow{}, s.row.scanErr
+	}
 
-	return s.rows, s.err
+	return getTicketRow(s.row.ticket), nil
 }
 
-func (s *queryerStub) QueryRow(_ context.Context, query string, args ...any) scanner {
-	s.receivedQuery = query
-	s.receivedArgs = args
+func (s *queryerStub) ListTickets(_ context.Context, params sqlgen.ListTicketsParams) ([]sqlgen.ListTicketsRow, error) {
+	s.receivedListParams = params
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.rows == nil {
+		return []sqlgen.ListTicketsRow{}, nil
+	}
+	s.rows.closed = true
+	if s.rows.scanErr != nil {
+		return nil, s.rows.scanErr
+	}
+	if s.rows.rowsErr != nil {
+		return nil, s.rows.rowsErr
+	}
 
-	return s.row
+	rows := make([]sqlgen.ListTicketsRow, 0, len(s.rows.tickets))
+	for _, ticket := range s.rows.tickets {
+		rows = append(rows, listTicketRow(ticket))
+	}
+
+	return rows, nil
+}
+
+func getTicketRow(ticket databaseTicket) sqlgen.GetTicketRow {
+	return sqlgen.GetTicketRow{
+		ID:                 ticket.id,
+		ListingID:          ticket.listingID,
+		SkuID:              ticket.skuID,
+		Status:             ticket.status,
+		IssuedAt:           toPGTimestamptz(ticket.issuedAt),
+		ActivationDeadline: toPGTimestamptz(ticket.activationDeadline),
+		ActivatedAt:        ticket.activatedAt,
+		OrderID:            ticket.orderID,
+		CheckoutUrl:        ticket.checkoutURL,
+		FinishedAt:         ticket.finishedAt,
+		CloseReason:        ticket.closeReason,
+	}
+}
+
+func listTicketRow(ticket databaseTicket) sqlgen.ListTicketsRow {
+	return sqlgen.ListTicketsRow{
+		ID:                 ticket.id,
+		ListingID:          ticket.listingID,
+		SkuID:              ticket.skuID,
+		Status:             ticket.status,
+		IssuedAt:           toPGTimestamptz(ticket.issuedAt),
+		ActivationDeadline: toPGTimestamptz(ticket.activationDeadline),
+		ActivatedAt:        ticket.activatedAt,
+		OrderID:            ticket.orderID,
+		CheckoutUrl:        ticket.checkoutURL,
+		FinishedAt:         ticket.finishedAt,
+		CloseReason:        ticket.closeReason,
+	}
 }
 
 func TestTicketRepository_Get_ReturnTicket(t *testing.T) {
@@ -146,8 +148,10 @@ func TestTicketRepository_Get_ReturnTicket(t *testing.T) {
 	assert.Equal(t, domain.TicketStatusIssued, ticket.Status)
 	assert.Equal(t, issuedAt, ticket.IssuedAt)
 	assert.Equal(t, activationDeadline, ticket.ActivationDeadline)
-	assert.Contains(t, queryer.receivedQuery, "WHERE user_id = $1 AND id = $2")
-	assert.Equal(t, []any{toPGUUID(userID), toPGUUID(ticketID)}, queryer.receivedArgs)
+	assert.Equal(t, sqlgen.GetTicketParams{
+		UserID: toPGUUID(userID),
+		ID:     toPGUUID(ticketID),
+	}, queryer.receivedGetParams)
 }
 
 func TestTicketRepository_Get_TicketDoesNotExist_ReturnTicketNotFound(t *testing.T) {
@@ -172,7 +176,7 @@ func TestTicketRepository_Get_ScanReturnsError_ReturnWrappedError(t *testing.T) 
 	// then
 	require.Error(t, err)
 	assert.ErrorIs(t, err, scanError)
-	assert.Equal(t, "scan ticket: scan failed", err.Error())
+	assert.Equal(t, "scan failed", err.Error())
 }
 
 func TestTicketRepository_List_ReturnTickets(t *testing.T) {
@@ -218,9 +222,7 @@ func TestTicketRepository_List_ReturnTickets(t *testing.T) {
 	assert.Equal(t, "/checkout/1", *tickets[0].CheckoutURL)
 	assert.Equal(t, finishedAt, *tickets[0].FinishedAt)
 	assert.Nil(t, tickets[0].CloseReason)
-	assert.Contains(t, queryer.receivedQuery, "WHERE user_id = $1")
-	assert.Contains(t, queryer.receivedQuery, "ORDER BY issued_at DESC, id DESC")
-	assert.Equal(t, []any{toPGUUID(userID)}, queryer.receivedArgs)
+	assert.Equal(t, sqlgen.ListTicketsParams{UserID: toPGUUID(userID)}, queryer.receivedListParams)
 	assert.True(t, resultRows.closed)
 }
 
@@ -241,13 +243,12 @@ func TestTicketRepository_List_WithFilters_ReturnScopedQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tickets)
 	assert.NotNil(t, tickets)
-	assert.Contains(t, queryer.receivedQuery, "WHERE user_id = $1 AND status = $2 AND listing_id = $3 AND sku_id = $4")
-	assert.Equal(t, []any{
-		toPGUUID(userID),
-		string(domain.TicketStatusRedeemed),
-		toPGUUID(listingID),
-		toPGUUID(skuID),
-	}, queryer.receivedArgs)
+	assert.Equal(t, sqlgen.ListTicketsParams{
+		UserID:    toPGUUID(userID),
+		Status:    toPGText(string(domain.TicketStatusRedeemed)),
+		ListingID: toPGUUID(listingID),
+		SkuID:     toPGUUID(skuID),
+	}, queryer.receivedListParams)
 }
 
 func TestTicketRepository_List_QueryReturnsError_ReturnWrappedError(t *testing.T) {
@@ -276,7 +277,7 @@ func TestTicketRepository_List_ScanReturnsError_ReturnWrappedError(t *testing.T)
 	// then
 	require.Error(t, err)
 	assert.ErrorIs(t, err, scanError)
-	assert.Equal(t, "scan ticket: scan failed", err.Error())
+	assert.Equal(t, "query tickets: scan failed", err.Error())
 	assert.True(t, resultRows.closed)
 }
 
@@ -292,7 +293,7 @@ func TestTicketRepository_List_RowsReturnError_ReturnWrappedError(t *testing.T) 
 	// then
 	require.Error(t, err)
 	assert.ErrorIs(t, err, rowsError)
-	assert.Equal(t, "read tickets: rows failed", err.Error())
+	assert.Equal(t, "query tickets: rows failed", err.Error())
 }
 
 func TestTicketRepository_List_UnknownStatus_ReturnError(t *testing.T) {

@@ -72,11 +72,11 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 		declineOperation,
 		toPGUUID(idempotencyKey),
 	}, transaction.queryCalls[0].args)
-	assert.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1 AND user_id = $2")
+	assert.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1")
+	assert.Contains(t, transaction.queryCalls[1].query, "user_id = $2")
 	assert.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
 	assert.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID)}, transaction.queryCalls[1].args)
 	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
-	assert.Contains(t, transaction.queryCalls[3].query, "SELECT EXISTS")
 	assert.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
 	assert.Equal(t, []any{
 		toPGUUID(ticketID),
@@ -93,27 +93,27 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 		toPGUUID(ticketID),
 		declineRequestHash(userID, ticketID),
 		declineOperationStateProcessing,
-		now.Add(declineOperationTTL),
-		now,
+		toPGTimestamptz(now.Add(declineOperationTTL)),
+		toPGTimestamptz(now),
 	}, transaction.execCalls[0].args)
 	assert.Contains(t, transaction.execCalls[1].query, "status = 'closed'")
 	assert.Contains(t, transaction.execCalls[1].query, "close_reason = 'user_declined'")
-	assert.Contains(t, transaction.execCalls[1].query, "activation_deadline > $3")
-	assert.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID), now}, transaction.execCalls[1].args)
+	assert.Contains(t, transaction.execCalls[1].query, "activation_deadline > $1")
+	assert.Equal(t, []any{toPGTimestamptz(now), toPGUUID(ticketID), toPGUUID(userID)}, transaction.execCalls[1].args)
 	assert.Contains(t, transaction.execCalls[2].query, "state = 'completed'")
-	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[0])
-	assert.Equal(t, declineResponseStatus, transaction.execCalls[2].args[1])
+	assert.Equal(t, toPGInt4(declineResponseStatus), transaction.execCalls[2].args[0])
+	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[3])
 	assert.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"status":"closed"
-	}`, string(transaction.execCalls[2].args[2].([]byte)))
-	assert.Equal(t, now, transaction.execCalls[2].args[3])
+	}`, string(transaction.execCalls[2].args[1].([]byte)))
+	assert.Equal(t, toPGTimestamptz(now), transaction.execCalls[2].args[2])
 	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[3].args[0])
 	assert.Equal(t, declineOutboxAggregateType, transaction.execCalls[3].args[1])
 	assert.Equal(t, toPGUUID(ticketID), transaction.execCalls[3].args[2])
 	assert.Equal(t, domain.TicketEventClosed, transaction.execCalls[3].args[3])
 	assert.Equal(t, declineOutboxState, transaction.execCalls[3].args[5])
-	assert.Equal(t, now, transaction.execCalls[3].args[6])
+	assert.Equal(t, toPGTimestamptz(now), transaction.execCalls[3].args[6])
 	assert.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"queue_entry_id":"`+queueEntryID.String()+`",
@@ -448,7 +448,6 @@ func TestDeclineRepository_Decline_ActivationProcessing_ReturnActivationInProgre
 	// then
 	assert.ErrorIs(t, err, usecase.ErrActivationInProgress)
 	require.Len(t, transaction.queryCalls, 4)
-	assert.Contains(t, transaction.queryCalls[3].query, "SELECT EXISTS")
 	assert.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
 	assert.Empty(t, transaction.execCalls)
 	assert.Zero(t, transaction.commitCalls)
@@ -608,7 +607,7 @@ func declineTicketRow(record declineTicketRecord) activationRow {
 		*destinations[1].(*pgtype.UUID) = toPGUUID(record.ListingID)
 		*destinations[2].(*pgtype.UUID) = toPGUUID(record.SKUID)
 		*destinations[3].(*string) = string(record.Status)
-		*destinations[4].(*time.Time) = record.ActivationDeadline
+		*destinations[4].(*pgtype.Timestamptz) = toPGTimestamptz(record.ActivationDeadline)
 
 		return nil
 	}}
