@@ -84,7 +84,7 @@ func (r *LifecycleRepository) ExpireIssued(ctx context.Context, now time.Time, l
 				ticket,
 				domain.TicketStatusClosed,
 				domain.TicketCloseReasonActivationTimeout,
-				"ticket.closed",
+				domain.TicketEventClosed,
 				now,
 			); err != nil {
 				return err

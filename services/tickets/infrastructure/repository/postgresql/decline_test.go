@@ -111,7 +111,7 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[3].args[0])
 	assert.Equal(t, declineOutboxAggregateType, transaction.execCalls[3].args[1])
 	assert.Equal(t, toPGUUID(ticketID), transaction.execCalls[3].args[2])
-	assert.Equal(t, declineOutboxEventType, transaction.execCalls[3].args[3])
+	assert.Equal(t, domain.TicketEventClosed, transaction.execCalls[3].args[3])
 	assert.Equal(t, declineOutboxState, transaction.execCalls[3].args[5])
 	assert.Equal(t, now, transaction.execCalls[3].args[6])
 	assert.JSONEq(t, `{

@@ -602,7 +602,7 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[2].args[0])
 	assert.Equal(t, activationOutboxAggregateType, transaction.execCalls[2].args[1])
 	assert.Equal(t, toPGUUID(ticketID), transaction.execCalls[2].args[2])
-	assert.Equal(t, activationOutboxEventType, transaction.execCalls[2].args[3])
+	assert.Equal(t, domain.TicketEventRedeemed, transaction.execCalls[2].args[3])
 	assert.Equal(t, activationOutboxState, transaction.execCalls[2].args[5])
 	assert.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",

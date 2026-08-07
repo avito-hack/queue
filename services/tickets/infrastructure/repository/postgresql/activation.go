@@ -28,7 +28,6 @@ const (
 	activationOperationTTL             = 24 * time.Hour
 	activationResponseStatus           = 200
 	activationOutboxAggregateType      = "ticket"
-	activationOutboxEventType          = "ticket.redeemed"
 	activationOutboxState              = "pending"
 	activationTicketConstraint         = "uq_idempotency_operations_ticket_operation"
 	activationRollbackTimeout          = 5 * time.Second
@@ -399,7 +398,7 @@ func (r *ActivationRepository) complete(
 		toPGUUID(r.newID()),
 		activationOutboxAggregateType,
 		toPGUUID(operation.TicketID),
-		activationOutboxEventType,
+		domain.TicketEventRedeemed,
 		outboxPayload,
 		activationOutboxState,
 		completedAt,

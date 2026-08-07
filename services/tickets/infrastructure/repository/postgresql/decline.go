@@ -26,7 +26,6 @@ const (
 	declineOperationTTL             = 24 * time.Hour
 	declineResponseStatus           = 200
 	declineOutboxAggregateType      = "ticket"
-	declineOutboxEventType          = "ticket.closed"
 	declineOutboxState              = "pending"
 	declineTicketConstraint         = "uq_idempotency_operations_ticket_operation"
 	declineRollbackTimeout          = 5 * time.Second
@@ -247,7 +246,7 @@ func (r *DeclineRepository) decline(
 		toPGUUID(r.newID()),
 		declineOutboxAggregateType,
 		toPGUUID(command.TicketID),
-		declineOutboxEventType,
+		domain.TicketEventClosed,
 		outboxPayload,
 		declineOutboxState,
 		command.Now,

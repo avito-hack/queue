@@ -6,18 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	eventmessages "github.com/avito-hack/queue/services/tickets/gen/events/messages"
 	eventschemas "github.com/avito-hack/queue/services/tickets/gen/events/schemas"
+	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
-)
-
-const (
-	ticketClosedEventType   = "ticket.closed"
-	ticketRedeemedEventType = "ticket.redeemed"
 )
 
 type Publisher struct {
@@ -43,6 +41,9 @@ func NewPublisher(connection *amqp.Connection, exchange string) (*Publisher, err
 }
 
 func (p *Publisher) Publish(ctx context.Context, event usecase.OutboxEvent) error {
+	if event.ID == uuid.Nil {
+		return errors.New("publish event: empty event id")
+	}
 	body, err := encodeEventPayload(event)
 	if err != nil {
 		return err
@@ -84,9 +85,9 @@ func encodeEventPayload(event usecase.OutboxEvent) ([]byte, error) {
 	var buffer bytes.Buffer
 
 	switch event.Type {
-	case ticketClosedEventType:
+	case domain.TicketEventClosed:
 		var payload eventschemas.TicketClosedPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		if err := decodeEventPayload(event.Payload, &payload); err != nil {
 			return nil, fmt.Errorf("encode %s: decode payload: %w", event.Type, err)
 		}
 		if err := validateTicketClosedPayload(payload); err != nil {
@@ -96,9 +97,9 @@ func encodeEventPayload(event usecase.OutboxEvent) ([]byte, error) {
 		if err := message.MarshalAMQP(&buffer); err != nil {
 			return nil, fmt.Errorf("encode %s: %w", event.Type, err)
 		}
-	case ticketRedeemedEventType:
+	case domain.TicketEventRedeemed:
 		var payload eventschemas.TicketRedeemedPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		if err := decodeEventPayload(event.Payload, &payload); err != nil {
 			return nil, fmt.Errorf("encode %s: decode payload: %w", event.Type, err)
 		}
 		if err := validateTicketRedeemedPayload(payload); err != nil {
@@ -109,10 +110,27 @@ func encodeEventPayload(event usecase.OutboxEvent) ([]byte, error) {
 			return nil, fmt.Errorf("encode %s: %w", event.Type, err)
 		}
 	default:
-		return event.Payload, nil
+		return nil, fmt.Errorf("unsupported event type %q", event.Type)
 	}
 
 	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
+}
+
+func decodeEventPayload(payload []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func validateTicketClosedPayload(payload eventschemas.TicketClosedPayload) error {
@@ -120,6 +138,13 @@ func validateTicketClosedPayload(payload eventschemas.TicketClosedPayload) error
 		payload.ListingID == nil || payload.SkuID == nil || payload.Status == nil ||
 		payload.CloseReason == nil || payload.FinishedAt == nil {
 		return errors.New("incomplete payload")
+	}
+	if *payload.TicketID == uuid.Nil || *payload.QueueEntryID == uuid.Nil || *payload.UserID == uuid.Nil ||
+		*payload.ListingID == uuid.Nil || *payload.SkuID == uuid.Nil {
+		return errors.New("empty UUID")
+	}
+	if payload.FinishedAt.IsZero() {
+		return errors.New("empty finished time")
 	}
 	if *payload.Status != "closed" {
 		return fmt.Errorf("unexpected status %q", *payload.Status)
@@ -138,11 +163,21 @@ func validateTicketRedeemedPayload(payload eventschemas.TicketRedeemedPayload) e
 		payload.CheckoutURL == nil || payload.Status == nil || payload.RedeemedAt == nil {
 		return errors.New("incomplete payload")
 	}
+	if *payload.TicketID == uuid.Nil || *payload.UserID == uuid.Nil || *payload.OrderID == uuid.Nil {
+		return errors.New("empty UUID")
+	}
+	if payload.RedeemedAt.IsZero() {
+		return errors.New("empty redeemed time")
+	}
 	if *payload.Status != "redeemed" {
 		return fmt.Errorf("unexpected status %q", *payload.Status)
 	}
-	if *payload.CheckoutURL == "" {
-		return errors.New("empty checkout URL")
+	checkoutURL, err := domain.NormalizeCheckoutURL(*payload.CheckoutURL)
+	if err != nil {
+		return fmt.Errorf("invalid checkout URL: %w", err)
+	}
+	if checkoutURL != *payload.CheckoutURL {
+		return errors.New("non-normalized checkout URL")
 	}
 
 	return nil

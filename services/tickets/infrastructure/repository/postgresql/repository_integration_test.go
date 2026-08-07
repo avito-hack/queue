@@ -125,7 +125,7 @@ func Test_ActivationRepository_ConcurrentComplete_PersistOneOrder(t *testing.T) 
 	}
 	require.Equal(t, results[0].value, results[1].value)
 	require.Contains(t, []uuid.UUID{orders[0].ID, orders[1].ID}, results[0].value.OrderID)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.redeemed'"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = '"+domain.TicketEventRedeemed+"'"))
 
 	var orderID uuid.UUID
 	require.NoError(t, integrationPool.QueryRow(
@@ -168,7 +168,7 @@ func Test_DeclineRepository_ConcurrentDecline_CloseTicketOnce(t *testing.T) {
 	}
 	require.Equal(t, 1, succeeded)
 	require.Equal(t, 1, notDeclinable)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.closed'"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = '"+domain.TicketEventClosed+"'"))
 }
 
 func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
@@ -193,7 +193,7 @@ func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
 	require.NotNil(t, ticket.CloseReason)
 	require.Equal(t, domain.TicketCloseReasonActivationTimeout, *ticket.CloseReason)
 	require.NotNil(t, ticket.FinishedAt)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.closed'"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = '"+domain.TicketEventClosed+"'"))
 }
 
 func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testing.T) {
@@ -324,6 +324,26 @@ func Test_TicketsSchema_InboxTable_ReturnAbsent(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	assert.Nil(t, tableName)
+}
+
+func Test_OutboxSchema_UnknownEventType_RejectEvent(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+
+	// when
+	_, err := integrationPool.Exec(
+		context.Background(),
+		`INSERT INTO public.outbox_events (
+			id, aggregate_type, aggregate_id, event_type, payload, status, attempts, available_at
+		) VALUES ($1, 'ticket', $2, 'ticket.unknown', '{}', 'pending', 0, $3)`,
+		uuid.New(),
+		uuid.New(),
+		time.Now(),
+	)
+
+	// then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ck_outbox_events_type")
 }
 
 func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) {
