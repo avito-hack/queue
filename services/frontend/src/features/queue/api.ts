@@ -32,8 +32,8 @@ const joinQueue = async (listingId: string): Promise<QueueEntry> => {
   }
 }
 
-const leaveQueue = async (_listingId: string) => {
-  const response = await api.delete('/v1/queue/dequeue')
+const leaveQueue = async (listingId: string) => {
+  const response = await api.delete(`/v1/queue/${listingId}/dequeue`)
   return response.data
 }
 

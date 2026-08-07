@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { queueApi } from './api'
 import { queueItemsFromUserQueues } from './positionLib'
@@ -16,27 +16,21 @@ export function useQueuePolling(enabled = true) {
   const hasQueued = queueItems.some(
     (item) => item.status === 'queued' || item.status === 'soldout',
   )
-  const queueItemsRef = useRef(queueItems)
-  queueItemsRef.current = queueItems
+
+  const sync = useEffectEvent(async () => {
+    try {
+      const infos = await queueApi.listUserQueues()
+      const updates = queueItemsFromUserQueues(queueItems, infos)
+      for (const item of updates) {
+        dispatch(updateQueueItem(item))
+      }
+    } catch {
+      // бэк ещё не готов
+    }
+  })
 
   useEffect(() => {
     if (!enabled || !hasQueued) return
-
-    let cancelled = false
-
-    const sync = async () => {
-      try {
-        const infos = await queueApi.listUserQueues()
-        if (cancelled) return
-
-        const updates = queueItemsFromUserQueues(queueItemsRef.current, infos)
-        for (const item of updates) {
-          dispatch(updateQueueItem(item))
-        }
-      } catch {
-        // бэк ещё не готов
-      }
-    }
 
     void sync()
     const id = window.setInterval(() => {
@@ -44,8 +38,7 @@ export function useQueuePolling(enabled = true) {
     }, POLL_MS)
 
     return () => {
-      cancelled = true
       window.clearInterval(id)
     }
-  }, [dispatch, enabled, hasQueued])
+  }, [enabled, hasQueued])
 }

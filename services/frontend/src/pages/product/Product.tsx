@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './Product.css'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
@@ -40,11 +40,11 @@ export function Product() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const [joinedEntry, setJoinedEntry] = useState<QueueEntry | null>(null)
-  const [soldOutOpen, setSoldOutOpen] = useState(false)
+  const [soldOutDismissed, setSoldOutDismissed] = useState(false)
+  const [prevProductId, setPrevProductId] = useState(productId)
   const [notified, setNotified] = useState(
     () => localStorage.getItem(notifyStorageKey(productId)) === '1',
   )
-  const soldOutShownRef = useRef(false)
 
   const product = useAppSelector((state) =>
     state.products.productItems.find((p) => p.id === productId),
@@ -65,10 +65,13 @@ export function Product() {
   )
   const alreadyInQueue = Boolean(myQueueEntry || myTicket)
 
-  useEffect(() => {
+  // Сброс UI-состояния при смене товара (без setState в effect).
+  if (productId !== prevProductId) {
+    setPrevProductId(productId)
     setNotified(localStorage.getItem(notifyStorageKey(productId)) === '1')
-    soldOutShownRef.current = false
-  }, [productId])
+    setSoldOutDismissed(false)
+    setJoinedEntry(null)
+  }
 
   useEffect(() => {
     if (!product || product.availableQuantity > 0 || !myQueueEntry) return
@@ -81,14 +84,12 @@ export function Product() {
     )
   }, [dispatch, myQueueEntry, product])
 
-  useEffect(() => {
-    if (soldOutShownRef.current) return
-    if (mySoldoutEntry || (product && product.availableQuantity === 0 && myQueueEntry)) {
-      soldOutShownRef.current = true
-      setSoldOutOpen(true)
-    }
-  }, [myQueueEntry, mySoldoutEntry, product])
-
+  const soldOutOpen =
+    !soldOutDismissed &&
+    Boolean(
+      mySoldoutEntry ||
+        (product && product.availableQuantity === 0 && myQueueEntry),
+    )
   const completeJoin = (entry: QueueEntry) => {
     dispatch(joinQueueAction(entry))
     setJoinedEntry(entry)
@@ -314,15 +315,14 @@ export function Product() {
         open={soldOutOpen}
         productTitle={product.title}
         notified={notified}
-        onClose={() => setSoldOutOpen(false)}
+        onClose={() => setSoldOutDismissed(true)}
         onNotify={handleNotify}
         onSimilar={() => {
-          setSoldOutOpen(false)
+          setSoldOutDismissed(true)
           document
             .getElementById('similar-products')
             ?.scrollIntoView({ behavior: 'smooth' })
         }}
-      />
-    </section>
+      />    </section>
   )
 }
