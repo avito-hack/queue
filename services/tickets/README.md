@@ -54,6 +54,6 @@ docker run --rm \
 
 ## API
 
-Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list`, `GET /v1/ticket/{ticket_id}` и `POST /v1/ticket/{ticket_id}/activate`. Остальные операции пока являются заглушками.
+Контракт находится в `api/openapi.yaml`. Реализованы `GET /healthz`, `GET /v1/ticket/list`, `GET /v1/ticket/{ticket_id}`, `POST /v1/ticket/{ticket_id}/activate` и `POST /v1/ticket/{ticket_id}/decline`. Остальные операции пока являются заглушками.
 
 После изменения OpenAPI-схемы необходимо выполнить `make generate`.

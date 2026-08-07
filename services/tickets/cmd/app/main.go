@@ -52,6 +52,7 @@ func run() error {
 
 	ticketRepository := postgresql.NewTicketRepository(database)
 	activationRepository := postgresql.NewActivationRepository(database)
+	declineRepository := postgresql.NewDeclineRepository(database)
 	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
 	getTicket := usecase.NewGetTicket(ticketRepository, time.Now)
 	health := usecase.NewHealth(database)
@@ -68,7 +69,8 @@ func run() error {
 		return fmt.Errorf("create Avito adapter order creator: %w", err)
 	}
 	activateTicket := usecase.NewActivateTicket(activationRepository, orderCreator, time.Now)
-	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket)
+	declineTicket := usecase.NewDeclineTicket(declineRepository, time.Now)
+	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket, declineTicket)
 	router, err := transporthttp.NewRouter(handler, tokenResolver)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)

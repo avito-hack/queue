@@ -46,6 +46,15 @@ type ticketActivatorStub struct {
 	calls                  int
 }
 
+type ticketDeclinerStub struct {
+	result                 usecase.DeclineTicketResult
+	err                    error
+	receivedUserID         uuid.UUID
+	receivedTicketID       uuid.UUID
+	receivedIdempotencyKey uuid.UUID
+	calls                  int
+}
+
 type userTokenResolverStub struct {
 	userID        uuid.UUID
 	err           error
@@ -94,17 +103,35 @@ func (s *ticketActivatorStub) Activate(
 	return s.result, s.err
 }
 
+func (s *ticketDeclinerStub) Decline(
+	_ context.Context,
+	userID uuid.UUID,
+	ticketID uuid.UUID,
+	idempotencyKey uuid.UUID,
+) (usecase.DeclineTicketResult, error) {
+	s.calls++
+	s.receivedUserID = userID
+	s.receivedTicketID = ticketID
+	s.receivedIdempotencyKey = idempotencyKey
+
+	return s.result, s.err
+}
+
 func newTestHandler(lister TicketLister, getters ...TicketGetter) *Handler {
 	getter := TicketGetter(&ticketGetterStub{})
 	if len(getters) > 0 {
 		getter = getters[0]
 	}
 
-	return NewHandler(usecase.NewHealth(), lister, getter, &ticketActivatorStub{})
+	return NewHandler(usecase.NewHealth(), lister, getter, &ticketActivatorStub{}, &ticketDeclinerStub{})
 }
 
 func newTestHandlerWithActivator(activator TicketActivator) *Handler {
-	return NewHandler(usecase.NewHealth(), &ticketListerStub{}, &ticketGetterStub{}, activator)
+	return NewHandler(usecase.NewHealth(), &ticketListerStub{}, &ticketGetterStub{}, activator, &ticketDeclinerStub{})
+}
+
+func newTestHandlerWithDecliner(decliner TicketDecliner) *Handler {
+	return NewHandler(usecase.NewHealth(), &ticketListerStub{}, &ticketGetterStub{}, &ticketActivatorStub{}, decliner)
 }
 
 func Test_GetHealthz_ReturnOK(t *testing.T) {
@@ -739,4 +766,228 @@ func Test_PostV1TicketActivate_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
 	assert.Zero(t, activator.calls)
+}
+
+func Test_PostV1TicketDecline_ReturnClosedTicket(t *testing.T) {
+	// given
+	userID := uuid.New()
+	ticketID := uuid.New()
+	idempotencyKey := uuid.New()
+	decliner := &ticketDeclinerStub{result: usecase.DeclineTicketResult{
+		TicketID: ticketID,
+		Status:   domain.TicketStatusClosed,
+	}}
+	resolver := &userTokenResolverStub{userID: userID}
+	router, err := NewRouter(newTestHandlerWithDecliner(decliner), resolver)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+ticketID.String()+"/decline", nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	request.Header.Set("Idempotency-Key", idempotencyKey.String())
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{
+		"ticket_id":"`+ticketID.String()+`",
+		"status":"closed"
+	}`, recorder.Body.String())
+	assert.Equal(t, userID, decliner.receivedUserID)
+	assert.Equal(t, ticketID, decliner.receivedTicketID)
+	assert.Equal(t, idempotencyKey, decliner.receivedIdempotencyKey)
+	assert.Equal(t, "abc-token", resolver.receivedToken)
+	assert.Equal(t, 1, decliner.calls)
+}
+
+func Test_PostV1TicketDecline_UsecaseReturnsDomainError_ReturnMappedError(t *testing.T) {
+	// given
+	tests := []struct {
+		name       string
+		err        error
+		statusCode int
+		response   string
+	}{
+		{
+			name:       "invalid decline",
+			err:        usecase.ErrInvalidDecline,
+			statusCode: http.StatusBadRequest,
+			response:   `{"error":"bad_request","message":"invalid ticket decline"}`,
+		},
+		{
+			name:       "ticket not found",
+			err:        usecase.ErrTicketNotFound,
+			statusCode: http.StatusNotFound,
+			response:   `{"error":"ticket_not_found","message":"ticket not found"}`,
+		},
+		{
+			name:       "ticket not declinable",
+			err:        usecase.ErrTicketNotDeclinable,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"ticket_not_declinable","message":"ticket is not declinable"}`,
+		},
+		{
+			name:       "idempotency conflict",
+			err:        usecase.ErrIdempotencyConflict,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"idempotency_conflict","message":"idempotency conflict"}`,
+		},
+		{
+			name:       "activation in progress",
+			err:        usecase.ErrActivationInProgress,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"activation_in_progress","message":"ticket activation is in progress"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ticketID := uuid.New()
+			decliner := &ticketDeclinerStub{err: test.err}
+			router, err := NewRouter(
+				newTestHandlerWithDecliner(decliner),
+				&userTokenResolverStub{userID: uuid.New()},
+			)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+ticketID.String()+"/decline", nil)
+			request.Header.Set("Authorization", "Bearer abc-token")
+			request.Header.Set("Idempotency-Key", uuid.NewString())
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, test.statusCode, recorder.Code)
+			assert.JSONEq(t, test.response, recorder.Body.String())
+			assert.Equal(t, 1, decliner.calls)
+			assert.Equal(t, ticketID, decliner.receivedTicketID)
+		})
+	}
+}
+
+func Test_PostV1TicketDecline_UsecaseReturnsError_ReturnInternalError(t *testing.T) {
+	// given
+	decliner := &ticketDeclinerStub{err: errors.New("database failed")}
+	router, err := NewRouter(
+		newTestHandlerWithDecliner(decliner),
+		&userTokenResolverStub{userID: uuid.New()},
+	)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+uuid.NewString()+"/decline", nil)
+	request.Header.Set("Authorization", "Bearer abc-token")
+	request.Header.Set("Idempotency-Key", uuid.NewString())
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	assert.Equal(t, 1, decliner.calls)
+}
+
+func Test_PostV1TicketDecline_InvalidRequest_ReturnBadRequest(t *testing.T) {
+	// given
+	tests := []struct {
+		name            string
+		ticketID        string
+		idempotencyKeys []string
+	}{
+		{name: "invalid ticket id", ticketID: "invalid", idempotencyKeys: []string{uuid.NewString()}},
+		{name: "missing idempotency key", ticketID: uuid.NewString()},
+		{name: "invalid idempotency key", ticketID: uuid.NewString(), idempotencyKeys: []string{"invalid"}},
+		{
+			name:            "multiple idempotency keys",
+			ticketID:        uuid.NewString(),
+			idempotencyKeys: []string{uuid.NewString(), uuid.NewString()},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			decliner := &ticketDeclinerStub{}
+			router, err := NewRouter(
+				newTestHandlerWithDecliner(decliner),
+				&userTokenResolverStub{userID: uuid.New()},
+			)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+test.ticketID+"/decline", nil)
+			request.Header.Set("Authorization", "Bearer abc-token")
+			for _, idempotencyKey := range test.idempotencyKeys {
+				request.Header.Add("Idempotency-Key", idempotencyKey)
+			}
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Zero(t, decliner.calls)
+		})
+	}
+}
+
+func Test_PostV1TicketDecline_AuthenticationFails_ReturnError(t *testing.T) {
+	// given
+	tests := []struct {
+		name       string
+		token      string
+		resolver   *userTokenResolverStub
+		statusCode int
+		response   string
+	}{
+		{
+			name:       "missing token",
+			resolver:   &userTokenResolverStub{userID: uuid.New()},
+			statusCode: http.StatusUnauthorized,
+			response:   `{"error":"unauthorized","message":"bearer token is required"}`,
+		},
+		{
+			name:       "invalid token",
+			token:      "invalid-token",
+			resolver:   &userTokenResolverStub{err: identityauth.ErrInvalidToken},
+			statusCode: http.StatusUnauthorized,
+			response:   `{"error":"unauthorized","message":"bearer token is invalid"}`,
+		},
+		{
+			name:       "identity service unavailable",
+			token:      "abc-token",
+			resolver:   &userTokenResolverStub{err: errors.New("adapter unavailable")},
+			statusCode: http.StatusInternalServerError,
+			response:   `{"error":"internal_error","message":"internal server error"}`,
+		},
+		{
+			name:       "empty user id",
+			token:      "abc-token",
+			resolver:   &userTokenResolverStub{},
+			statusCode: http.StatusInternalServerError,
+			response:   `{"error":"internal_error","message":"internal server error"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			decliner := &ticketDeclinerStub{}
+			router, err := NewRouter(newTestHandlerWithDecliner(decliner), test.resolver)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "/v1/ticket/"+uuid.NewString()+"/decline", nil)
+			request.Header.Set("Idempotency-Key", uuid.NewString())
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			recorder := httptest.NewRecorder()
+
+			// when
+			router.ServeHTTP(recorder, request)
+
+			// then
+			assert.Equal(t, test.statusCode, recorder.Code)
+			assert.JSONEq(t, test.response, recorder.Body.String())
+			assert.Zero(t, decliner.calls)
+		})
+	}
 }

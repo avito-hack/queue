@@ -30,11 +30,16 @@ type TicketActivator interface {
 	Activate(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (usecase.ActivationResult, error)
 }
 
+type TicketDecliner interface {
+	Decline(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (usecase.DeclineTicketResult, error)
+}
+
 type Handler struct {
 	healthChecker   HealthChecker
 	ticketLister    TicketLister
 	ticketGetter    TicketGetter
 	ticketActivator TicketActivator
+	ticketDecliner  TicketDecliner
 }
 
 func NewHandler(
@@ -42,12 +47,14 @@ func NewHandler(
 	ticketLister TicketLister,
 	ticketGetter TicketGetter,
 	ticketActivator TicketActivator,
+	ticketDecliner TicketDecliner,
 ) *Handler {
 	return &Handler{
 		healthChecker:   healthChecker,
 		ticketLister:    ticketLister,
 		ticketGetter:    ticketGetter,
 		ticketActivator: ticketActivator,
+		ticketDecliner:  ticketDecliner,
 	}
 }
 
@@ -147,8 +154,33 @@ func (h *Handler) ActivateTicket(ctx context.Context, request server.ActivateTic
 	}, nil
 }
 
-func (h *Handler) DeclineTicket(context.Context, server.DeclineTicketRequestObject) (server.DeclineTicketResponseObject, error) {
-	return server.DeclineTicket500JSONResponse{InternalErrorJSONResponse: notImplementedError()}, nil
+func (h *Handler) DeclineTicket(ctx context.Context, request server.DeclineTicketRequestObject) (server.DeclineTicketResponseObject, error) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		return server.DeclineTicket401JSONResponse{UnauthorizedJSONResponse: unauthorizedError()}, nil
+	}
+
+	result, err := h.ticketDecliner.Decline(ctx, userID, request.TicketId, request.Params.IdempotencyKey)
+	switch {
+	case errors.Is(err, usecase.ErrInvalidDecline):
+		return server.DeclineTicket400JSONResponse{BadRequestJSONResponse: badRequestError(err.Error())}, nil
+	case errors.Is(err, usecase.ErrTicketNotFound):
+		return server.DeclineTicket404JSONResponse{TicketNotFoundJSONResponse: ticketNotFoundError()}, nil
+	case errors.Is(err, usecase.ErrTicketNotDeclinable):
+		return declineConflictResponse("ticket_not_declinable", usecase.ErrTicketNotDeclinable.Error()), nil
+	case errors.Is(err, usecase.ErrIdempotencyConflict):
+		return declineConflictResponse("idempotency_conflict", usecase.ErrIdempotencyConflict.Error()), nil
+	case errors.Is(err, usecase.ErrActivationInProgress):
+		return declineConflictResponse("activation_in_progress", usecase.ErrActivationInProgress.Error()), nil
+	case err != nil:
+		slog.ErrorContext(ctx, "decline ticket", "error", err)
+		return server.DeclineTicket500JSONResponse{InternalErrorJSONResponse: internalServerError()}, nil
+	}
+
+	return server.DeclineTicket200JSONResponse{
+		TicketId: result.TicketID,
+		Status:   server.V1TicketStatus(result.Status),
+	}, nil
 }
 
 func toListTicketsFilter(params server.ListTicketsParams) usecase.ListTicketsFilter {
@@ -215,6 +247,13 @@ func ticketNotFoundError() server.TicketNotFoundJSONResponse {
 
 func activationConflictResponse(code, message string) server.ActivateTicket409JSONResponse {
 	return server.ActivateTicket409JSONResponse{
+		Error:   code,
+		Message: message,
+	}
+}
+
+func declineConflictResponse(code, message string) server.DeclineTicket409JSONResponse {
+	return server.DeclineTicket409JSONResponse{
 		Error:   code,
 		Message: message,
 	}
