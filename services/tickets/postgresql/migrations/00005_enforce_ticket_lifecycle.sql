@@ -11,7 +11,7 @@ CREATE INDEX idx_tickets_expiration
 
 CREATE UNIQUE INDEX uq_tickets_live_user_listing
     ON public.tickets (user_id, listing_id)
-    WHERE status IN ('issued', 'active');
+    WHERE status = 'issued';
 
 CREATE INDEX idx_activation_operations_recovery
     ON public.idempotency_operations (updated_at, id)
@@ -23,15 +23,13 @@ CREATE INDEX idx_outbox_events_delivery
 
 ALTER TABLE public.tickets
     ADD CONSTRAINT ck_tickets_status
-        CHECK (status IN ('issued', 'active', 'redeemed', 'closed')),
+        CHECK (status IN ('issued', 'redeemed', 'closed')),
     ADD CONSTRAINT ck_tickets_close_reason
         CHECK (close_reason IS NULL OR close_reason IN (
-            'payment_succeeded',
             'activation_timeout',
             'user_declined',
             'listing_closed',
             'sku_closed',
-            'reservation_released',
             'system_cancelled'
         )),
     ADD CONSTRAINT ck_tickets_activation_deadline
@@ -41,8 +39,6 @@ ALTER TABLE public.tickets
     ADD CONSTRAINT ck_tickets_state
         CHECK (
             (status = 'issued' AND activated_at IS NULL AND order_id IS NULL AND checkout_url IS NULL AND finished_at IS NULL AND close_reason IS NULL)
-            OR
-            (status = 'active' AND activated_at IS NOT NULL AND order_id IS NOT NULL AND checkout_url IS NOT NULL AND finished_at IS NULL AND close_reason IS NULL)
             OR
             (status = 'redeemed' AND activated_at IS NOT NULL AND order_id IS NOT NULL AND checkout_url IS NOT NULL AND finished_at IS NOT NULL AND close_reason IS NULL)
             OR
@@ -60,6 +56,8 @@ ALTER TABLE public.idempotency_operations
         );
 
 ALTER TABLE public.outbox_events
+    ADD CONSTRAINT ck_outbox_events_type
+        CHECK (event_type IN ('ticket.closed', 'ticket.redeemed')),
     ADD CONSTRAINT ck_outbox_events_status
         CHECK (status IN ('pending', 'processing', 'published')),
     ADD CONSTRAINT ck_outbox_events_attempts
@@ -89,7 +87,8 @@ ALTER TABLE public.inbox_events
 ALTER TABLE public.outbox_events
     DROP CONSTRAINT ck_outbox_events_published,
     DROP CONSTRAINT ck_outbox_events_attempts,
-    DROP CONSTRAINT ck_outbox_events_status;
+    DROP CONSTRAINT ck_outbox_events_status,
+    DROP CONSTRAINT ck_outbox_events_type;
 
 ALTER TABLE public.idempotency_operations
     DROP CONSTRAINT ck_idempotency_operations_response,

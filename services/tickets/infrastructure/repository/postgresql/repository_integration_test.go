@@ -311,7 +311,7 @@ func Test_TicketsSchema_ExternalCloseReason_RejectUnknownReason(t *testing.T) {
 	assert.Contains(t, err.Error(), "ck_tickets_close_reason")
 }
 
-func Test_TicketsSchema_InboxTable_ReturnAbsent(t *testing.T) {
+func Test_TicketsSchema_InboxTable_ReturnPresent(t *testing.T) {
 	// given
 	var tableName *string
 
@@ -323,7 +323,8 @@ func Test_TicketsSchema_InboxTable_ReturnAbsent(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Nil(t, tableName)
+	require.NotNil(t, tableName)
+	assert.Equal(t, "inbox_events", *tableName)
 }
 
 func Test_OutboxSchema_UnknownEventType_RejectEvent(t *testing.T) {
@@ -450,7 +451,7 @@ func truncateIntegrationTables(t *testing.T) {
 	t.Helper()
 	_, err := integrationPool.Exec(
 		context.Background(),
-		"TRUNCATE public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
+		"TRUNCATE public.inbox_events, public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
 	)
 	require.NoError(t, err)
 }
