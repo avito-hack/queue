@@ -10,14 +10,13 @@ type TicketStatus string
 
 const (
 	TicketStatusIssued   TicketStatus = "issued"
-	TicketStatusActive   TicketStatus = "active"
 	TicketStatusRedeemed TicketStatus = "redeemed"
 	TicketStatusClosed   TicketStatus = "closed"
 )
 
 func (s TicketStatus) Valid() bool {
 	switch s {
-	case TicketStatusIssued, TicketStatusActive, TicketStatusRedeemed, TicketStatusClosed:
+	case TicketStatusIssued, TicketStatusRedeemed, TicketStatusClosed:
 		return true
 	default:
 		return false
@@ -27,23 +26,19 @@ func (s TicketStatus) Valid() bool {
 type TicketCloseReason string
 
 const (
-	TicketCloseReasonPaymentSucceeded    TicketCloseReason = "payment_succeeded"
-	TicketCloseReasonActivationTimeout   TicketCloseReason = "activation_timeout"
-	TicketCloseReasonUserDeclined        TicketCloseReason = "user_declined"
-	TicketCloseReasonListingClosed       TicketCloseReason = "listing_closed"
-	TicketCloseReasonSKUClosed           TicketCloseReason = "sku_closed"
-	TicketCloseReasonReservationReleased TicketCloseReason = "reservation_released"
-	TicketCloseReasonSystemCancelled     TicketCloseReason = "system_cancelled"
+	TicketCloseReasonActivationTimeout TicketCloseReason = "activation_timeout"
+	TicketCloseReasonUserDeclined      TicketCloseReason = "user_declined"
+	TicketCloseReasonListingClosed     TicketCloseReason = "listing_closed"
+	TicketCloseReasonSKUClosed         TicketCloseReason = "sku_closed"
+	TicketCloseReasonSystemCancelled   TicketCloseReason = "system_cancelled"
 )
 
 func (r TicketCloseReason) Valid() bool {
 	switch r {
-	case TicketCloseReasonPaymentSucceeded,
-		TicketCloseReasonActivationTimeout,
+	case TicketCloseReasonActivationTimeout,
 		TicketCloseReasonUserDeclined,
 		TicketCloseReasonListingClosed,
 		TicketCloseReasonSKUClosed,
-		TicketCloseReasonReservationReleased,
 		TicketCloseReasonSystemCancelled:
 		return true
 	default:
@@ -56,7 +51,6 @@ type TicketAvailableAction string
 const (
 	TicketAvailableActionActivate TicketAvailableAction = "activate"
 	TicketAvailableActionDecline  TicketAvailableAction = "decline"
-	TicketAvailableActionCheckout TicketAvailableAction = "checkout"
 )
 
 type Ticket struct {
@@ -77,13 +71,8 @@ type Ticket struct {
 func (t Ticket) ActionsAt(now time.Time) []TicketAvailableAction {
 	actions := make([]TicketAvailableAction, 0, 2)
 
-	switch t.Status {
-	case TicketStatusIssued:
-		if now.Before(t.ActivationDeadline) {
-			actions = append(actions, TicketAvailableActionActivate, TicketAvailableActionDecline)
-		}
-	case TicketStatusActive:
-		actions = append(actions, TicketAvailableActionCheckout)
+	if t.Status == TicketStatusIssued && now.Before(t.ActivationDeadline) {
+		actions = append(actions, TicketAvailableActionActivate, TicketAvailableActionDecline)
 	}
 
 	return actions

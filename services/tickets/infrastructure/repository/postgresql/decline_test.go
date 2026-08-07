@@ -377,7 +377,6 @@ func TestDeclineRepository_Decline_IneligibleTicket_ReturnNotDeclinable(t *testi
 		status   domain.TicketStatus
 		deadline time.Time
 	}{
-		{name: "active", status: domain.TicketStatusActive, deadline: now.Add(time.Minute)},
 		{name: "redeemed", status: domain.TicketStatusRedeemed, deadline: now.Add(time.Minute)},
 		{name: "closed", status: domain.TicketStatusClosed, deadline: now.Add(time.Minute)},
 		{name: "deadline reached", status: domain.TicketStatusIssued, deadline: now},

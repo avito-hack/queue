@@ -316,11 +316,11 @@ func TestActivationRepository_Prepare_IneligibleTicket_ReturnDomainError(t *test
 			expectedError: usecase.ErrTicketNotFound,
 		},
 		{
-			name: "ticket already active",
+			name: "ticket already redeemed",
 			ticketRow: activationTicketRow(activationTicketRecord{
 				ListingID:          uuid.New(),
 				SKUID:              uuid.New(),
-				Status:             domain.TicketStatusActive,
+				Status:             domain.TicketStatusRedeemed,
 				ActivationDeadline: time.Now().Add(time.Hour),
 			}),
 			extraRows:     []activationRow{activationScanErrorRow(pgx.ErrNoRows)},
@@ -389,7 +389,7 @@ func TestActivationRepository_Prepare_ConcurrentSameKeyCompletion_ReturnReplay(t
 			activationTicketRow(activationTicketRecord{
 				ListingID:          uuid.New(),
 				SKUID:              uuid.New(),
-				Status:             domain.TicketStatusActive,
+				Status:             domain.TicketStatusRedeemed,
 				ActivationDeadline: time.Now().Add(time.Hour),
 			}),
 			activationOperationRow(activationOperationRecord{

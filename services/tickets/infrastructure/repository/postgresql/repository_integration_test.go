@@ -277,7 +277,7 @@ func Test_OutboxRepository_ClaimRetryAndPublish_ChangeDeliveryState(t *testing.T
 	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "status = 'published'"))
 }
 
-func Test_TicketsSchema_ActiveWithoutOrder_RejectInvalidState(t *testing.T) {
+func Test_TicketsSchema_ActiveStatus_RejectObsoleteLifecycle(t *testing.T) {
 	// given
 	truncateIntegrationTables(t)
 	issued := issueIntegrationTicket(t)
@@ -291,7 +291,39 @@ func Test_TicketsSchema_ActiveWithoutOrder_RejectInvalidState(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ck_tickets_state")
+	assert.Contains(t, err.Error(), "ck_tickets_")
+}
+
+func Test_TicketsSchema_ExternalCloseReason_RejectUnknownReason(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issued := issueIntegrationTicket(t)
+
+	// when
+	_, err := integrationPool.Exec(
+		context.Background(),
+		"UPDATE public.tickets SET status = 'closed', finished_at = updated_at, close_reason = 'reservation_released' WHERE id = $1",
+		issued.Ticket.ID,
+	)
+
+	// then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ck_tickets_close_reason")
+}
+
+func Test_TicketsSchema_InboxTable_ReturnAbsent(t *testing.T) {
+	// given
+	var tableName *string
+
+	// when
+	err := integrationPool.QueryRow(
+		context.Background(),
+		"SELECT to_regclass('public.inbox_events')::text",
+	).Scan(&tableName)
+
+	// then
+	require.NoError(t, err)
+	assert.Nil(t, tableName)
 }
 
 func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) {
@@ -398,7 +430,7 @@ func truncateIntegrationTables(t *testing.T) {
 	t.Helper()
 	_, err := integrationPool.Exec(
 		context.Background(),
-		"TRUNCATE public.inbox_events, public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
+		"TRUNCATE public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
 	)
 	require.NoError(t, err)
 }

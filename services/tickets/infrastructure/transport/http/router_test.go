@@ -456,7 +456,6 @@ func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
 	activatedAt := issuedAt.Add(time.Minute)
 	finishedAt := issuedAt.Add(10 * time.Minute)
 	checkoutURL := "/checkout/1"
-	closeReason := domain.TicketCloseReasonPaymentSucceeded
 	lister := &ticketListerStub{tickets: []domain.Ticket{
 		{
 			ID:                 ticketID,
@@ -469,7 +468,6 @@ func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
 			OrderID:            &orderID,
 			CheckoutURL:        &checkoutURL,
 			FinishedAt:         &finishedAt,
-			CloseReason:        &closeReason,
 			AvailableActions:   []domain.TicketAvailableAction{},
 		},
 	}}
@@ -501,7 +499,7 @@ func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
 			"order_id": "`+orderID.String()+`",
 			"checkout_url": "/checkout/1",
 			"finished_at": "2026-08-06T10:10:00Z",
-			"finish_reason": "payment_succeeded",
+			"finish_reason": null,
 			"available_actions": []
 		}]
 	}`, recorder.Body.String())

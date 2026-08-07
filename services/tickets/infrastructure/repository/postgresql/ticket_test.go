@@ -197,7 +197,6 @@ func TestTicketRepository_List_ReturnTickets(t *testing.T) {
 		orderID:            toPGUUID(orderID),
 		checkoutURL:        pgtype.Text{String: "/checkout/1", Valid: true},
 		finishedAt:         pgtype.Timestamptz{Time: finishedAt, Valid: true},
-		closeReason:        pgtype.Text{String: string(domain.TicketCloseReasonPaymentSucceeded), Valid: true},
 	}}}
 	queryer := &queryerStub{rows: resultRows}
 	repository := &TicketRepository{queryer: queryer}
@@ -218,7 +217,7 @@ func TestTicketRepository_List_ReturnTickets(t *testing.T) {
 	assert.Equal(t, orderID, *tickets[0].OrderID)
 	assert.Equal(t, "/checkout/1", *tickets[0].CheckoutURL)
 	assert.Equal(t, finishedAt, *tickets[0].FinishedAt)
-	assert.Equal(t, domain.TicketCloseReasonPaymentSucceeded, *tickets[0].CloseReason)
+	assert.Nil(t, tickets[0].CloseReason)
 	assert.Contains(t, queryer.receivedQuery, "WHERE user_id = $1")
 	assert.Contains(t, queryer.receivedQuery, "ORDER BY issued_at DESC, id DESC")
 	assert.Equal(t, []any{toPGUUID(userID)}, queryer.receivedArgs)
@@ -230,7 +229,7 @@ func TestTicketRepository_List_WithFilters_ReturnScopedQuery(t *testing.T) {
 	userID := uuid.New()
 	listingID := uuid.New()
 	skuID := uuid.New()
-	status := domain.TicketStatusActive
+	status := domain.TicketStatusRedeemed
 	queryer := &queryerStub{rows: &rowsStub{}}
 	repository := &TicketRepository{queryer: queryer}
 	filter := usecase.ListTicketsFilter{Status: &status, ListingID: &listingID, SKUID: &skuID}
@@ -245,7 +244,7 @@ func TestTicketRepository_List_WithFilters_ReturnScopedQuery(t *testing.T) {
 	assert.Contains(t, queryer.receivedQuery, "WHERE user_id = $1 AND status = $2 AND listing_id = $3 AND sku_id = $4")
 	assert.Equal(t, []any{
 		toPGUUID(userID),
-		string(domain.TicketStatusActive),
+		string(domain.TicketStatusRedeemed),
 		toPGUUID(listingID),
 		toPGUUID(skuID),
 	}, queryer.receivedArgs)

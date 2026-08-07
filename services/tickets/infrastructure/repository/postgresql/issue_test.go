@@ -112,6 +112,7 @@ func TestIssueRepository_Issue_CompletedOperation_ReturnReplayAsExisting(t *test
 	// given
 	command := issueCommandForTest()
 	activatedAt := command.IssuedAt.Add(time.Minute)
+	finishedAt := command.IssuedAt.Add(2 * time.Minute)
 	orderID := uuid.New()
 	checkoutURL := "/checkout/replayed"
 	expected := usecase.IssueTicketResult{
@@ -119,12 +120,13 @@ func TestIssueRepository_Issue_CompletedOperation_ReturnReplayAsExisting(t *test
 			ID:                 uuid.New(),
 			ListingID:          command.ListingID,
 			SKUID:              command.SKUID,
-			Status:             domain.TicketStatusActive,
+			Status:             domain.TicketStatusRedeemed,
 			IssuedAt:           command.IssuedAt,
 			ActivationDeadline: command.ActivationDeadline,
 			ActivatedAt:        &activatedAt,
 			OrderID:            &orderID,
 			CheckoutURL:        &checkoutURL,
+			FinishedAt:         &finishedAt,
 		},
 		QueueEntryID: command.QueueEntryID,
 		UserID:       command.UserID,
@@ -202,7 +204,7 @@ func TestIssueRepository_Issue_ExistingQueueEntry_ReturnExistingAndNoOutbox(t *t
 	finishedAt := command.IssuedAt.Add(10 * time.Minute)
 	orderID := uuid.New()
 	checkoutURL := "/checkout/existing"
-	closeReason := domain.TicketCloseReasonPaymentSucceeded
+	closeReason := domain.TicketCloseReasonSystemCancelled
 	existing.Ticket.Status = domain.TicketStatusClosed
 	existing.Ticket.ActivatedAt = &activatedAt
 	existing.Ticket.OrderID = &orderID

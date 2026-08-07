@@ -43,7 +43,7 @@ func Test_IssueTicket_ValidRequest_ReturnCreatedTicket(t *testing.T) {
 	activationTTL := 15 * time.Minute
 	expected := validCreatedIssueTicketResult(request, now, activationTTL)
 	expected.Ticket.AvailableActions = []domain.TicketAvailableAction{
-		domain.TicketAvailableActionCheckout,
+		domain.TicketAvailableActionDecline,
 	}
 	repository := &issueTicketRepositoryStub{result: expected}
 	clockCalls := 0
@@ -93,11 +93,6 @@ func Test_IssueTicket_ReplayedTicket_ReturnTicketForEveryValidStatus(t *testing.
 			},
 		},
 		{
-			name:            "active",
-			status:          domain.TicketStatusActive,
-			expectedActions: []domain.TicketAvailableAction{domain.TicketAvailableActionCheckout},
-		},
-		{
 			name:            "redeemed",
 			status:          domain.TicketStatusRedeemed,
 			expectedActions: []domain.TicketAvailableAction{},
@@ -120,7 +115,7 @@ func Test_IssueTicket_ReplayedTicket_ReturnTicketForEveryValidStatus(t *testing.
 					Status:             test.status,
 					IssuedAt:           now.Add(-time.Hour),
 					ActivationDeadline: now.Add(time.Hour),
-					AvailableActions:   []domain.TicketAvailableAction{domain.TicketAvailableActionCheckout},
+					AvailableActions:   []domain.TicketAvailableAction{domain.TicketAvailableActionActivate},
 				},
 				QueueEntryID: request.QueueEntryID,
 				UserID:       request.UserID,
@@ -325,7 +320,7 @@ func Test_IssueTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
 			result.Ticket.Status = domain.TicketStatus("unknown")
 		}},
 		{name: "created active ticket", mutate: func(result *IssueTicketResult) {
-			result.Ticket.Status = domain.TicketStatusActive
+			result.Ticket.Status = domain.TicketStatus("active")
 		}},
 		{name: "different issue time", mutate: func(result *IssueTicketResult) {
 			result.Ticket.IssuedAt = otherTime

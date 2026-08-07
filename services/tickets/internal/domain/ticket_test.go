@@ -35,12 +35,6 @@ func TestTicket_ActionsAt_ReturnAvailableActions(t *testing.T) {
 			expected: []TicketAvailableAction{},
 		},
 		{
-			name:     "active",
-			status:   TicketStatusActive,
-			deadline: now.Add(-time.Minute),
-			expected: []TicketAvailableAction{TicketAvailableActionCheckout},
-		},
-		{
 			name:     "redeemed",
 			status:   TicketStatusRedeemed,
 			deadline: now.Add(time.Minute),
@@ -75,7 +69,7 @@ func TestTicketStatus_Valid_ReturnValidity(t *testing.T) {
 		expected bool
 	}{
 		{name: "issued", status: TicketStatusIssued, expected: true},
-		{name: "active", status: TicketStatusActive, expected: true},
+		{name: "active", status: TicketStatus("active"), expected: false},
 		{name: "redeemed", status: TicketStatusRedeemed, expected: true},
 		{name: "closed", status: TicketStatusClosed, expected: true},
 		{name: "unknown", status: TicketStatus("unknown"), expected: false},
@@ -101,12 +95,12 @@ func TestTicketCloseReason_Valid_ReturnValidity(t *testing.T) {
 		reason   TicketCloseReason
 		expected bool
 	}{
-		{name: "payment succeeded", reason: TicketCloseReasonPaymentSucceeded, expected: true},
+		{name: "payment succeeded", reason: TicketCloseReason("payment_succeeded"), expected: false},
 		{name: "activation timeout", reason: TicketCloseReasonActivationTimeout, expected: true},
 		{name: "user declined", reason: TicketCloseReasonUserDeclined, expected: true},
 		{name: "listing closed", reason: TicketCloseReasonListingClosed, expected: true},
 		{name: "SKU closed", reason: TicketCloseReasonSKUClosed, expected: true},
-		{name: "reservation released", reason: TicketCloseReasonReservationReleased, expected: true},
+		{name: "reservation released", reason: TicketCloseReason("reservation_released"), expected: false},
 		{name: "system cancelled", reason: TicketCloseReasonSystemCancelled, expected: true},
 		{name: "unknown", reason: TicketCloseReason("unknown"), expected: false},
 	}

@@ -198,13 +198,6 @@ func Test_DeclineTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
 			},
 		},
 		{
-			name: "active status",
-			result: DeclineTicketResult{
-				TicketID: ticketID,
-				Status:   domain.TicketStatusActive,
-			},
-		},
-		{
 			name: "redeemed status",
 			result: DeclineTicketResult{
 				TicketID: ticketID,

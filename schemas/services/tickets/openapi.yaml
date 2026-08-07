@@ -375,20 +375,10 @@ components:
           type: string
           format: uuid
 
-    InternalV1TicketCancelRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - reason
-      properties:
-        reason:
-          $ref: "#/components/schemas/InternalV1TicketCancellationReason"
-
     V1TicketStatus:
       type: string
       enum:
         - issued
-        - active
         - redeemed
         - closed
 
@@ -397,25 +387,14 @@ components:
       enum:
         - activate
         - decline
-        - checkout
 
     V1TicketCloseReason:
       type: string
       enum:
-        - payment_succeeded
         - activation_timeout
         - user_declined
         - listing_closed
         - sku_closed
-        - reservation_released
-        - system_cancelled
-
-    InternalV1TicketCancellationReason:
-      type: string
-      enum:
-        - listing_closed
-        - sku_closed
-        - stock_reduced
         - system_cancelled
 
     ErrorWithMessage:
