@@ -162,8 +162,6 @@ paths:
     post:
       operationId: issueTicket
       summary: Выдать тикет пользователю
-      security:
-        - serviceAuth: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -205,12 +203,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Пользовательский авторизационный токен
-
-    serviceAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: ServiceToken
-      description: Токен доверенного внутреннего сервиса
 
   parameters:
     TicketId:

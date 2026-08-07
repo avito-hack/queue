@@ -244,7 +244,7 @@ func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
 				Created:      test.created,
 			}}
 			resolver := &userTokenResolverStub{userID: uuid.New()}
-			router, err := NewRouter(newTestHandlerWithIssuer(issuer), resolver, "queue-service-token")
+			router, err := NewRouter(newTestHandlerWithIssuer(issuer), resolver)
 			require.NoError(t, err)
 			request := httptest.NewRequest(
 				http.MethodPost,
@@ -257,7 +257,6 @@ func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
 				}`),
 			)
 			request.Header.Set("Content-Type", "application/json")
-			request.Header.Set("Authorization", "Bearer queue-service-token")
 			request.Header.Set("Idempotency-Key", idempotencyKey.String())
 			recorder := httptest.NewRecorder()
 
@@ -327,7 +326,6 @@ func Test_PostInternalV1TicketIssue_UsecaseReturnsDomainError_ReturnMappedError(
 			router, err := NewRouter(
 				newTestHandlerWithIssuer(issuer),
 				&userTokenResolverStub{userID: uuid.New()},
-				"queue-service-token",
 			)
 			require.NoError(t, err)
 			request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
@@ -350,7 +348,6 @@ func Test_PostInternalV1TicketIssue_UsecaseReturnsError_ReturnInternalError(t *t
 	router, err := NewRouter(
 		newTestHandlerWithIssuer(issuer),
 		&userTokenResolverStub{userID: uuid.New()},
-		"queue-service-token",
 	)
 	require.NoError(t, err)
 	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
@@ -391,7 +388,6 @@ func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T
 			router, err := NewRouter(
 				newTestHandlerWithIssuer(issuer),
 				&userTokenResolverStub{userID: uuid.New()},
-				"queue-service-token",
 			)
 			require.NoError(t, err)
 			request := httptest.NewRequest(
@@ -400,7 +396,6 @@ func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T
 				strings.NewReader(test.body),
 			)
 			request.Header.Set("Content-Type", "application/json")
-			request.Header.Set("Authorization", "Bearer queue-service-token")
 			if test.idempotencyKey != "" {
 				request.Header.Set("Idempotency-Key", test.idempotencyKey)
 			}
@@ -414,50 +409,6 @@ func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T
 			assert.Zero(t, issuer.calls)
 		})
 	}
-}
-
-func Test_PostInternalV1TicketIssue_WithoutBearer_ReturnUnauthorized(t *testing.T) {
-	// given
-	issuer := &ticketIssuerStub{}
-	router, err := NewRouter(
-		newTestHandlerWithIssuer(issuer),
-		&userTokenResolverStub{userID: uuid.New()},
-		"queue-service-token",
-	)
-	require.NoError(t, err)
-	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
-	request.Header.Del("Authorization")
-	recorder := httptest.NewRecorder()
-
-	// when
-	router.ServeHTTP(recorder, request)
-
-	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
-	assert.Zero(t, issuer.calls)
-}
-
-func Test_PostInternalV1TicketIssue_InvalidServiceToken_ReturnUnauthorized(t *testing.T) {
-	// given
-	issuer := &ticketIssuerStub{}
-	router, err := NewRouter(
-		newTestHandlerWithIssuer(issuer),
-		&userTokenResolverStub{userID: uuid.New()},
-		"queue-service-token",
-	)
-	require.NoError(t, err)
-	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
-	request.Header.Set("Authorization", "Bearer arbitrary-internal-token")
-	recorder := httptest.NewRecorder()
-
-	// when
-	router.ServeHTTP(recorder, request)
-
-	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is invalid"}`, recorder.Body.String())
-	assert.Zero(t, issuer.calls)
 }
 
 func Test_IssueTicket_NilBody_ReturnBadRequest(t *testing.T) {
@@ -488,7 +439,6 @@ func newIssueTicketHTTPRequest(queueEntryID, userID, listingID, skuID uuid.UUID)
 		}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer queue-service-token")
 	request.Header.Set("Idempotency-Key", uuid.NewString())
 
 	return request
