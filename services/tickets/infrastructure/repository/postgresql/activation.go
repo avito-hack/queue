@@ -24,6 +24,7 @@ const (
 	activationOperation                = "activate_ticket"
 	activationOperationStateProcessing = "processing"
 	activationOperationStateComplete   = "completed"
+	activationOperationStateFailed     = "failed"
 	activationOperationTTL             = 24 * time.Hour
 	activationResponseStatus           = 200
 	activationOutboxAggregateType      = "ticket"
@@ -111,6 +112,14 @@ SET state = 'completed',
     response_body = $3,
     updated_at = $4
 WHERE id = $1 AND state = 'processing'`
+
+const failActivationOperationQuery = `UPDATE public.idempotency_operations
+SET state = 'failed', updated_at = $2
+WHERE id = $1 AND operation = 'activate_ticket' AND state = 'processing'`
+
+const retryActivationOperationQuery = `UPDATE public.idempotency_operations
+SET state = 'processing', updated_at = $2
+WHERE id = $1 AND operation = 'activate_ticket' AND state = 'failed'`
 
 const insertActivationOutboxQuery = `INSERT INTO public.outbox_events (
     id,
@@ -217,6 +226,32 @@ func (r *ActivationRepository) Complete(
 	) (usecase.ActivationResult, error) {
 		return r.complete(ctx, transaction, operationID, order, completedAt)
 	})
+}
+
+func (r *ActivationRepository) Fail(ctx context.Context, operationID uuid.UUID, failedAt time.Time) error {
+	_, err := inActivationTransaction(ctx, r.transactions, func(
+		transaction activationTransaction,
+	) (struct{}, error) {
+		commandTag, err := transaction.Exec(
+			ctx,
+			failActivationOperationQuery,
+			toPGUUID(operationID),
+			failedAt,
+		)
+		if err != nil {
+			return struct{}{}, fmt.Errorf("fail activation operation: %w", err)
+		}
+		if commandTag.RowsAffected() != 1 {
+			return struct{}{}, fmt.Errorf(
+				"fail activation operation: unexpected affected rows %d",
+				commandTag.RowsAffected(),
+			)
+		}
+
+		return struct{}{}, nil
+	})
+
+	return err
 }
 
 func (r *ActivationRepository) prepare(
@@ -610,6 +645,49 @@ func (r *ActivationRepository) resolvePreparedActivation(
 		}
 		if ticket.Status != domain.TicketStatusIssued {
 			return usecase.PreparedActivation{}, usecase.ErrTicketNotActivatable
+		}
+		if !command.Now.Before(ticket.ActivationDeadline) {
+			return usecase.PreparedActivation{}, usecase.ErrTicketActivationExpired
+		}
+
+		return preparedActivation(operation.ID, command, ticket), nil
+	case activationOperationStateFailed:
+		var ticket activationTicketRecord
+		if lockedTicket == nil {
+			var err error
+			ticket, err = lockTicketForActivation(ctx, transaction, command.UserID, command.TicketID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return usecase.PreparedActivation{}, usecase.ErrTicketNotFound
+			}
+			if err != nil {
+				return usecase.PreparedActivation{}, fmt.Errorf("lock ticket for activation retry: %w", err)
+			}
+		} else {
+			ticket = *lockedTicket
+		}
+		if !ticket.Status.Valid() {
+			return usecase.PreparedActivation{}, fmt.Errorf("lock ticket for activation retry: unknown status %q", ticket.Status)
+		}
+		if ticket.Status != domain.TicketStatusIssued {
+			return usecase.PreparedActivation{}, usecase.ErrTicketNotActivatable
+		}
+		if !command.Now.Before(ticket.ActivationDeadline) {
+			return usecase.PreparedActivation{}, usecase.ErrTicketActivationExpired
+		}
+		commandTag, err := transaction.Exec(
+			ctx,
+			retryActivationOperationQuery,
+			toPGUUID(operation.ID),
+			command.Now,
+		)
+		if err != nil {
+			return usecase.PreparedActivation{}, fmt.Errorf("retry activation operation: %w", err)
+		}
+		if commandTag.RowsAffected() != 1 {
+			return usecase.PreparedActivation{}, fmt.Errorf(
+				"retry activation operation: unexpected affected rows %d",
+				commandTag.RowsAffected(),
+			)
 		}
 
 		return preparedActivation(operation.ID, command, ticket), nil

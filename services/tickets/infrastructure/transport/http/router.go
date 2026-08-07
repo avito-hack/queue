@@ -11,9 +11,17 @@ import (
 	identityauth "github.com/avito-hack/queue/services/tickets/internal/auth"
 )
 
-func NewRouter(handler *Handler, resolver identityauth.UserTokenResolver) (*gin.Engine, error) {
+func NewRouter(
+	handler *Handler,
+	resolver identityauth.UserTokenResolver,
+	serviceTokens ...string,
+) (*gin.Engine, error) {
 	if resolver == nil {
 		return nil, fmt.Errorf("create router: user token resolver is nil")
+	}
+	serviceToken := ""
+	if len(serviceTokens) > 0 {
+		serviceToken = serviceTokens[0]
 	}
 
 	spec, err := server.GetSwagger()
@@ -29,7 +37,7 @@ func NewRouter(handler *Handler, resolver identityauth.UserTokenResolver) (*gin.
 		middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
 			ErrorHandler: validationErrorHandler,
 			Options: openapi3filter.Options{
-				AuthenticationFunc: authenticateWith(resolver),
+				AuthenticationFunc: authenticateWith(resolver, serviceToken),
 			},
 		}),
 	)

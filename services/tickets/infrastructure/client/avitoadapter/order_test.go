@@ -105,7 +105,7 @@ func TestOrderCreator_CreateOrder_AdapterUnavailable_ReturnUnavailable(t *testin
 	}
 }
 
-func TestOrderCreator_CreateOrder_AdapterRejectsRequest_ReturnError(t *testing.T) {
+func TestOrderCreator_CreateOrder_AdapterRejectsRequest_ReturnRejected(t *testing.T) {
 	// given
 	statuses := []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict}
 
@@ -121,8 +121,8 @@ func TestOrderCreator_CreateOrder_AdapterRejectsRequest_ReturnError(t *testing.T
 			_, err = creator.CreateOrder(context.Background(), validCreateOrderRequest())
 
 			// then
-			require.EqualError(t, err, fmt.Sprintf("create order: unexpected status %d", status))
-			assert.NotErrorIs(t, err, usecase.ErrOrderUnavailable)
+			require.EqualError(t, err, fmt.Sprintf("order creation rejected: create order status %d", status))
+			assert.ErrorIs(t, err, usecase.ErrOrderRejected)
 		})
 	}
 }

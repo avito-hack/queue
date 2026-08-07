@@ -231,7 +231,7 @@ func TestActivationRepository_Prepare_CompletedOperation_ReturnReplay(t *testing
 	assert.Zero(t, transaction.rollbackCalls)
 }
 
-func TestActivationRepository_Prepare_ProcessingOperationWithSameKey_ReturnPreparedRetry(t *testing.T) {
+func TestActivationRepository_Prepare_ExpiredProcessingOperationWithSameKey_ReturnActivationExpired(t *testing.T) {
 	// given
 	userID := uuid.New()
 	ticketID := uuid.New()
@@ -257,7 +257,7 @@ func TestActivationRepository_Prepare_ProcessingOperationWithSameKey_ReturnPrepa
 	repository := newActivationRepositoryForTest(transaction)
 
 	// when
-	prepared, err := repository.Prepare(context.Background(), usecase.PrepareActivationCommand{
+	_, err := repository.Prepare(context.Background(), usecase.PrepareActivationCommand{
 		UserID:         userID,
 		TicketID:       ticketID,
 		IdempotencyKey: idempotencyKey,
@@ -265,21 +265,11 @@ func TestActivationRepository_Prepare_ProcessingOperationWithSameKey_ReturnPrepa
 	})
 
 	// then
-	require.NoError(t, err)
-	assert.Equal(t, usecase.PreparedActivation{
-		OperationID: operationID,
-		Order: usecase.CreateOrderRequest{
-			TicketID:       ticketID,
-			ListingID:      listingID,
-			SKUID:          skuID,
-			UserID:         userID,
-			IdempotencyKey: operationID,
-		},
-	}, prepared)
+	require.ErrorIs(t, err, usecase.ErrTicketActivationExpired)
 	assert.Len(t, transaction.queryCalls, 2)
 	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	assert.Zero(t, transaction.commitCalls)
+	assert.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_SameKeyForAnotherTicket_ReturnIdempotencyConflict(t *testing.T) {
@@ -433,7 +423,7 @@ func TestActivationRepository_Prepare_ConcurrentSameKeyCompletion_ReturnReplay(t
 	assert.Equal(t, 1, transaction.commitCalls)
 }
 
-func TestActivationRepository_Prepare_ConcurrentSameKeyProcessing_ReturnPreparedRetry(t *testing.T) {
+func TestActivationRepository_Prepare_ConcurrentExpiredSameKeyProcessing_ReturnActivationExpired(t *testing.T) {
 	// given
 	userID := uuid.New()
 	ticketID := uuid.New()
@@ -460,7 +450,7 @@ func TestActivationRepository_Prepare_ConcurrentSameKeyProcessing_ReturnPrepared
 	repository := newActivationRepositoryForTest(transaction)
 
 	// when
-	prepared, err := repository.Prepare(context.Background(), usecase.PrepareActivationCommand{
+	_, err := repository.Prepare(context.Background(), usecase.PrepareActivationCommand{
 		UserID:         userID,
 		TicketID:       ticketID,
 		IdempotencyKey: idempotencyKey,
@@ -468,21 +458,12 @@ func TestActivationRepository_Prepare_ConcurrentSameKeyProcessing_ReturnPrepared
 	})
 
 	// then
-	require.NoError(t, err)
-	assert.Equal(t, usecase.PreparedActivation{
-		OperationID: operationID,
-		Order: usecase.CreateOrderRequest{
-			TicketID:       ticketID,
-			ListingID:      listingID,
-			SKUID:          skuID,
-			UserID:         userID,
-			IdempotencyKey: operationID,
-		},
-	}, prepared)
+	require.ErrorIs(t, err, usecase.ErrTicketActivationExpired)
 	require.Len(t, transaction.queryCalls, 3)
 	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
 	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
+	assert.Zero(t, transaction.commitCalls)
+	assert.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_DifferentKeyOperationIsProcessing_ReturnActivationInProgress(t *testing.T) {

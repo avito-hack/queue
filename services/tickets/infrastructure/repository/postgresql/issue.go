@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -29,6 +30,7 @@ const (
 	issueOutboxEventType          = "ticket.issued"
 	issueOutboxState              = "pending"
 	issueRollbackTimeout          = 5 * time.Second
+	issueLiveTicketConstraint     = "uq_tickets_live_user_listing"
 )
 
 const findIssueOperationQuery = `SELECT
@@ -165,6 +167,13 @@ func (r *IssueRepository) issue(
 	ticketID := r.newID()
 	ticketInserted, err := insertIssuedTicket(ctx, transaction, ticketID, command)
 	if err != nil {
+		var postgresError *pgconn.PgError
+		if errors.As(err, &postgresError) &&
+			postgresError.Code == "23505" &&
+			postgresError.ConstraintName == issueLiveTicketConstraint {
+			return usecase.IssueTicketResult{}, usecase.ErrTicketNotIssuable
+		}
+
 		return usecase.IssueTicketResult{}, fmt.Errorf("insert issued ticket: %w", err)
 	}
 

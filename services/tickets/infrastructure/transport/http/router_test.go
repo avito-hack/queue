@@ -244,7 +244,7 @@ func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
 				Created:      test.created,
 			}}
 			resolver := &userTokenResolverStub{userID: uuid.New()}
-			router, err := NewRouter(newTestHandlerWithIssuer(issuer), resolver)
+			router, err := NewRouter(newTestHandlerWithIssuer(issuer), resolver, "queue-service-token")
 			require.NoError(t, err)
 			request := httptest.NewRequest(
 				http.MethodPost,
@@ -327,6 +327,7 @@ func Test_PostInternalV1TicketIssue_UsecaseReturnsDomainError_ReturnMappedError(
 			router, err := NewRouter(
 				newTestHandlerWithIssuer(issuer),
 				&userTokenResolverStub{userID: uuid.New()},
+				"queue-service-token",
 			)
 			require.NoError(t, err)
 			request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
@@ -349,6 +350,7 @@ func Test_PostInternalV1TicketIssue_UsecaseReturnsError_ReturnInternalError(t *t
 	router, err := NewRouter(
 		newTestHandlerWithIssuer(issuer),
 		&userTokenResolverStub{userID: uuid.New()},
+		"queue-service-token",
 	)
 	require.NoError(t, err)
 	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
@@ -389,6 +391,7 @@ func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T
 			router, err := NewRouter(
 				newTestHandlerWithIssuer(issuer),
 				&userTokenResolverStub{userID: uuid.New()},
+				"queue-service-token",
 			)
 			require.NoError(t, err)
 			request := httptest.NewRequest(
@@ -419,6 +422,7 @@ func Test_PostInternalV1TicketIssue_WithoutBearer_ReturnUnauthorized(t *testing.
 	router, err := NewRouter(
 		newTestHandlerWithIssuer(issuer),
 		&userTokenResolverStub{userID: uuid.New()},
+		"queue-service-token",
 	)
 	require.NoError(t, err)
 	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
@@ -431,6 +435,28 @@ func Test_PostInternalV1TicketIssue_WithoutBearer_ReturnUnauthorized(t *testing.
 	// then
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	assert.Zero(t, issuer.calls)
+}
+
+func Test_PostInternalV1TicketIssue_InvalidServiceToken_ReturnUnauthorized(t *testing.T) {
+	// given
+	issuer := &ticketIssuerStub{}
+	router, err := NewRouter(
+		newTestHandlerWithIssuer(issuer),
+		&userTokenResolverStub{userID: uuid.New()},
+		"queue-service-token",
+	)
+	require.NoError(t, err)
+	request := newIssueTicketHTTPRequest(uuid.New(), uuid.New(), uuid.New(), uuid.New())
+	request.Header.Set("Authorization", "Bearer arbitrary-internal-token")
+	recorder := httptest.NewRecorder()
+
+	// when
+	router.ServeHTTP(recorder, request)
+
+	// then
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is invalid"}`, recorder.Body.String())
 	assert.Zero(t, issuer.calls)
 }
 
@@ -976,6 +1002,12 @@ func Test_PostV1TicketActivate_UsecaseReturnsDomainError_ReturnMappedError(t *te
 			err:        usecase.ErrOrderUnavailable,
 			statusCode: http.StatusServiceUnavailable,
 			response:   `{"error":"checkout_unavailable","message":"checkout is temporarily unavailable"}`,
+		},
+		{
+			name:       "order rejected",
+			err:        usecase.ErrOrderRejected,
+			statusCode: http.StatusConflict,
+			response:   `{"error":"checkout_rejected","message":"order creation rejected"}`,
 		},
 	}
 

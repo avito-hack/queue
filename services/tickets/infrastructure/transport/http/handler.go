@@ -177,6 +177,8 @@ func (h *Handler) ActivateTicket(ctx context.Context, request server.ActivateTic
 			Error:   "checkout_unavailable",
 			Message: "checkout is temporarily unavailable",
 		}, nil
+	case errors.Is(err, usecase.ErrOrderRejected):
+		return activationConflictResponse("checkout_rejected", usecase.ErrOrderRejected.Error()), nil
 	case err != nil:
 		slog.ErrorContext(ctx, "activate ticket", "error", err)
 		return server.ActivateTicket500JSONResponse{InternalErrorJSONResponse: internalServerError()}, nil

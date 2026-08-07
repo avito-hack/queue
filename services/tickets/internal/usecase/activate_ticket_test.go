@@ -18,12 +18,20 @@ type activationRepositoryStub struct {
 	prepareErr             error
 	completeResult         ActivationResult
 	completeErr            error
+	failErr                error
 	prepareCalls           int
 	completeCalls          int
+	failCalls              int
 	receivedPrepareCommand PrepareActivationCommand
 	receivedOperationID    uuid.UUID
 	receivedOrder          CreatedOrder
 	receivedCompletionTime time.Time
+}
+
+func (s *activationRepositoryStub) Fail(_ context.Context, _ uuid.UUID, _ time.Time) error {
+	s.failCalls++
+
+	return s.failErr
 }
 
 func (s *activationRepositoryStub) Prepare(
@@ -378,6 +386,7 @@ func Test_ActivateTicket_OrderUnavailable_ReturnOrderUnavailable(t *testing.T) {
 	assert.Equal(t, "create order: order service unavailable", err.Error())
 	assert.Equal(t, 1, orderCreator.calls)
 	assert.Zero(t, repository.completeCalls)
+	assert.Equal(t, 1, repository.failCalls)
 }
 
 func Test_ActivateTicket_OrderUnavailable_RetrySameOperation(t *testing.T) {
@@ -434,6 +443,7 @@ func Test_ActivateTicket_OrderUnavailable_RetrySameOperation(t *testing.T) {
 	assert.Equal(t, 2, repository.prepareCalls)
 	assert.Equal(t, 2, orderCalls)
 	assert.Equal(t, 1, repository.completeCalls)
+	assert.Equal(t, 1, repository.failCalls)
 }
 
 func Test_ActivateTicket_CreateOrderFails_ReturnWrappedError(t *testing.T) {
@@ -467,6 +477,7 @@ func Test_ActivateTicket_CreateOrderFails_ReturnWrappedError(t *testing.T) {
 	assert.ErrorIs(t, err, orderError)
 	assert.Equal(t, "create order: create order failed", err.Error())
 	assert.Zero(t, repository.completeCalls)
+	assert.Equal(t, 1, repository.failCalls)
 }
 
 func Test_ActivateTicket_InvalidCreatedOrder_ReturnError(t *testing.T) {
@@ -508,6 +519,7 @@ func Test_ActivateTicket_InvalidCreatedOrder_ReturnError(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "create order: invalid created order")
 			assert.Zero(t, repository.completeCalls)
+			assert.Equal(t, 1, repository.failCalls)
 		})
 	}
 }

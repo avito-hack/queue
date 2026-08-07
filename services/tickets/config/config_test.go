@@ -27,7 +27,9 @@ func TestLoad_ReturnConfig(t *testing.T) {
 	assert.Equal(t, 2*time.Second, config.PostgreSQL.ConnectTimeout)
 	assert.Equal(t, "http://avito-adapter:8080", config.AvitoAdapter.URL)
 	assert.Equal(t, 3*time.Second, config.AvitoAdapter.Timeout)
+	assert.Equal(t, "amqp://tickets:password@rabbitmq:5672/", config.RabbitMQ.URL)
 	assert.Equal(t, 12*time.Minute, config.Ticket.ActivationTTL)
+	assert.Equal(t, "queue-to-tickets-secret", config.ServiceAuthToken)
 }
 
 func TestLoad_DefaultTicketActivationTTL_ReturnFifteenMinutes(t *testing.T) {
@@ -74,7 +76,7 @@ func TestLoad_InvalidDependencyTimeout_ReturnError(t *testing.T) {
 
 func TestLoad_MissingDependencyAddress_ReturnError(t *testing.T) {
 	// given
-	tests := []string{"DATABASE_URL", "AVITO_ADAPTER_URL"}
+	tests := []string{"DATABASE_URL", "AVITO_ADAPTER_URL", "RABBITMQ_URL", "SERVICE_AUTH_TOKEN"}
 
 	for _, variable := range tests {
 		t.Run(variable, func(t *testing.T) {
@@ -101,5 +103,7 @@ func setValidEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_CONNECT_TIMEOUT", "2s")
 	t.Setenv("AVITO_ADAPTER_URL", "http://avito-adapter:8080")
 	t.Setenv("AVITO_ADAPTER_TIMEOUT", "3s")
+	t.Setenv("RABBITMQ_URL", "amqp://tickets:password@rabbitmq:5672/")
+	t.Setenv("SERVICE_AUTH_TOKEN", "queue-to-tickets-secret")
 	t.Setenv("TICKET_ACTIVATION_TTL", "12m")
 }

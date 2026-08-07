@@ -18,6 +18,7 @@ var (
 	ErrIdempotencyConflict     = errors.New("idempotency conflict")
 	ErrActivationInProgress    = errors.New("ticket activation is in progress")
 	ErrOrderUnavailable        = errors.New("order service unavailable")
+	ErrOrderRejected           = errors.New("order creation rejected")
 )
 
 type PrepareActivationCommand struct {
@@ -56,6 +57,7 @@ type PreparedActivation struct {
 type ActivationRepository interface {
 	Prepare(context.Context, PrepareActivationCommand) (PreparedActivation, error)
 	Complete(context.Context, uuid.UUID, CreatedOrder, time.Time) (ActivationResult, error)
+	Fail(context.Context, uuid.UUID, time.Time) error
 }
 
 type OrderCreator interface {
@@ -119,11 +121,11 @@ func (u *ActivateTicket) Activate(
 
 	order, err := u.orderCreator.CreateOrder(ctx, prepared.Order)
 	if err != nil {
-		return ActivationResult{}, fmt.Errorf("create order: %w", err)
+		return ActivationResult{}, u.failPreparedActivation(ctx, prepared.OperationID, fmt.Errorf("create order: %w", err))
 	}
 	order, err = normalizeCreatedOrder(order)
 	if err != nil {
-		return ActivationResult{}, fmt.Errorf("create order: %w", err)
+		return ActivationResult{}, u.failPreparedActivation(ctx, prepared.OperationID, fmt.Errorf("create order: %w", err))
 	}
 
 	result, err := u.repository.Complete(ctx, prepared.OperationID, order, u.clock())
@@ -137,6 +139,16 @@ func (u *ActivateTicket) Activate(
 	}
 
 	return result, nil
+}
+
+func (u *ActivateTicket) failPreparedActivation(ctx context.Context, operationID uuid.UUID, cause error) error {
+	failContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := u.repository.Fail(failContext, operationID, u.clock()); err != nil {
+		return errors.Join(cause, fmt.Errorf("fail ticket activation: %w", err))
+	}
+
+	return cause
 }
 
 func validatePreparedActivation(

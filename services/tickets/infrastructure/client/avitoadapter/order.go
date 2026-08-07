@@ -59,6 +59,9 @@ func (c *OrderCreator) CreateOrder(ctx context.Context, request usecase.CreateOr
 	if orderUnavailableStatus(response.StatusCode()) {
 		return usecase.CreatedOrder{}, fmt.Errorf("%w: create order status %d", usecase.ErrOrderUnavailable, response.StatusCode())
 	}
+	if response.StatusCode() >= 400 && response.StatusCode() < 500 {
+		return usecase.CreatedOrder{}, fmt.Errorf("%w: create order status %d", usecase.ErrOrderRejected, response.StatusCode())
+	}
 
 	return usecase.CreatedOrder{}, fmt.Errorf("create order: unexpected status %d", response.StatusCode())
 }

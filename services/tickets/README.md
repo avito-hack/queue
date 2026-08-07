@@ -17,6 +17,8 @@ Tickets ожидает `200` с телом `{"user_id":"<uuid>"}` для вал�
 ```bash
 DATABASE_URL='postgres://tickets:password@localhost:5432/tickets?sslmode=disable' \
 AVITO_ADAPTER_URL='http://localhost:8081' \
+RABBITMQ_URL='amqp://tickets:password@localhost:5672/' \
+SERVICE_AUTH_TOKEN='queue-to-tickets-secret' \
 go run ./cmd/app
 ```
 
@@ -35,6 +37,8 @@ docker build -f services/tickets/build/Dockerfile -t tickets .
 docker run --rm \
   -e DATABASE_URL="$DATABASE_URL" \
   -e AVITO_ADAPTER_URL="$AVITO_ADAPTER_URL" \
+  -e RABBITMQ_URL="$RABBITMQ_URL" \
+  -e SERVICE_AUTH_TOKEN="$SERVICE_AUTH_TOKEN" \
   -p 8080:8080 tickets
 ```
 
@@ -51,7 +55,19 @@ docker run --rm \
 | `DATABASE_CONNECT_TIMEOUT` | `5s` |
 | `AVITO_ADAPTER_URL` | обязательный URL avito-adapter |
 | `AVITO_ADAPTER_TIMEOUT` | `3s` |
+| `RABBITMQ_URL` | обязательный URL RabbitMQ |
+| `RABBITMQ_EXCHANGE` | `domain.events` |
+| `RABBITMQ_LIFECYCLE_QUEUE` | `tickets.lifecycle` |
+| `SERVICE_AUTH_TOKEN` | обязательный токен queue → tickets |
 | `TICKET_ACTIVATION_TTL` | `15m` |
+| `TICKET_MAINTENANCE_INTERVAL` | `1s` |
+| `ACTIVATION_RECOVERY_TIMEOUT` | `1m` |
+| `WORKER_BATCH_SIZE` | `100` |
+| `OUTBOX_POLL_INTERVAL` | `500ms` |
+| `OUTBOX_LEASE` | `30s` |
+| `OUTBOX_RETRY_DELAY` | `5s` |
+| `OUTBOX_CONCURRENCY` | `4` |
+| `LIFECYCLE_CONCURRENCY` | `4` |
 
 ## API
 

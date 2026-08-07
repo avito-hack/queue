@@ -8,16 +8,20 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/avito-hack/queue/services/tickets/config"
 	"github.com/avito-hack/queue/services/tickets/infrastructure/client/avitoadapter"
+	brokerrabbit "github.com/avito-hack/queue/services/tickets/infrastructure/messaging/rabbitmq"
 	"github.com/avito-hack/queue/services/tickets/infrastructure/repository/postgresql"
 	transporthttp "github.com/avito-hack/queue/services/tickets/infrastructure/transport/http"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
+	"github.com/avito-hack/queue/services/tickets/internal/worker"
 )
 
 func main() {
@@ -54,6 +58,8 @@ func run() error {
 	activationRepository := postgresql.NewActivationRepository(database)
 	declineRepository := postgresql.NewDeclineRepository(database)
 	issueRepository := postgresql.NewIssueRepository(database)
+	lifecycleRepository := postgresql.NewLifecycleRepository(database)
+	outboxRepository := postgresql.NewOutboxRepository(database)
 	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
 	getTicket := usecase.NewGetTicket(ticketRepository, time.Now)
 	health := usecase.NewHealth(database)
@@ -72,8 +78,48 @@ func run() error {
 	activateTicket := usecase.NewActivateTicket(activationRepository, orderCreator, time.Now)
 	declineTicket := usecase.NewDeclineTicket(declineRepository, time.Now)
 	issueTicket := usecase.NewIssueTicket(issueRepository, cfg.Ticket.ActivationTTL, time.Now)
+	maintainTickets := usecase.NewMaintainTickets(
+		lifecycleRepository,
+		cfg.Workers.BatchSize,
+		cfg.Workers.ActivationRecoveryTimeout,
+		time.Now,
+	)
+	processLifecycleEvent := usecase.NewProcessLifecycleEvent(lifecycleRepository)
+
+	rabbitConnection, err := amqp.Dial(cfg.RabbitMQ.URL)
+	if err != nil {
+		return fmt.Errorf("connect to RabbitMQ: %w", err)
+	}
+	defer func() { _ = rabbitConnection.Close() }()
+	publisher, err := brokerrabbit.NewPublisher(rabbitConnection, cfg.RabbitMQ.Exchange)
+	if err != nil {
+		return fmt.Errorf("create outbox publisher: %w", err)
+	}
+	defer func() { _ = publisher.Close() }()
+	lifecycleConsumer, err := brokerrabbit.NewLifecycleConsumer(
+		rabbitConnection,
+		cfg.RabbitMQ.Exchange,
+		cfg.RabbitMQ.Queue,
+		cfg.Workers.LifecycleConcurrency,
+		processLifecycleEvent,
+	)
+	if err != nil {
+		return fmt.Errorf("create lifecycle consumer: %w", err)
+	}
+	defer func() { _ = lifecycleConsumer.Close() }()
+	maintenanceWorker := worker.NewMaintenance(maintainTickets, cfg.Workers.MaintenanceInterval)
+	outboxWorker := worker.NewOutbox(
+		outboxRepository,
+		publisher,
+		cfg.Workers.OutboxInterval,
+		cfg.Workers.OutboxLease,
+		cfg.Workers.OutboxRetryDelay,
+		cfg.Workers.OutboxConcurrency,
+		cfg.Workers.BatchSize,
+		time.Now,
+	)
 	handler := transporthttp.NewHandler(health, listTickets, getTicket, activateTicket, declineTicket, issueTicket)
-	router, err := transporthttp.NewRouter(handler, tokenResolver)
+	router, err := transporthttp.NewRouter(handler, tokenResolver, cfg.ServiceAuthToken)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)
 	}
@@ -85,29 +131,61 @@ func run() error {
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 	}
 
+	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	serverError := make(chan error, 1)
 	go func() {
 		slog.Info("HTTP server started", "address", httpServer.Addr)
 		serverError <- httpServer.ListenAndServe()
 	}()
 
-	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	workerError := make(chan error, 3)
+	var workerWaitGroup sync.WaitGroup
+	startWorker := func(name string, run func(context.Context) error) {
+		workerWaitGroup.Add(1)
+		go func() {
+			defer workerWaitGroup.Done()
+			if err := run(signalContext); err != nil {
+				workerError <- fmt.Errorf("%s worker: %w", name, err)
+				return
+			}
+			if signalContext.Err() == nil {
+				workerError <- fmt.Errorf("%s worker stopped unexpectedly", name)
+			}
+		}()
+	}
+	startWorker("maintenance", maintenanceWorker.Run)
+	startWorker("outbox", outboxWorker.Run)
+	startWorker("lifecycle", lifecycleConsumer.Run)
 
+	var runError error
 	select {
 	case <-signalContext.Done():
-		shutdownContext, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
-		defer cancel()
-		if err := httpServer.Shutdown(shutdownContext); err != nil {
-			return fmt.Errorf("shutdown HTTP server: %w", err)
-		}
-
-		return nil
 	case err := <-serverError:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+		if !errors.Is(err, http.ErrServerClosed) {
+			runError = fmt.Errorf("serve HTTP: %w", err)
 		}
-
-		return fmt.Errorf("serve HTTP: %w", err)
+	case err := <-workerError:
+		runError = err
 	}
+	stop()
+
+	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
+	defer cancelShutdown()
+	if err := httpServer.Shutdown(shutdownContext); err != nil {
+		runError = errors.Join(runError, fmt.Errorf("shutdown HTTP server: %w", err))
+	}
+	workersStopped := make(chan struct{})
+	go func() {
+		workerWaitGroup.Wait()
+		close(workersStopped)
+	}()
+	select {
+	case <-workersStopped:
+	case <-shutdownContext.Done():
+		runError = errors.Join(runError, fmt.Errorf("shutdown workers: %w", shutdownContext.Err()))
+	}
+
+	return runError
 }

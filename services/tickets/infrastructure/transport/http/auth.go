@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -33,13 +34,18 @@ var (
 	errUserIdentityUnavailable = errors.New("user identity service unavailable")
 )
 
-func authenticateWith(resolver identityauth.UserTokenResolver) openapi3filter.AuthenticationFunc {
+func authenticateWith(resolver identityauth.UserTokenResolver, serviceToken string) openapi3filter.AuthenticationFunc {
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		return authenticateRequest(ctx, input, resolver)
+		return authenticateRequest(ctx, input, resolver, serviceToken)
 	}
 }
 
-func authenticateRequest(ctx context.Context, input *openapi3filter.AuthenticationInput, resolver identityauth.UserTokenResolver) error {
+func authenticateRequest(
+	ctx context.Context,
+	input *openapi3filter.AuthenticationInput,
+	resolver identityauth.UserTokenResolver,
+	serviceToken string,
+) error {
 	ginContext := middleware.GetGinContext(ctx)
 	header := input.RequestValidationInput.Request.Header.Get("Authorization")
 	scheme, token, ok := strings.Cut(header, " ")
@@ -49,7 +55,12 @@ func authenticateRequest(ctx context.Context, input *openapi3filter.Authenticati
 	}
 	token = strings.TrimSpace(token)
 
-	if input.SecuritySchemeName != "bearerAuth" {
+	if input.SecuritySchemeName == "serviceAuth" {
+		if serviceToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(serviceToken)) != 1 {
+			setAuthenticationError(ginContext, authenticationErrorInvalid)
+			return errBearerTokenInvalid
+		}
+
 		return nil
 	}
 

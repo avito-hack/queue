@@ -13,10 +13,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
 
@@ -169,6 +171,196 @@ func Test_DeclineRepository_ConcurrentDecline_CloseTicketOnce(t *testing.T) {
 	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.declined'"))
 }
 
+func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issued := issueIntegrationTicket(t)
+	repository := NewLifecycleRepository(integrationPool)
+	expiredAt := issued.Ticket.ActivationDeadline.Add(time.Second)
+
+	// when
+	expired, err := repository.ExpireIssued(context.Background(), expiredAt, 10)
+	replayed, replayErr := repository.ExpireIssued(context.Background(), expiredAt, 10)
+
+	// then
+	require.NoError(t, err)
+	require.NoError(t, replayErr)
+	require.Equal(t, 1, expired)
+	require.Zero(t, replayed)
+	ticket, err := NewTicketRepository(integrationPool).Get(context.Background(), issued.UserID, issued.Ticket.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.TicketStatusClosed, ticket.Status)
+	require.NotNil(t, ticket.CloseReason)
+	require.Equal(t, domain.TicketCloseReasonActivationTimeout, *ticket.CloseReason)
+	require.NotNil(t, ticket.FinishedAt)
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.expired'"))
+}
+
+func Test_LifecycleRepository_PaymentSucceeded_RedeemTicketIdempotently(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issued := issueIntegrationTicket(t)
+	activationRepository := NewActivationRepository(integrationPool)
+	prepared, err := activationRepository.Prepare(context.Background(), usecase.PrepareActivationCommand{
+		UserID:         issued.UserID,
+		TicketID:       issued.Ticket.ID,
+		IdempotencyKey: uuid.New(),
+		Now:            issued.Ticket.IssuedAt.Add(time.Minute),
+	})
+	require.NoError(t, err)
+	orderID := uuid.New()
+	_, err = activationRepository.Complete(
+		context.Background(),
+		prepared.OperationID,
+		usecase.CreatedOrder{ID: orderID, CheckoutURL: "/checkout/paid"},
+		issued.Ticket.IssuedAt.Add(2*time.Minute),
+	)
+	require.NoError(t, err)
+	event := usecase.LifecycleEvent{
+		ID:         uuid.New(),
+		Type:       usecase.LifecycleEventPaymentSucceeded,
+		Source:     "avito",
+		OccurredAt: issued.Ticket.IssuedAt.Add(3 * time.Minute),
+		OrderID:    orderID,
+		Payload:    []byte(`{"order_id":"` + orderID.String() + `"}`),
+	}
+	repository := NewLifecycleRepository(integrationPool)
+
+	// when
+	err = repository.ProcessLifecycleEvent(context.Background(), event)
+	replayErr := repository.ProcessLifecycleEvent(context.Background(), event)
+
+	// then
+	require.NoError(t, err)
+	require.NoError(t, replayErr)
+	ticket, err := NewTicketRepository(integrationPool).Get(context.Background(), issued.UserID, issued.Ticket.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.TicketStatusRedeemed, ticket.Status)
+	require.NotNil(t, ticket.CloseReason)
+	require.Equal(t, domain.TicketCloseReasonPaymentSucceeded, *ticket.CloseReason)
+	require.Equal(t, 1, integrationRowCount(t, "public.inbox_events"))
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = 'ticket.redeemed'"))
+}
+
+func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issued := issueIntegrationTicket(t)
+	activationRepository := NewActivationRepository(integrationPool)
+	command := usecase.PrepareActivationCommand{
+		UserID:         issued.UserID,
+		TicketID:       issued.Ticket.ID,
+		IdempotencyKey: uuid.New(),
+		Now:            issued.Ticket.IssuedAt.Add(time.Minute),
+	}
+	prepared, err := activationRepository.Prepare(context.Background(), command)
+	require.NoError(t, err)
+	repository := NewLifecycleRepository(integrationPool)
+
+	// when
+	recovered, err := repository.RecoverStaleActivations(context.Background(), command.Now.Add(time.Second), 10)
+	retried, retryErr := activationRepository.Prepare(context.Background(), usecase.PrepareActivationCommand{
+		UserID:         command.UserID,
+		TicketID:       command.TicketID,
+		IdempotencyKey: command.IdempotencyKey,
+		Now:            command.Now.Add(time.Minute),
+	})
+	secondRecovered, secondRecoveryErr := repository.RecoverStaleActivations(
+		context.Background(),
+		time.Date(2100, time.January, 1, 0, 0, 0, 0, time.UTC),
+		10,
+	)
+	declined, declineErr := NewDeclineRepository(integrationPool).Decline(context.Background(), usecase.DeclineTicketCommand{
+		UserID:         command.UserID,
+		TicketID:       command.TicketID,
+		IdempotencyKey: uuid.New(),
+		Now:            command.Now.Add(2 * time.Minute),
+	})
+
+	// then
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	require.NoError(t, retryErr)
+	require.Equal(t, prepared.OperationID, retried.OperationID)
+	require.NoError(t, secondRecoveryErr)
+	require.Equal(t, 1, secondRecovered)
+	require.NoError(t, declineErr)
+	require.Equal(t, domain.TicketStatusClosed, declined.Status)
+}
+
+func Test_OutboxRepository_ClaimRetryAndPublish_ChangeDeliveryState(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issueIntegrationTicket(t)
+	repository := NewOutboxRepository(integrationPool)
+	now := time.Date(2026, time.August, 7, 12, 0, 0, 0, time.UTC)
+
+	// when
+	claimed, err := repository.Claim(context.Background(), now, 10, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	err = repository.Retry(context.Background(), claimed[0].ID, now.Add(time.Minute))
+	require.NoError(t, err)
+	beforeRetry, err := repository.Claim(context.Background(), now, 10, time.Minute)
+	require.NoError(t, err)
+	retried, err := repository.Claim(context.Background(), now.Add(time.Minute), 10, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, retried, 1)
+	err = repository.MarkPublished(context.Background(), retried[0].ID, now.Add(2*time.Minute))
+
+	// then
+	require.NoError(t, err)
+	require.Empty(t, beforeRetry)
+	require.Equal(t, 1, claimed[0].Attempts)
+	require.Equal(t, 2, retried[0].Attempts)
+	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "status = 'published'"))
+}
+
+func Test_TicketsSchema_ActiveWithoutOrder_RejectInvalidState(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issued := issueIntegrationTicket(t)
+
+	// when
+	_, err := integrationPool.Exec(
+		context.Background(),
+		"UPDATE public.tickets SET status = 'active' WHERE id = $1",
+		issued.Ticket.ID,
+	)
+
+	// then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ck_tickets_state")
+}
+
+func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	repository := NewIssueRepository(integrationPool)
+	now := time.Date(2026, time.August, 7, 10, 0, 0, 0, time.UTC)
+	command := usecase.IssueTicketCommand{
+		QueueEntryID:       uuid.New(),
+		UserID:             uuid.New(),
+		ListingID:          uuid.New(),
+		SKUID:              uuid.New(),
+		IdempotencyKey:     uuid.New(),
+		IssuedAt:           now,
+		ActivationDeadline: now.Add(15 * time.Minute),
+	}
+	_, err := repository.Issue(context.Background(), command)
+	require.NoError(t, err)
+	command.QueueEntryID = uuid.New()
+	command.SKUID = uuid.New()
+	command.IdempotencyKey = uuid.New()
+
+	// when
+	_, err = repository.Issue(context.Background(), command)
+
+	// then
+	require.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
+	require.Equal(t, 1, integrationRowCount(t, "public.tickets"))
+}
+
 type integrationResult[T any] struct {
 	value T
 	err   error
@@ -245,7 +437,7 @@ func truncateIntegrationTables(t *testing.T) {
 	t.Helper()
 	_, err := integrationPool.Exec(
 		context.Background(),
-		"TRUNCATE public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
+		"TRUNCATE public.inbox_events, public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
 	)
 	require.NoError(t, err)
 }
