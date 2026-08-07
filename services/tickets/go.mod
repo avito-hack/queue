@@ -1,6 +1,6 @@
 module github.com/avito-hack/queue/services/tickets
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/getkin/kin-openapi v0.127.0
