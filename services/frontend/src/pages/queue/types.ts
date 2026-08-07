@@ -1,5 +1,3 @@
-import type { Product } from '../../features/product/types'
-
 export type TileKind = 'queued' | 'ticket' | 'soldout'
 
 export type QueueTileView = {

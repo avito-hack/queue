@@ -11,7 +11,6 @@ vi.mock('../../features/ticket/api', () => ({
   ticketApi: {
     listTickets: vi.fn().mockResolvedValue({ ticket: [] }),
     activateTicket: vi.fn(),
-    payOrder: vi.fn(),
     declineTicket: vi.fn(),
   },
 }))

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
-import { ticketApi } from '../../features/ticket/api'
 import { removeTicket } from '../../features/ticket/ticketSlice'
 
 export function Checkout() {
@@ -18,20 +17,15 @@ export function Checkout() {
     state.products.productItems.find((p) => p.id === ticket?.productId),
   )
 
-  const handlePay = async () => {
+  const handlePay = () => {
     if (!ticketId || paying) return
 
+    // В OpenAPI tickets нет /pay — оплата через activate → checkout_url / avito orders.
+    // Этот экран — демо-заглушка, если activate упал или url локальный.
     setPaying(true)
-    try {
-      await ticketApi.payOrder(ticketId)
-    } catch (error) {
-      console.error(error)
-      // бэк/pay ещё нет — для демо считаем оплату успешной
-    } finally {
-      dispatch(removeTicket(ticketId))
-      setPaid(true)
-      setPaying(false)
-    }
+    dispatch(removeTicket(ticketId))
+    setPaid(true)
+    setPaying(false)
   }
 
   if (paid) {
@@ -39,8 +33,8 @@ export function Checkout() {
       <section className="rounded-2xl bg-white p-8 text-center">
         <h1 className="m-0 text-2xl tracking-tight">Заказ оформлен</h1>
         <p className="mt-3 text-avito-muted">
-          Тикет погашен. Когда бэкенд оплаты будет готов, здесь останется тот же
-          сценарий.
+          Демо-чекаут: тикет убран локально. В бою погашение приходит с бэка
+          после оплаты по checkout_url.
         </p>
         <Link
           to="/catalog"
@@ -100,12 +94,12 @@ export function Checkout() {
           </div>
         </div>
         <p className="mt-4 text-sm leading-relaxed text-[#555]">
-          Это упрощённый чекаут для демо. После оплаты тикет сгорит, а товар
-          спишется на бэкенде.
+          Упрощённый чекаут для демо (нет endpoint оплаты в tickets API). Кнопка
+          только гасит тикет в store.
         </p>
         <button
           type="button"
-          onClick={() => void handlePay()}
+          onClick={handlePay}
           disabled={paying}
           className="mt-5 min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white disabled:cursor-default disabled:opacity-50"
         >
