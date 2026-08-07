@@ -10,39 +10,28 @@ const (
 	ListingRemoved ListingStatus = "removed"
 )
 
-type ReservationStatus string
+type OrderStatus string
 
 const (
-	ReservationActive    ReservationStatus = "active"
-	ReservationCancelled ReservationStatus = "cancelled"
+	OrderCreated OrderStatus = "created"
 )
 
 type User struct {
-	ID, Name  string
-	CreatedAt time.Time
+	ID, Name, Token string
+	CreatedAt       time.Time
 }
 
 type Listing struct {
-	ID, SellerID, Title        string
-	Price                      int64
-	Quantity, ReservedQuantity int
-	QueueEnabled               bool
-	Status                     ListingStatus
-	CreatedAt, UpdatedAt       time.Time
-}
-
-func (l Listing) AvailableQuantity() int {
-	return l.Quantity - l.ReservedQuantity
-}
-
-type Reservation struct {
-	ID, ListingID, UserID string
-	Quantity              int
-	Status                ReservationStatus
-	CreatedAt             time.Time
+	ID, SellerID, Title  string
+	Price                int64
+	Quantity             int
+	QueueEnabled         bool
+	Status               ListingStatus
+	CreatedAt, UpdatedAt time.Time
 }
 
 type Order struct {
-	ID, ReservationID, ListingID, UserID string
-	CreatedAt                            time.Time
+	ID, TicketID, ListingID, SkuID, UserID, IdempotencyKey, CheckoutURL string
+	Status                                                              OrderStatus
+	CreatedAt                                                           time.Time
 }

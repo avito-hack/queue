@@ -25,15 +25,55 @@ func (h *Handler) GetHealth(ctx context.Context, _ server.GetHealthRequestObject
 	}
 	return server.GetHealth200JSONResponse{Status: "ok"}, nil
 }
+func (h *Handler) ListListings(_ context.Context, r server.ListListingsRequestObject) (server.ListListingsResponseObject, error) {
+	limit := 20
+	if r.Params.Limit != nil {
+		limit = *r.Params.Limit
+	}
+	offset := 0
+	if r.Params.Offset != nil {
+		offset = *r.Params.Offset
+	}
+	if limit < 1 || limit > 100 || offset < 0 {
+		return server.ListListings400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
+	}
+
+	var sellerID *string
+	if r.Params.SellerId != nil {
+		id := r.Params.SellerId.String()
+		sellerID = &id
+	}
+	status := usecase.ListingActive
+	if r.Params.Status != nil {
+		status = usecase.ListingStatus(*r.Params.Status)
+	}
+	listings, total := h.service.ListListings(usecase.ListingFilter{SellerID: sellerID, Status: &status, Limit: limit, Offset: offset})
+	items := make([]server.Listing, 0, len(listings))
+	for _, listing := range listings {
+		items = append(items, toListing(listing))
+	}
+
+	return server.ListListings200JSONResponse{Items: items, Total: total, Limit: limit, Offset: offset}, nil
+}
 func (h *Handler) CreateUser(_ context.Context, r server.CreateUserRequestObject) (server.CreateUserResponseObject, error) {
 	if r.Body == nil {
 		return server.CreateUser400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
-	user, err := h.service.CreateUser(r.Body.Name)
+	user, err := h.service.CreateUser(r.Body.Name, r.Body.Token)
 	if err != nil {
 		return server.CreateUser400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
 	}
 	return server.CreateUser201JSONResponse(toUser(user)), nil
+}
+func (h *Handler) ValidateUserToken(_ context.Context, r server.ValidateUserTokenRequestObject) (server.ValidateUserTokenResponseObject, error) {
+	if r.Body == nil || r.Body.Token == nil {
+		return server.ValidateUserToken401JSONResponse{UnauthorizedJSONResponse: unauthorized(usecase.ErrUnauthorized)}, nil
+	}
+	user, err := h.service.ValidateUserToken(*r.Body.Token)
+	if errors.Is(err, usecase.ErrUnauthorized) {
+		return server.ValidateUserToken401JSONResponse{UnauthorizedJSONResponse: unauthorized(err)}, nil
+	}
+	return server.ValidateUserToken200JSONResponse{UserId: uuid.MustParse(user.ID)}, nil
 }
 func (h *Handler) GetUser(_ context.Context, r server.GetUserRequestObject) (server.GetUserResponseObject, error) {
 	user, err := h.service.GetUser(r.UserId.String())
@@ -124,47 +164,16 @@ func (h *Handler) ActivateListing(_ context.Context, r server.ActivateListingReq
 	return server.ActivateListing200JSONResponse(toListing(listing)), nil
 }
 
-func (h *Handler) CreateReservation(_ context.Context, r server.CreateReservationRequestObject) (server.CreateReservationResponseObject, error) {
-	if r.Body == nil {
-		return server.CreateReservation400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
-	}
-	quantity := 1
-	if r.Body.Quantity != nil {
-		quantity = *r.Body.Quantity
-	}
-	reservation, err := h.service.CreateReservation(r.Body.ListingId.String(), r.Body.UserId.String(), quantity)
-	if errors.Is(err, usecase.ErrNotFound) {
-		return server.CreateReservation404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
-	}
-	if errors.Is(err, usecase.ErrUnavailable) || errors.Is(err, usecase.ErrInsufficientStock) {
-		return server.CreateReservation409JSONResponse{ConflictJSONResponse: conflict(err)}, nil
-	}
-	if err != nil {
-		return server.CreateReservation400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
-	}
-	return server.CreateReservation201JSONResponse(toReservation(reservation)), nil
-}
-func (h *Handler) GetReservation(_ context.Context, r server.GetReservationRequestObject) (server.GetReservationResponseObject, error) {
-	reservation, err := h.service.GetReservation(r.ReservationId.String())
-	if err != nil {
-		return server.GetReservation404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
-	}
-	return server.GetReservation200JSONResponse(toReservation(reservation)), nil
-}
-func (h *Handler) CancelReservation(_ context.Context, r server.CancelReservationRequestObject) (server.CancelReservationResponseObject, error) {
-	if err := h.service.CancelReservation(r.ReservationId.String()); err != nil {
-		return server.CancelReservation404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
-	}
-	return server.CancelReservation204Response{}, nil
-}
-
 func (h *Handler) CreateOrder(_ context.Context, r server.CreateOrderRequestObject) (server.CreateOrderResponseObject, error) {
 	if r.Body == nil {
 		return server.CreateOrder400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
-	order, err := h.service.CreateOrder(r.Body.ReservationId.String(), r.Body.UserId.String())
+	order, err := h.service.CreateOrder(r.Body.TicketId.String(), r.Body.ListingId.String(), r.Body.SkuId.String(), r.Body.UserId.String(), r.Params.IdempotencyKey.String())
 	if errors.Is(err, usecase.ErrNotFound) {
 		return server.CreateOrder404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	}
+	if errors.Is(err, usecase.ErrInvalid) {
+		return server.CreateOrder400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
 	}
 	if err != nil {
 		return server.CreateOrder409JSONResponse{ConflictJSONResponse: conflict(err)}, nil
@@ -188,15 +197,15 @@ func notFound(err error) server.NotFoundJSONResponse {
 func conflict(err error) server.ConflictJSONResponse {
 	return server.ConflictJSONResponse{Message: err.Error()}
 }
+func unauthorized(err error) server.UnauthorizedJSONResponse {
+	return server.UnauthorizedJSONResponse{Message: err.Error()}
+}
 func toUser(value usecase.User) server.User {
 	return server.User{Id: uuid.MustParse(value.ID), Name: value.Name, CreatedAt: value.CreatedAt}
 }
 func toListing(value usecase.Listing) server.Listing {
-	return server.Listing{Id: uuid.MustParse(value.ID), SellerId: uuid.MustParse(value.SellerID), Title: value.Title, Price: value.Price, Quantity: value.Quantity, ReservedQuantity: value.ReservedQuantity, AvailableQuantity: value.AvailableQuantity(), QueueEnabled: value.QueueEnabled, Status: server.ListingStatus(value.Status), CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
-}
-func toReservation(value usecase.Reservation) server.Reservation {
-	return server.Reservation{Id: uuid.MustParse(value.ID), ListingId: uuid.MustParse(value.ListingID), UserId: uuid.MustParse(value.UserID), Quantity: value.Quantity, Status: server.ReservationStatus(value.Status), CreatedAt: value.CreatedAt}
+	return server.Listing{Id: uuid.MustParse(value.ID), SellerId: uuid.MustParse(value.SellerID), Title: value.Title, Price: value.Price, Quantity: value.Quantity, QueueEnabled: value.QueueEnabled, Status: server.ListingStatus(value.Status), CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 }
 func toOrder(value usecase.Order) server.Order {
-	return server.Order{Id: uuid.MustParse(value.ID), ReservationId: uuid.MustParse(value.ReservationID), ListingId: uuid.MustParse(value.ListingID), UserId: uuid.MustParse(value.UserID), Status: server.Created, CreatedAt: value.CreatedAt}
+	return server.Order{Id: uuid.MustParse(value.ID), TicketId: uuid.MustParse(value.TicketID), ListingId: uuid.MustParse(value.ListingID), SkuId: uuid.MustParse(value.SkuID), UserId: uuid.MustParse(value.UserID), CheckoutUrl: value.CheckoutURL, Status: server.OrderStatus(value.Status), CreatedAt: value.CreatedAt}
 }

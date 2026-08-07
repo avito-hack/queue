@@ -127,8 +127,20 @@ func Test_Something_ReturnSomething(t *testing.T) {
     ...
 }
 ```
+- Только один given, when, then на тест
 - Сервисы генерят себе клиентов из schemas/ через oapi-codegen
 - Сервисы генерят Strict Server для роутера Gin через oapi-codegen
 - Сервисы используют валидаторы REST запросов через oapi-codegen middleware
 - Ошибки не глушаться, а хэндлятся
 - Сервисы поддерживают healthcheck и graceful shutdown
+
+# Интеграция с брокером событий
+
+- Серверный AsyncAPI-контракт хранится в `services/<service>/events/events.yaml` и копируется без изменений в `schemas/services/<service>/events/events.yaml`.
+- Контракты описываются в AsyncAPI 3.0. Go-типы генерируются закреплённой версией `go-asyncapi` через `go generate`; файлы в `gen/events` вручную не редактируются.
+- В контракт включаются только события, жизненным циклом которых управляют сервисы проекта; внутренние события существующих сервисов Авито не моделируются.
+- Для RabbitMQ используется `github.com/rabbitmq/amqp091-go`. Сервисы публикуют события в durable topic exchange `domain.events`, а routing key совпадает с именем события.
+- В AMQP properties передаются UUID события в `MessageId`, имя события в `Type`, имя сервиса в `AppId` и время события в `Timestamp`. Payload кодируется в JSON по сгенерированному типу.
+- Каждый consumer владеет отдельной durable queue и явно привязывает только нужные routing keys. Сообщения подтверждаются после успешной обработки; невалидные отклоняются без возврата, временные ошибки возвращаются в очередь.
+- Публикация бизнес-событий выполняется через transactional outbox и publisher confirms, обработка входящих событий — идемпотентно через inbox.
+- При изменении события сначала обновляются обе копии контракта, затем запускаются `go generate ./...` и `go test ./...` в каталоге сервиса.

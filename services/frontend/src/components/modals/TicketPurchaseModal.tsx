@@ -5,6 +5,8 @@ type TicketPurchaseModalProps = {
   productTitle: string
   productImage: string
   expiresAt?: string
+  buying?: boolean
+  buyError?: string | null
   onClose: () => void
   onBuy: () => void
   onDecline: () => void
@@ -15,6 +17,8 @@ export function TicketPurchaseModal({
   productTitle,
   productImage,
   expiresAt,
+  buying = false,
+  buyError = null,
   onClose,
   onBuy,
   onDecline,
@@ -27,7 +31,7 @@ export function TicketPurchaseModal({
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-[3px]"
-      onClick={onClose}
+      onClick={buying ? undefined : onClose}
       role="presentation"
     >
       <div
@@ -41,8 +45,9 @@ export function TicketPurchaseModal({
           <div />
           <button
             type="button"
-            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-[#f2f2f2] text-xl leading-none"
+            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-[#f2f2f2] text-xl leading-none disabled:cursor-default disabled:opacity-50"
             onClick={onClose}
+            disabled={buying}
             aria-label="Закрыть"
           >
             ×
@@ -83,18 +88,25 @@ export function TicketPurchaseModal({
           </div>
         )}
 
+        {buyError && (
+          <div className="mb-4 rounded-[14px] bg-[#fff0f2] px-3 py-2 text-sm font-bold text-[#b82334]">
+            {buyError}
+          </div>
+        )}
+
         <div className="grid gap-2.5">
           <button
             type="button"
-            disabled={expired}
+            disabled={expired || buying}
             className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-50 disabled:hover:translate-y-0"
             onClick={onBuy}
           >
-            Перейти к покупке
+            {buying ? 'Активация…' : 'Перейти к покупке'}
           </button>
           <button
             type="button"
-            className="min-h-12 w-full cursor-pointer rounded-xl bg-[#fff0f2] px-[18px] py-3 font-extrabold text-avito-red"
+            disabled={buying}
+            className="min-h-12 w-full cursor-pointer rounded-xl bg-[#fff0f2] px-[18px] py-3 font-extrabold text-avito-red disabled:cursor-default disabled:opacity-50"
             onClick={onDecline}
           >
             Отказаться от покупки

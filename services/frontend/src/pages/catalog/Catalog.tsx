@@ -5,79 +5,125 @@ import { CatalogCard } from './CatalogCard'
 import { productApi } from '../../features/product/api'
 import { setProductItems } from '../../features/product/productSlice'
 
+const DEMO_SELLER = '00000000-0000-4000-8000-000000000010'
+const now = '2026-08-06T12:00:00.000Z'
+
+/** Демо-каталог в форме Listing (+ UI image/description/queueCount). */
 const mockProducts: Product[] = [
   {
-    id: '1',
-    name: 'Кроссовки Northline Drop 01',
+    id: '11111111-1111-4111-8111-111111111101',
+    sellerId: DEMO_SELLER,
+    title: 'Кроссовки Northline Drop 01',
     description: 'Лимитированная коллекция',
     price: 19990,
     image: '👟',
-    count: 3,
+    quantity: 3,
+    reservedQuantity: 0,
+    availableQuantity: 3,
+    queueEnabled: true,
+    status: 'active',
     queueCount: 27,
+    createdAt: now,
+    updatedAt: now,
   },
   {
-    id: '2',
-    name: 'Куртка Northline Shell',
+    id: '11111111-1111-4111-8111-111111111102',
+    sellerId: DEMO_SELLER,
+    title: 'Куртка Northline Shell',
     description: 'Лимитированная коллекция',
     price: 12800,
     image: '🧥',
-    count: 1,
+    quantity: 1,
+    reservedQuantity: 0,
+    availableQuantity: 1,
+    queueEnabled: true,
+    status: 'active',
     queueCount: 14,
+    createdAt: now,
+    updatedAt: now,
   },
   {
-    id: '3',
-    name: 'Кепка Drop 01',
+    id: '11111111-1111-4111-8111-111111111103',
+    sellerId: DEMO_SELLER,
+    title: 'Кепка Drop 01',
     description: 'Лимитированная коллекция',
     price: 3900,
     image: '🧢',
-    count: 0,
+    quantity: 0,
+    reservedQuantity: 0,
+    availableQuantity: 0,
+    queueEnabled: true,
+    status: 'active',
     queueCount: 5,
+    createdAt: now,
+    updatedAt: now,
   },
   {
-    id: '4',
-    name: 'Рюкзак Northline City',
+    id: '11111111-1111-4111-8111-111111111104',
+    sellerId: DEMO_SELLER,
+    title: 'Рюкзак Northline City',
     description: 'Лимитированная коллекция',
     price: 6700,
     image: '🎒',
-    count: 5,
+    quantity: 5,
+    reservedQuantity: 0,
+    availableQuantity: 5,
+    queueEnabled: true,
+    status: 'active',
     queueCount: 2,
+    createdAt: now,
+    updatedAt: now,
   },
   {
-    id: '5',
-    name: 'Кроссовки Northline Base',
+    id: '11111111-1111-4111-8111-111111111105',
+    sellerId: DEMO_SELLER,
+    title: 'Кроссовки Northline Base',
     description: 'Лимитированная коллекция',
     price: 14500,
     image: '👟',
-    count: 2,
+    quantity: 2,
+    reservedQuantity: 0,
+    availableQuantity: 2,
+    queueEnabled: true,
+    status: 'active',
     queueCount: 9,
+    createdAt: now,
+    updatedAt: now,
   },
   {
-    id: '6',
-    name: 'Худи Northline Soft',
+    id: '11111111-1111-4111-8111-111111111106',
+    sellerId: DEMO_SELLER,
+    title: 'Худи Northline Soft',
     description: 'Лимитированная коллекция',
     price: 8900,
     image: '👕',
-    count: 4,
+    quantity: 4,
+    reservedQuantity: 0,
+    availableQuantity: 4,
+    queueEnabled: true,
+    status: 'active',
     queueCount: 3,
+    createdAt: now,
+    updatedAt: now,
   },
 ]
 
 export function Catalog() {
   const dispatch = useAppDispatch()
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
         const products = await productApi.getProducts()
-        dispatch(setProductItems(products as Product[]))
+        dispatch(setProductItems(products))
       } catch (e) {
         console.error(e)
         dispatch(setProductItems(mockProducts))
       }
     })()
   }, [dispatch])
-  
+
   const products = useAppSelector((state) => state.products.productItems)
-  
+
   return (
     <section>
       <div className="mb-[22px]">
@@ -88,18 +134,9 @@ export function Catalog() {
           Лимитированные товары
         </h1>
         <p className="mt-2 max-w-[640px] leading-normal text-avito-muted">
-          Редкие позиции с очередью: сначала место, затем временное право на
-          покупку. Выберите товар, чтобы встать в очередь.
+          Очередь даёт право на покупку. Место в очереди не гарантирует покупку —
+          товар может закончиться раньше.
         </p>
-      </div>
-
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-avito-ink px-3 py-1.5 text-xs font-extrabold text-white">
-          С очередью
-        </span>
-        <span className="rounded-full bg-[#f1f1f1] px-3 py-1.5 text-xs font-bold text-[#4d4d4d]">
-          {products.length} объявлений
-        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

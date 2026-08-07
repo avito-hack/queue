@@ -1,0 +1,6 @@
+.git
+.agents
+.codex
+bin
+**/gen
+**/node_modules

@@ -75,6 +75,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V1Ticket"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -160,8 +162,6 @@ paths:
     post:
       operationId: issueTicket
       summary: Выдать тикет пользователю
-      security:
-        - serviceAuth: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -185,8 +185,6 @@ paths:
                 $ref: "#/components/schemas/V1Ticket"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "409":
           description: Тикет не может быть выдан
           content:
@@ -203,12 +201,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Пользовательский авторизационный токен
-
-    serviceAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: ServiceToken
-      description: Токен доверенного внутреннего сервиса
 
   parameters:
     TicketId:
@@ -312,7 +304,6 @@ components:
           type: string
           format: uri-reference
           nullable: true
-          description: Ссылка на стандартный флоу оформления заказа
         finished_at:
           type: string
           format: date-time
@@ -348,7 +339,6 @@ components:
         checkout_url:
           type: string
           format: uri-reference
-          description: Ссылка на стандартный флоу оформления заказа
 
     V1TicketStateResponse:
       type: object
@@ -385,20 +375,10 @@ components:
           type: string
           format: uuid
 
-    InternalV1TicketCancelRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - reason
-      properties:
-        reason:
-          $ref: "#/components/schemas/InternalV1TicketCancellationReason"
-
     V1TicketStatus:
       type: string
       enum:
         - issued
-        - active
         - redeemed
         - closed
 
@@ -407,25 +387,14 @@ components:
       enum:
         - activate
         - decline
-        - checkout
 
     V1TicketCloseReason:
       type: string
       enum:
-        - payment_succeeded
         - activation_timeout
         - user_declined
         - listing_closed
         - sku_closed
-        - reservation_released
-        - system_cancelled
-
-    InternalV1TicketCancellationReason:
-      type: string
-      enum:
-        - listing_closed
-        - sku_closed
-        - stock_reduced
         - system_cancelled
 
     ErrorWithMessage:
