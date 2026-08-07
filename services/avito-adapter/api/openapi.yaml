@@ -30,6 +30,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '400': { $ref: '#/components/responses/BadRequest' }
+  /v1/users/validate:
+    post:
+      operationId: validateUserToken
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateUserTokenRequest'
+      responses:
+        '200':
+          description: User authenticated by bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateUserTokenResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/users/{userId}:
     get:
       operationId: getUser
@@ -44,6 +64,43 @@ paths:
                 $ref: '#/components/schemas/User'
         '404': { $ref: '#/components/responses/NotFound' }
   /v1/listings:
+    get:
+      operationId: listListings
+      parameters:
+        - name: sellerId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ListingStatus'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Listings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingListResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
     post:
       operationId: createListing
       requestBody:
@@ -166,48 +223,11 @@ paths:
                 $ref: '#/components/schemas/Listing'
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
-  /v1/reservations:
-    post:
-      operationId: createReservation
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateReservationRequest'
-      responses:
-        '201':
-          description: Reservation created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Reservation'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /v1/reservations/{reservationId}:
-    get:
-      operationId: getReservation
-      parameters:
-        - $ref: '#/components/parameters/ReservationId'
-      responses:
-        '200':
-          description: Reservation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Reservation'
-        '404': { $ref: '#/components/responses/NotFound' }
-    delete:
-      operationId: cancelReservation
-      parameters:
-        - $ref: '#/components/parameters/ReservationId'
-      responses:
-        '204': { description: Reservation cancelled }
-        '404': { $ref: '#/components/responses/NotFound' }
-  /v1/orders:
+  /v1/orders/create:
     post:
       operationId: createOrder
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -224,6 +244,10 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/orders/{orderId}:
     get:
       operationId: getOrder
@@ -241,8 +265,12 @@ components:
   parameters:
     UserId: { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
     ListingId: { name: listingId, in: path, required: true, schema: { type: string, format: uuid } }
-    ReservationId: { name: reservationId, in: path, required: true, schema: { type: string, format: uuid } }
     OrderId: { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     BadRequest:
       description: Invalid request
@@ -252,6 +280,21 @@ components:
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
     Conflict:
       description: Operation conflicts with current state
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Invalid bearer token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    TooManyRequests:
+      description: Temporarily rate limited
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    InternalServerError:
+      description: Temporary adapter error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BadGateway:
+      description: Temporary upstream error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ServiceUnavailable:
+      description: Adapter temporarily unavailable
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
   schemas:
     HealthResponse:
@@ -271,26 +314,51 @@ components:
         createdAt: { type: string, format: date-time }
     CreateUserRequest:
       type: object
-      required: [name]
-      properties: { name: { type: string, minLength: 1 } }
+      required: [name, token]
+      properties:
+        name: { type: string, minLength: 1 }
+        token: { type: string, minLength: 1 }
+    ValidateUserTokenRequest:
+      type: object
+      properties: { token: { type: string, minLength: 1 } }
+    ValidateUserTokenResponse:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string, format: uuid }
     ListingStatus:
       type: string
       enum: [active, paused, removed]
     Listing:
       type: object
-      required: [id, sellerId, title, price, quantity, reservedQuantity, availableQuantity, queueEnabled, status, createdAt, updatedAt]
+      required: [id, sellerId, title, price, quantity, queueEnabled, status, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         sellerId: { type: string, format: uuid }
         title: { type: string }
         price: { type: integer, format: int64, minimum: 0 }
         quantity: { type: integer, minimum: 0 }
-        reservedQuantity: { type: integer, minimum: 0 }
-        availableQuantity: { type: integer, minimum: 0 }
         queueEnabled: { type: boolean }
         status: { $ref: '#/components/schemas/ListingStatus' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ListingListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Listing'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
     CreateListingRequest:
       type: object
       required: [sellerId, title, price, quantity]
@@ -313,42 +381,28 @@ components:
       type: object
       required: [enabled]
       properties: { enabled: { type: boolean } }
-    ReservationStatus:
-      type: string
-      enum: [active, cancelled]
-    Reservation:
-      type: object
-      required: [id, listingId, userId, quantity, status, createdAt]
-      properties:
-        id: { type: string, format: uuid }
-        listingId: { type: string, format: uuid }
-        userId: { type: string, format: uuid }
-        quantity: { type: integer, minimum: 1 }
-        status: { $ref: '#/components/schemas/ReservationStatus' }
-        createdAt: { type: string, format: date-time }
-    CreateReservationRequest:
-      type: object
-      required: [listingId, userId]
-      properties:
-        listingId: { type: string, format: uuid }
-        userId: { type: string, format: uuid }
-        quantity: { type: integer, default: 1, minimum: 1 }
     OrderStatus:
       type: string
       enum: [created]
     Order:
       type: object
-      required: [id, reservationId, listingId, userId, status, createdAt]
+      required: [id, ticketId, listingId, skuId, userId, checkoutUrl, status, createdAt]
       properties:
         id: { type: string, format: uuid }
-        reservationId: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid }
         listingId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
         userId: { type: string, format: uuid }
+        checkoutUrl:
+          type: string
+          pattern: '^(https?://[^/@?#]+(?::[0-9]+)?(?:[/?#].*)?|/(?!/).*)$'
         status: { $ref: '#/components/schemas/OrderStatus' }
         createdAt: { type: string, format: date-time }
     CreateOrderRequest:
       type: object
-      required: [reservationId, userId]
+      required: [ticketId, listingId, skuId, userId]
       properties:
-        reservationId: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
         userId: { type: string, format: uuid }

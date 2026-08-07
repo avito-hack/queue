@@ -1,11 +1,49 @@
 package usecase
 
 import (
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type ListingFilter struct {
+	SellerID *string
+	Status   *ListingStatus
+	Limit    int
+	Offset   int
+}
+
+func (s *Service) ListListings(filter ListingFilter) ([]Listing, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	listings := make([]Listing, 0, len(s.listings))
+	for _, listing := range s.listings {
+		if filter.SellerID != nil && listing.SellerID != *filter.SellerID {
+			continue
+		}
+		if filter.Status != nil && listing.Status != *filter.Status {
+			continue
+		}
+		listings = append(listings, listing)
+	}
+
+	sort.Slice(listings, func(i, j int) bool {
+		if listings[i].CreatedAt.Equal(listings[j].CreatedAt) {
+			return listings[i].ID < listings[j].ID
+		}
+		return listings[i].CreatedAt.After(listings[j].CreatedAt)
+	})
+
+	total := len(listings)
+	if filter.Offset >= total {
+		return []Listing{}, total
+	}
+	end := min(filter.Offset+filter.Limit, total)
+	return listings[filter.Offset:end], total
+}
 
 func (s *Service) CreateListing(sellerID, title string, price int64, quantity int, queueEnabled bool) (Listing, error) {
 	if strings.TrimSpace(title) == "" || price < 0 || quantity < 0 {
@@ -69,7 +107,7 @@ func (s *Service) ChangeQuantity(id string, quantity int) (Listing, error) {
 	if !ok {
 		return Listing{}, ErrNotFound
 	}
-	if listing.Status == ListingRemoved || quantity < listing.ReservedQuantity {
+	if listing.Status == ListingRemoved {
 		return Listing{}, ErrConflict
 	}
 	listing.Quantity = quantity
