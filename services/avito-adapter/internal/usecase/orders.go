@@ -1,31 +1,59 @@
 package usecase
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-func (s *Service) CreateOrder(reservationID, userID string) (Order, error) {
+func (s *Service) CreateOrder(ticketID, listingID, skuID, userID, idempotencyKey string) (Order, error) {
+	if _, err := uuid.Parse(ticketID); err != nil {
+		return Order{}, ErrInvalid
+	}
+	if _, err := uuid.Parse(idempotencyKey); err != nil {
+		return Order{}, ErrInvalid
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if existingID, ok := s.ordersByIdempotencyKey[idempotencyKey]; ok {
+		order := s.orders[existingID]
+		if order.TicketID != ticketID || order.ListingID != listingID || order.SkuID != skuID || order.UserID != userID {
+			return Order{}, ErrConflict
+		}
+		return order, nil
+	}
+	if _, ok := s.ordersByTicketID[ticketID]; ok {
+		return Order{}, ErrConflict
+	}
 	if _, ok := s.users[userID]; !ok {
 		return Order{}, ErrNotFound
 	}
-	reservation, ok := s.reservations[reservationID]
+	listing, ok := s.listings[listingID]
 	if !ok {
 		return Order{}, ErrNotFound
 	}
-	if reservation.UserID != userID || reservation.Status != ReservationActive {
-		return Order{}, ErrConflict
+	if listing.Status != ListingActive {
+		return Order{}, ErrUnavailable
 	}
+	reservedQuantity := 0
 	for _, order := range s.orders {
-		if order.ReservationID == reservationID {
-			return Order{}, ErrConflict
+		if order.ListingID == listingID {
+			reservedQuantity++
 		}
 	}
-	order := Order{ID: uuid.NewString(), ReservationID: reservationID, ListingID: reservation.ListingID, UserID: userID, CreatedAt: time.Now().UTC()}
+	if reservedQuantity >= listing.Quantity {
+		return Order{}, ErrConflict
+	}
+	orderID := uuid.NewString()
+	order := Order{
+		ID: orderID, TicketID: ticketID, ListingID: listingID, SkuID: skuID, UserID: userID, IdempotencyKey: idempotencyKey,
+		CheckoutURL: fmt.Sprintf("https://checkout.local/orders/%s?sku_id=%s", orderID, skuID),
+		Status:      OrderCreated, CreatedAt: time.Now().UTC(),
+	}
 	s.orders[order.ID] = order
+	s.ordersByIdempotencyKey[idempotencyKey] = order.ID
+	s.ordersByTicketID[ticketID] = order.ID
 	return order, nil
 }
 

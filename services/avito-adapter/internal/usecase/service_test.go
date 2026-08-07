@@ -3,54 +3,104 @@ package usecase
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_CreateReservation_DecreasesAvailableQuantity(t *testing.T) {
+func Test_ValidateUserToken_ReturnsUser(t *testing.T) {
 	// given
 	service := NewService()
-	seller, err := service.CreateUser("seller")
-	require.NoError(t, err)
-	buyer, err := service.CreateUser("buyer")
-	require.NoError(t, err)
-	listing, err := service.CreateListing(seller.ID, "item", 100, 2, true)
+	created, err := service.CreateUser("buyer", "Bearer token-1")
 	require.NoError(t, err)
 
 	// when
-	reservation, err := service.CreateReservation(listing.ID, buyer.ID, 1)
-	require.NoError(t, err)
-	updated, err := service.GetListing(listing.ID)
-	require.NoError(t, err)
+	user, err := service.ValidateUserToken("Bearer token-1")
 
 	// then
-	assert.Equal(t, ReservationActive, reservation.Status)
-	assert.Equal(t, 1, updated.ReservedQuantity)
-	assert.Equal(t, 1, updated.Quantity-updated.ReservedQuantity)
+	require.NoError(t, err)
+	assert.Equal(t, created.ID, user.ID)
 }
 
-func Test_CancelReservation_RestoresAvailabilityAndOrderCannotBeDuplicated(t *testing.T) {
+func Test_CreateOrder_ReturnsExistingOrderForSameIdempotencyKey(t *testing.T) {
 	// given
 	service := NewService()
-	seller, err := service.CreateUser("seller")
+	seller, err := service.CreateUser("seller", "seller-token")
 	require.NoError(t, err)
-	buyer, err := service.CreateUser("buyer")
+	buyer, err := service.CreateUser("buyer", "buyer-token")
 	require.NoError(t, err)
 	listing, err := service.CreateListing(seller.ID, "item", 100, 1, true)
 	require.NoError(t, err)
-	reservation, err := service.CreateReservation(listing.ID, buyer.ID, 1)
+	ticketID := uuid.NewString()
+	skuID := uuid.NewString()
+	idempotencyKey := uuid.NewString()
+
+	// when
+	first, err := service.CreateOrder(ticketID, listing.ID, skuID, buyer.ID, idempotencyKey)
 	require.NoError(t, err)
-	_, err = service.CreateOrder(reservation.ID, buyer.ID)
+	second, err := service.CreateOrder(ticketID, listing.ID, skuID, buyer.ID, idempotencyKey)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, second.ID)
+	assert.Contains(t, first.CheckoutURL, skuID)
+}
+
+func Test_CreateOrder_ReturnsConflictWhenStockIsReserved(t *testing.T) {
+	// given
+	service := NewService()
+	seller, err := service.CreateUser("seller", "seller-token")
+	require.NoError(t, err)
+	buyer, err := service.CreateUser("buyer", "buyer-token")
+	require.NoError(t, err)
+	listing, err := service.CreateListing(seller.ID, "item", 100, 1, true)
+	require.NoError(t, err)
+	_, err = service.CreateOrder(uuid.NewString(), listing.ID, uuid.NewString(), buyer.ID, uuid.NewString())
 	require.NoError(t, err)
 
 	// when
-	_, duplicateOrderErr := service.CreateOrder(reservation.ID, buyer.ID)
-	cancelErr := service.CancelReservation(reservation.ID)
-	updated, getErr := service.GetListing(listing.ID)
+	_, err = service.CreateOrder(uuid.NewString(), listing.ID, uuid.NewString(), buyer.ID, uuid.NewString())
 
 	// then
-	assert.ErrorIs(t, duplicateOrderErr, ErrConflict)
-	assert.NoError(t, cancelErr)
-	require.NoError(t, getErr)
-	assert.Equal(t, 0, updated.ReservedQuantity)
+	assert.ErrorIs(t, err, ErrConflict)
+}
+
+func Test_CreateOrder_ReturnsConflictForSameKeyAndDifferentBody(t *testing.T) {
+	// given
+	service := NewService()
+	seller, err := service.CreateUser("seller", "seller-token")
+	require.NoError(t, err)
+	buyer, err := service.CreateUser("buyer", "buyer-token")
+	require.NoError(t, err)
+	listing, err := service.CreateListing(seller.ID, "item", 100, 2, true)
+	require.NoError(t, err)
+	idempotencyKey := uuid.NewString()
+	_, err = service.CreateOrder(uuid.NewString(), listing.ID, uuid.NewString(), buyer.ID, idempotencyKey)
+	require.NoError(t, err)
+
+	// when
+	_, err = service.CreateOrder(uuid.NewString(), listing.ID, uuid.NewString(), buyer.ID, idempotencyKey)
+
+	// then
+	assert.ErrorIs(t, err, ErrConflict)
+}
+
+func Test_CreateOrder_ReturnsConflictForReusedTicket(t *testing.T) {
+	// given
+	service := NewService()
+	seller, err := service.CreateUser("seller", "seller-token")
+	require.NoError(t, err)
+	buyer, err := service.CreateUser("buyer", "buyer-token")
+	require.NoError(t, err)
+	listing, err := service.CreateListing(seller.ID, "item", 100, 2, true)
+	require.NoError(t, err)
+	ticketID := uuid.NewString()
+	_, err = service.CreateOrder(ticketID, listing.ID, uuid.NewString(), buyer.ID, uuid.NewString())
+	require.NoError(t, err)
+
+	// when
+	_, err = service.CreateOrder(ticketID, listing.ID, uuid.NewString(), buyer.ID, uuid.NewString())
+
+	// then
+	assert.ErrorIs(t, err, ErrConflict)
 }
