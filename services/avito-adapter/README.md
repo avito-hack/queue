@@ -1,6 +1,6 @@
 # Avito Adapter
 
-`avito-adapter` — mock-сервис готовых механизмов Avito, с которыми взаимодействуют сервисы очереди и тикетов. В текущем MVP он хранит данные в памяти процесса и предоставляет HTTP API для управления пользователями, объявлениями, резервами и заказами.
+`avito-adapter` — mock-сервис готовых механизмов Avito, с которыми взаимодействуют сервисы очереди и тикетов. Read-path API получает пользователей, объявления и заказы из PostgreSQL, а команды изменения состояния в текущем MVP хранятся в памяти процесса.
 
 Сервис не реализует регистрацию, полноценную авторизацию, настоящий checkout или списание физического остатка после оплаты. В нём есть mock-валидация Bearer-токена и mock-оплата заказа для интеграционных сценариев.
 
@@ -37,7 +37,7 @@
 
 ```bash
 cd services/avito-adapter
-go run ./cmd/app
+DATABASE_URL='postgres://avito_adapter:password@localhost:5432/avito_adapter?sslmode=disable' go run ./cmd/app
 ```
 
 По умолчанию сервер доступен по адресу `http://0.0.0.0:8080`.
@@ -68,11 +68,13 @@ docker run --rm -p 8080:8080 avito-adapter
 | `HTTP_READ_TIMEOUT` | `5s` | Таймаут чтения HTTP-запроса |
 | `HTTP_WRITE_TIMEOUT` | `10s` | Таймаут записи HTTP-ответа |
 | `HTTP_SHUTDOWN_TIMEOUT` | `10s` | Максимальное время graceful shutdown |
+| `DATABASE_URL` | — | Обязательная строка подключения PostgreSQL |
+| `POSTGRES_CONNECT_TIMEOUT` | `10s` | Таймаут подключения к PostgreSQL |
 
 Например:
 
 ```bash
-HTTP_PORT=8081 HTTP_SHUTDOWN_TIMEOUT=15s go run ./cmd/app
+DATABASE_URL='postgres://avito_adapter:password@localhost:5432/avito_adapter?sslmode=disable' HTTP_PORT=8081 HTTP_SHUTDOWN_TIMEOUT=15s go run ./cmd/app
 ```
 
 ## API
@@ -167,7 +169,7 @@ HTTP_PORT=8081 HTTP_SHUTDOWN_TIMEOUT=15s go run ./cmd/app
 5. Создать checkout-заказ по SKU через `POST /v1/orders`.
 6. Выполнить mock-оплату через `POST /v1/orders/{orderId}/pay`.
 
-После перезапуска процесса все данные пропадут: текущая реализация не использует базу данных. Предлагаемая схема PostgreSQL для последующего перехода описана отдельно в обсуждении; в код она пока не встроена.
+Пользователи, объявления и заказы читаются из PostgreSQL. Изменения, выполненные через command-endpoints, пока хранятся in-memory и пропадают после перезапуска процесса.
 
 ## Архитектура
 

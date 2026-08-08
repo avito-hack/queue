@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,7 +16,7 @@ func Test_ValidateUserToken_ReturnsUser(t *testing.T) {
 	require.NoError(t, err)
 
 	// when
-	user, err := service.ValidateUserToken("Bearer token-1")
+	user, err := service.ValidateUserToken(context.Background(), "Bearer token-1")
 
 	// then
 	require.NoError(t, err)

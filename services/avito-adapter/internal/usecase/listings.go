@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"time"
@@ -15,7 +16,10 @@ type ListingFilter struct {
 	Offset   int
 }
 
-func (s *Service) ListListings(filter ListingFilter) ([]Listing, int) {
+func (s *Service) ListListings(ctx context.Context, filter ListingFilter) ([]Listing, int, error) {
+	if s.reader != nil {
+		return s.reader.ListListings(ctx, filter)
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -39,10 +43,10 @@ func (s *Service) ListListings(filter ListingFilter) ([]Listing, int) {
 
 	total := len(listings)
 	if filter.Offset >= total {
-		return []Listing{}, total
+		return []Listing{}, total, nil
 	}
 	end := min(filter.Offset+filter.Limit, total)
-	return listings[filter.Offset:end], total
+	return listings[filter.Offset:end], total, nil
 }
 
 func (s *Service) CreateListing(sellerID, title string, price int64, quantity int, queueEnabled bool) (Listing, error) {
@@ -60,7 +64,10 @@ func (s *Service) CreateListing(sellerID, title string, price int64, quantity in
 	return listing, nil
 }
 
-func (s *Service) GetListing(id string) (Listing, error) {
+func (s *Service) GetListing(ctx context.Context, id string) (Listing, error) {
+	if s.reader != nil {
+		return s.reader.GetListing(ctx, id)
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	listing, ok := s.listings[id]

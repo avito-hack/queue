@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -57,7 +58,10 @@ func (s *Service) CreateOrder(ticketID, listingID, skuID, userID, idempotencyKey
 	return order, nil
 }
 
-func (s *Service) GetOrder(id string) (Order, error) {
+func (s *Service) GetOrder(ctx context.Context, id string) (Order, error) {
+	if s.reader != nil {
+		return s.reader.GetOrder(ctx, id)
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	order, ok := s.orders[id]

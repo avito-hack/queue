@@ -25,7 +25,7 @@ func (h *Handler) GetHealth(ctx context.Context, _ server.GetHealthRequestObject
 	}
 	return server.GetHealth200JSONResponse{Status: "ok"}, nil
 }
-func (h *Handler) ListListings(_ context.Context, r server.ListListingsRequestObject) (server.ListListingsResponseObject, error) {
+func (h *Handler) ListListings(ctx context.Context, r server.ListListingsRequestObject) (server.ListListingsResponseObject, error) {
 	limit := 20
 	if r.Params.Limit != nil {
 		limit = *r.Params.Limit
@@ -47,7 +47,10 @@ func (h *Handler) ListListings(_ context.Context, r server.ListListingsRequestOb
 	if r.Params.Status != nil {
 		status = usecase.ListingStatus(*r.Params.Status)
 	}
-	listings, total := h.service.ListListings(usecase.ListingFilter{SellerID: sellerID, Status: &status, Limit: limit, Offset: offset})
+	listings, total, err := h.service.ListListings(ctx, usecase.ListingFilter{SellerID: sellerID, Status: &status, Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, err
+	}
 	items := make([]server.Listing, 0, len(listings))
 	for _, listing := range listings {
 		items = append(items, toListing(listing))
@@ -65,20 +68,26 @@ func (h *Handler) CreateUser(_ context.Context, r server.CreateUserRequestObject
 	}
 	return server.CreateUser201JSONResponse(toUser(user)), nil
 }
-func (h *Handler) ValidateUserToken(_ context.Context, r server.ValidateUserTokenRequestObject) (server.ValidateUserTokenResponseObject, error) {
+func (h *Handler) ValidateUserToken(ctx context.Context, r server.ValidateUserTokenRequestObject) (server.ValidateUserTokenResponseObject, error) {
 	if r.Body == nil || r.Body.Token == nil {
 		return server.ValidateUserToken401JSONResponse{UnauthorizedJSONResponse: unauthorized(usecase.ErrUnauthorized)}, nil
 	}
-	user, err := h.service.ValidateUserToken(*r.Body.Token)
+	user, err := h.service.ValidateUserToken(ctx, *r.Body.Token)
 	if errors.Is(err, usecase.ErrUnauthorized) {
 		return server.ValidateUserToken401JSONResponse{UnauthorizedJSONResponse: unauthorized(err)}, nil
 	}
+	if err != nil {
+		return nil, err
+	}
 	return server.ValidateUserToken200JSONResponse{UserId: uuid.MustParse(user.ID)}, nil
 }
-func (h *Handler) GetUser(_ context.Context, r server.GetUserRequestObject) (server.GetUserResponseObject, error) {
-	user, err := h.service.GetUser(r.UserId.String())
-	if err != nil {
+func (h *Handler) GetUser(ctx context.Context, r server.GetUserRequestObject) (server.GetUserResponseObject, error) {
+	user, err := h.service.GetUser(ctx, r.UserId.String())
+	if errors.Is(err, usecase.ErrNotFound) {
 		return server.GetUser404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.GetUser200JSONResponse(toUser(user)), nil
 }
@@ -97,10 +106,13 @@ func (h *Handler) CreateListing(_ context.Context, r server.CreateListingRequest
 	}
 	return server.CreateListing201JSONResponse(toListing(listing)), nil
 }
-func (h *Handler) GetListing(_ context.Context, r server.GetListingRequestObject) (server.GetListingResponseObject, error) {
-	listing, err := h.service.GetListing(r.ListingId.String())
-	if err != nil {
+func (h *Handler) GetListing(ctx context.Context, r server.GetListingRequestObject) (server.GetListingResponseObject, error) {
+	listing, err := h.service.GetListing(ctx, r.ListingId.String())
+	if errors.Is(err, usecase.ErrNotFound) {
 		return server.GetListing404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.GetListing200JSONResponse(toListing(listing)), nil
 }
@@ -180,10 +192,13 @@ func (h *Handler) CreateOrder(_ context.Context, r server.CreateOrderRequestObje
 	}
 	return server.CreateOrder201JSONResponse(toOrder(order)), nil
 }
-func (h *Handler) GetOrder(_ context.Context, r server.GetOrderRequestObject) (server.GetOrderResponseObject, error) {
-	order, err := h.service.GetOrder(r.OrderId.String())
-	if err != nil {
+func (h *Handler) GetOrder(ctx context.Context, r server.GetOrderRequestObject) (server.GetOrderResponseObject, error) {
+	order, err := h.service.GetOrder(ctx, r.OrderId.String())
+	if errors.Is(err, usecase.ErrNotFound) {
 		return server.GetOrder404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.GetOrder200JSONResponse(toOrder(order)), nil
 }

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -24,10 +25,13 @@ func (s *Service) CreateUser(name, token string) (User, error) {
 	return user, nil
 }
 
-func (s *Service) ValidateUserToken(token string) (User, error) {
+func (s *Service) ValidateUserToken(ctx context.Context, token string) (User, error) {
 	token = bearerToken(token)
 	if token == "" {
 		return User{}, ErrUnauthorized
+	}
+	if s.reader != nil {
+		return s.reader.GetUserByToken(ctx, token)
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -47,7 +51,10 @@ func bearerToken(value string) string {
 	return value
 }
 
-func (s *Service) GetUser(id string) (User, error) {
+func (s *Service) GetUser(ctx context.Context, id string) (User, error) {
+	if s.reader != nil {
+		return s.reader.GetUser(ctx, id)
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	user, ok := s.users[id]

@@ -8,7 +8,13 @@ import (
 )
 
 type Config struct {
-	HTTP HTTPConfig
+	HTTP       HTTPConfig
+	PostgreSQL PostgreSQLConfig
+}
+
+type PostgreSQLConfig struct {
+	URL            string
+	ConnectTimeout time.Duration
 }
 
 type HTTPConfig struct {
@@ -40,13 +46,22 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	connectTimeout, err := durationValue("POSTGRES_CONNECT_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	databaseURL := value("DATABASE_URL", "")
+	if databaseURL == "" {
+		return Config{}, fmt.Errorf("DATABASE_URL is required")
+	}
+
 	return Config{HTTP: HTTPConfig{
 		Host:            value("HTTP_HOST", "0.0.0.0"),
 		Port:            port,
 		ReadTimeout:     readTimeout,
 		WriteTimeout:    writeTimeout,
 		ShutdownTimeout: shutdownTimeout,
-	}}, nil
+	}, PostgreSQL: PostgreSQLConfig{URL: databaseURL, ConnectTimeout: connectTimeout}}, nil
 }
 
 func value(name, fallback string) string {

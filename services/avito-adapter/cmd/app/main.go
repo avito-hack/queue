@@ -10,7 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/avito-hack/queue/services/avito-adapter/config"
+	"github.com/avito-hack/queue/services/avito-adapter/infrastructure/repository/postgresql"
 	transporthttp "github.com/avito-hack/queue/services/avito-adapter/infrastructure/transport/http"
 	"github.com/avito-hack/queue/services/avito-adapter/internal/usecase"
 )
@@ -28,8 +31,20 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	health := usecase.NewHealth()
-	service := usecase.NewService()
+	databaseContext, cancelDatabase := context.WithTimeout(context.Background(), cfg.PostgreSQL.ConnectTimeout)
+	defer cancelDatabase()
+	database, err := pgxpool.New(databaseContext, cfg.PostgreSQL.URL)
+	if err != nil {
+		return fmt.Errorf("create postgres pool: %w", err)
+	}
+	defer database.Close()
+	if err := database.Ping(databaseContext); err != nil {
+		return fmt.Errorf("connect to postgres: %w", err)
+	}
+	cancelDatabase()
+
+	health := usecase.NewHealth(database)
+	service := usecase.NewService(postgresql.NewReader(database))
 	handler := transporthttp.NewHandler(health, service)
 	router, err := transporthttp.NewRouter(handler)
 	if err != nil {
