@@ -1,22 +1,36 @@
 -- name: SelectExpiredTickets :many
 SELECT id, queue_entry_id, user_id, listing_id, sku_id
-FROM public.tickets
-WHERE status = 'issued'
-  AND activation_deadline <= sqlc.arg(expired_at)
-ORDER BY activation_deadline, id
+FROM public.tickets AS ticket
+WHERE ticket.status = 'issued'
+  AND ticket.activation_deadline <= sqlc.arg(expired_at)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.idempotency_operations AS operation
+      WHERE operation.ticket_id = ticket.id
+        AND operation.operation = 'activate_ticket'
+        AND operation.state = 'processing'
+  )
+ORDER BY ticket.activation_deadline, ticket.id
 FOR UPDATE SKIP LOCKED
 LIMIT sqlc.arg(batch_size);
 
 -- name: CloseExpiredTicket :execrows
-UPDATE public.tickets
+UPDATE public.tickets AS ticket
 SET status = 'closed',
     close_reason = 'activation_timeout',
     finished_at = sqlc.arg(finished_at),
     updated_at = sqlc.arg(finished_at),
     version = version + 1
-WHERE id = sqlc.arg(id)
-  AND status = 'issued'
-  AND activation_deadline <= sqlc.arg(finished_at);
+WHERE ticket.id = sqlc.arg(id)
+  AND ticket.status = 'issued'
+  AND ticket.activation_deadline <= sqlc.arg(finished_at)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.idempotency_operations AS operation
+      WHERE operation.ticket_id = ticket.id
+        AND operation.operation = 'activate_ticket'
+        AND operation.state = 'processing'
+  );
 
 -- name: RecoverStaleActivations :execrows
 WITH candidates AS (

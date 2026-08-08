@@ -195,6 +195,53 @@ func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
 	require.Equal(t, int64(1), integrationOutboxTypeCount(t, domain.TicketEventClosed))
 }
 
+func Test_LifecycleRepository_ProcessingActivation_ExpireAfterRecovery(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	issued := issueIntegrationTicket(t)
+	activationRepository := NewActivationRepository(integrationPool)
+	preparedAt := issued.Ticket.ActivationDeadline.Add(-time.Second)
+	_, err := activationRepository.Prepare(context.Background(), usecase.PrepareActivationCommand{
+		UserID:         issued.UserID,
+		TicketID:       issued.Ticket.ID,
+		IdempotencyKey: uuid.New(),
+		Now:            preparedAt,
+	})
+	require.NoError(t, err)
+	repository := NewLifecycleRepository(integrationPool)
+	expiredAt := issued.Ticket.ActivationDeadline.Add(time.Second)
+
+	// when
+	protected, err := repository.ExpireIssued(context.Background(), expiredAt, 10)
+	protectedTicket, getProtectedErr := NewTicketRepository(integrationPool).Get(
+		context.Background(),
+		issued.UserID,
+		issued.Ticket.ID,
+	)
+	recovered, recoveryErr := repository.RecoverStaleActivations(context.Background(), expiredAt, 10)
+	expired, expirationErr := repository.ExpireIssued(context.Background(), expiredAt, 10)
+	expiredTicket, getExpiredErr := NewTicketRepository(integrationPool).Get(
+		context.Background(),
+		issued.UserID,
+		issued.Ticket.ID,
+	)
+
+	// then
+	require.NoError(t, err)
+	require.Zero(t, protected)
+	require.NoError(t, getProtectedErr)
+	require.Equal(t, domain.TicketStatusIssued, protectedTicket.Status)
+	require.NoError(t, recoveryErr)
+	require.Equal(t, 1, recovered)
+	require.NoError(t, expirationErr)
+	require.Equal(t, 1, expired)
+	require.NoError(t, getExpiredErr)
+	require.Equal(t, domain.TicketStatusClosed, expiredTicket.Status)
+	require.NotNil(t, expiredTicket.CloseReason)
+	require.Equal(t, domain.TicketCloseReasonActivationTimeout, *expiredTicket.CloseReason)
+	require.Equal(t, int64(1), integrationOutboxTypeCount(t, domain.TicketEventClosed))
+}
+
 func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testing.T) {
 	// given
 	truncateIntegrationTables(t)
