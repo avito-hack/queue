@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Header } from './components/layout/Header'
 import { ToastHost } from './components/ToastHost'
 import { useQueuePolling } from './features/queue/useQueuePolling'
+import { AuthGate } from './features/session/AuthGate'
 import { useBootstrapUserState } from './features/session/useBootstrapUserState'
 import { useExpiredTickets } from './features/ticket/useExpiredTickets'
 import { useTicketPolling } from './features/ticket/useTicketPolling'
@@ -10,8 +11,7 @@ import { Checkout } from './pages/checkout/Checkout'
 import { Product } from './pages/product/Product'
 import { Queue } from './pages/queue/Queue'
 
-function App() {
-  // Старт: один раз тянем очереди + тикеты с бэка (hydrate после F5).
+function AppReady() {
   useBootstrapUserState()
   useQueuePolling()
   useTicketPolling()
@@ -31,6 +31,14 @@ function App() {
       </main>
       <ToastHost />
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthGate>
+      <AppReady />
+    </AuthGate>
   )
 }
 

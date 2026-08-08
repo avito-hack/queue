@@ -1,16 +1,23 @@
 import axios from 'axios'
-
+import { waitForAuthToken } from '../auth/demoJwt'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8080',
   headers: { 'Content-Type': 'application/json' },
 })
 
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    skipAuth?: boolean
+  }
+}
 
-api.interceptors.request.use((config) => {
-    const token =
-      localStorage.getItem('authToken') ??
-      '00000000-0000-4000-8000-000000000001'
-    config.headers.Authorization = `Bearer ${token}`
+api.interceptors.request.use(async (config) => {
+  if (config.skipAuth) {
     return config
-  })
+  }
+
+  const token = await waitForAuthToken()
+  config.headers.Authorization = `Bearer ${token}`
+  return config
+})

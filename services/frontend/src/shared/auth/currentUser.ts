@@ -1,4 +1,4 @@
-const DEMO_USER_ID = '00000000-0000-4000-8000-000000000001'
+import { DEFAULT_DEMO_USER_ID } from './demoJwt'
 
 export type EnqueueUser = {
   id: string
@@ -8,7 +8,11 @@ export type EnqueueUser = {
 }
 
 export function currentUserId(): string {
-  return localStorage.getItem('authToken') ?? DEMO_USER_ID
+  return localStorage.getItem('userId') ?? DEFAULT_DEMO_USER_ID
+}
+
+export function currentAuthToken(): string | null {
+  return localStorage.getItem('authToken')
 }
 
 export function currentEnqueueUser(): EnqueueUser {

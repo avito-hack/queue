@@ -8,7 +8,6 @@ import { setTicketItems } from '../ticket/ticketSlice'
 import type { TicketEntry } from '../ticket/types'
 import { toTicketEntry } from '../ticket/useTicketPolling'
 
-
 export function useBootstrapUserState() {
   const dispatch = useAppDispatch()
 

@@ -10,7 +10,9 @@ COPY . .
 
 # URL бэка прокидывается на этапе сборки (Vite вшивает VITE_* в бандл)
 ARG VITE_API_URL=http://localhost:8080
+ARG VITE_JWT_SECRET
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_JWT_SECRET=$VITE_JWT_SECRET
 
 RUN npm run build
 
