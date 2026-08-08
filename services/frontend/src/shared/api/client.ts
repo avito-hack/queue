@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { waitForAuthToken } from '../auth/demoJwt'
+import { waitForAuthToken } from '../auth/demoAuth'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8080',

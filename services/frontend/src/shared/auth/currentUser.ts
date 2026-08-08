@@ -1,4 +1,4 @@
-import { DEFAULT_DEMO_USER_ID } from './demoJwt'
+import { DEFAULT_DEMO_USER_ID } from './demoAuth'
 
 export type EnqueueUser = {
   id: string

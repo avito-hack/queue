@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { reportApiError } from '../../shared/api/errors'
-import { ensureDemoAuth } from '../../shared/auth/demoJwt'
+import { ensureDemoAuth } from '../../shared/auth/demoAuth'
 import { authApi } from '../auth/api'
 
 type AuthStatus = 'loading' | 'ready' | 'error'
@@ -38,7 +38,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="grid min-h-screen place-items-center gap-3 p-6 text-center">
         <p className="text-avito-muted">
-          Не удалось получить demo JWT / зарегистрировать пользователя.
+          Не удалось получить demo-токен / зарегистрировать пользователя.
         </p>
         <button
           type="button"
