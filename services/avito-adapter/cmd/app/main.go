@@ -44,7 +44,7 @@ func run() error {
 	cancelDatabase()
 
 	health := usecase.NewHealth(database)
-	service := usecase.NewService(postgresql.NewReader(database))
+	service := usecase.NewService(postgresql.NewRepository(database))
 	handler := transporthttp.NewHandler(health, service)
 	router, err := transporthttp.NewRouter(handler)
 	if err != nil {

@@ -1,9 +1,10 @@
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY services/avito-adapter/go.mod services/avito-adapter/go.sum ./
 RUN go mod download
-COPY . .
+COPY services/avito-adapter/ .
+RUN mkdir -p gen/server
 RUN go generate ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/avito-adapter ./cmd/app
 

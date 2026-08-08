@@ -8,12 +8,21 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) CreateOrder(ticketID, listingID, skuID, userID, idempotencyKey string) (Order, error) {
+func (s *Service) CreateOrder(ctx context.Context, ticketID, listingID, skuID, userID, idempotencyKey string) (Order, error) {
 	if _, err := uuid.Parse(ticketID); err != nil {
 		return Order{}, ErrInvalid
 	}
 	if _, err := uuid.Parse(idempotencyKey); err != nil {
 		return Order{}, ErrInvalid
+	}
+	orderID := uuid.NewString()
+	order := Order{
+		ID: orderID, TicketID: ticketID, ListingID: listingID, SkuID: skuID, UserID: userID, IdempotencyKey: idempotencyKey,
+		CheckoutURL: fmt.Sprintf("https://checkout.local/orders/%s?sku_id=%s", orderID, skuID),
+		Status:      OrderCreated, CreatedAt: time.Now().UTC(),
+	}
+	if s.writer != nil {
+		return s.writer.CreateOrder(ctx, order)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -45,12 +54,6 @@ func (s *Service) CreateOrder(ticketID, listingID, skuID, userID, idempotencyKey
 	}
 	if reservedQuantity >= listing.Quantity {
 		return Order{}, ErrConflict
-	}
-	orderID := uuid.NewString()
-	order := Order{
-		ID: orderID, TicketID: ticketID, ListingID: listingID, SkuID: skuID, UserID: userID, IdempotencyKey: idempotencyKey,
-		CheckoutURL: fmt.Sprintf("https://checkout.local/orders/%s?sku_id=%s", orderID, skuID),
-		Status:      OrderCreated, CreatedAt: time.Now().UTC(),
 	}
 	s.orders[order.ID] = order
 	s.ordersByIdempotencyKey[idempotencyKey] = order.ID

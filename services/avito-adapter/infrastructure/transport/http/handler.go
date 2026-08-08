@@ -58,13 +58,16 @@ func (h *Handler) ListListings(ctx context.Context, r server.ListListingsRequest
 
 	return server.ListListings200JSONResponse{Items: items, Total: total, Limit: limit, Offset: offset}, nil
 }
-func (h *Handler) CreateUser(_ context.Context, r server.CreateUserRequestObject) (server.CreateUserResponseObject, error) {
+func (h *Handler) CreateUser(ctx context.Context, r server.CreateUserRequestObject) (server.CreateUserResponseObject, error) {
 	if r.Body == nil {
 		return server.CreateUser400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
-	user, err := h.service.CreateUser(r.Body.Name, r.Body.Token)
-	if err != nil {
+	user, err := h.service.CreateUser(ctx, r.Body.Name, r.Body.Token)
+	if errors.Is(err, usecase.ErrConflict) {
 		return server.CreateUser400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.CreateUser201JSONResponse(toUser(user)), nil
 }
@@ -92,17 +95,20 @@ func (h *Handler) GetUser(ctx context.Context, r server.GetUserRequestObject) (s
 	return server.GetUser200JSONResponse(toUser(user)), nil
 }
 
-func (h *Handler) CreateListing(_ context.Context, r server.CreateListingRequestObject) (server.CreateListingResponseObject, error) {
+func (h *Handler) CreateListing(ctx context.Context, r server.CreateListingRequestObject) (server.CreateListingResponseObject, error) {
 	if r.Body == nil {
 		return server.CreateListing400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
 	enabled := r.Body.QueueEnabled != nil && *r.Body.QueueEnabled
-	listing, err := h.service.CreateListing(r.Body.SellerId.String(), r.Body.Title, r.Body.Price, r.Body.Quantity, enabled)
+	listing, err := h.service.CreateListing(ctx, r.Body.SellerId.String(), r.Body.Title, r.Body.Price, r.Body.Quantity, enabled)
 	if errors.Is(err, usecase.ErrNotFound) {
 		return server.CreateListing404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
 	}
-	if err != nil {
+	if errors.Is(err, usecase.ErrInvalid) {
 		return server.CreateListing400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.CreateListing201JSONResponse(toListing(listing)), nil
 }
@@ -116,79 +122,99 @@ func (h *Handler) GetListing(ctx context.Context, r server.GetListingRequestObje
 	}
 	return server.GetListing200JSONResponse(toListing(listing)), nil
 }
-func (h *Handler) UpdateListing(_ context.Context, r server.UpdateListingRequestObject) (server.UpdateListingResponseObject, error) {
+func (h *Handler) UpdateListing(ctx context.Context, r server.UpdateListingRequestObject) (server.UpdateListingResponseObject, error) {
 	if r.Body == nil {
 		return server.UpdateListing400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
-	listing, err := h.service.UpdateListing(r.ListingId.String(), r.Body.Title, r.Body.Price)
+	listing, err := h.service.UpdateListing(ctx, r.ListingId.String(), r.Body.Title, r.Body.Price)
 	if errors.Is(err, usecase.ErrNotFound) {
 		return server.UpdateListing404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
 	}
-	if err != nil {
+	if errors.Is(err, usecase.ErrInvalid) || errors.Is(err, usecase.ErrConflict) {
 		return server.UpdateListing400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.UpdateListing200JSONResponse(toListing(listing)), nil
 }
-func (h *Handler) RemoveListing(_ context.Context, r server.RemoveListingRequestObject) (server.RemoveListingResponseObject, error) {
-	if err := h.service.RemoveListing(r.ListingId.String()); err != nil {
+func (h *Handler) RemoveListing(ctx context.Context, r server.RemoveListingRequestObject) (server.RemoveListingResponseObject, error) {
+	if err := h.service.RemoveListing(ctx, r.ListingId.String()); errors.Is(err, usecase.ErrNotFound) {
 		return server.RemoveListing404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	} else if err != nil {
+		return nil, err
 	}
 	return server.RemoveListing204Response{}, nil
 }
-func (h *Handler) ChangeListingQuantity(_ context.Context, r server.ChangeListingQuantityRequestObject) (server.ChangeListingQuantityResponseObject, error) {
+func (h *Handler) ChangeListingQuantity(ctx context.Context, r server.ChangeListingQuantityRequestObject) (server.ChangeListingQuantityResponseObject, error) {
 	if r.Body == nil {
 		return server.ChangeListingQuantity400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
-	listing, err := h.service.ChangeQuantity(r.ListingId.String(), r.Body.Quantity)
+	listing, err := h.service.ChangeQuantity(ctx, r.ListingId.String(), r.Body.Quantity)
 	if errors.Is(err, usecase.ErrNotFound) {
 		return server.ChangeListingQuantity404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
 	}
-	if err != nil {
+	if errors.Is(err, usecase.ErrInvalid) || errors.Is(err, usecase.ErrConflict) {
 		return server.ChangeListingQuantity400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.ChangeListingQuantity200JSONResponse(toListing(listing)), nil
 }
-func (h *Handler) SetListingQueueEnabled(_ context.Context, r server.SetListingQueueEnabledRequestObject) (server.SetListingQueueEnabledResponseObject, error) {
+func (h *Handler) SetListingQueueEnabled(ctx context.Context, r server.SetListingQueueEnabledRequestObject) (server.SetListingQueueEnabledResponseObject, error) {
 	if r.Body == nil {
 		return server.SetListingQueueEnabled404JSONResponse{NotFoundJSONResponse: notFound(usecase.ErrInvalid)}, nil
 	}
-	listing, err := h.service.SetQueueEnabled(r.ListingId.String(), r.Body.Enabled)
-	if err != nil {
+	listing, err := h.service.SetQueueEnabled(ctx, r.ListingId.String(), r.Body.Enabled)
+	if errors.Is(err, usecase.ErrNotFound) {
 		return server.SetListingQueueEnabled404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.SetListingQueueEnabled200JSONResponse(toListing(listing)), nil
 }
-func (h *Handler) PauseListing(_ context.Context, r server.PauseListingRequestObject) (server.PauseListingResponseObject, error) {
-	listing, err := h.service.PauseListing(r.ListingId.String())
-	if err != nil {
+func (h *Handler) PauseListing(ctx context.Context, r server.PauseListingRequestObject) (server.PauseListingResponseObject, error) {
+	listing, err := h.service.PauseListing(ctx, r.ListingId.String())
+	if errors.Is(err, usecase.ErrNotFound) {
 		return server.PauseListing404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.PauseListing200JSONResponse(toListing(listing)), nil
 }
-func (h *Handler) ActivateListing(_ context.Context, r server.ActivateListingRequestObject) (server.ActivateListingResponseObject, error) {
-	listing, err := h.service.ActivateListing(r.ListingId.String())
+func (h *Handler) ActivateListing(ctx context.Context, r server.ActivateListingRequestObject) (server.ActivateListingResponseObject, error) {
+	listing, err := h.service.ActivateListing(ctx, r.ListingId.String())
 	if errors.Is(err, usecase.ErrNotFound) {
 		return server.ActivateListing404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
 	}
-	if err != nil {
+	if errors.Is(err, usecase.ErrConflict) {
 		return server.ActivateListing400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.ActivateListing200JSONResponse(toListing(listing)), nil
 }
 
-func (h *Handler) CreateOrder(_ context.Context, r server.CreateOrderRequestObject) (server.CreateOrderResponseObject, error) {
+func (h *Handler) CreateOrder(ctx context.Context, r server.CreateOrderRequestObject) (server.CreateOrderResponseObject, error) {
 	if r.Body == nil {
 		return server.CreateOrder400JSONResponse{BadRequestJSONResponse: badRequest(usecase.ErrInvalid)}, nil
 	}
-	order, err := h.service.CreateOrder(r.Body.TicketId.String(), r.Body.ListingId.String(), r.Body.SkuId.String(), r.Body.UserId.String(), r.Params.IdempotencyKey.String())
+	order, err := h.service.CreateOrder(ctx, r.Body.TicketId.String(), r.Body.ListingId.String(), r.Body.SkuId.String(), r.Body.UserId.String(), r.Params.IdempotencyKey.String())
 	if errors.Is(err, usecase.ErrNotFound) {
 		return server.CreateOrder404JSONResponse{NotFoundJSONResponse: notFound(err)}, nil
 	}
 	if errors.Is(err, usecase.ErrInvalid) {
 		return server.CreateOrder400JSONResponse{BadRequestJSONResponse: badRequest(err)}, nil
 	}
-	if err != nil {
+	if errors.Is(err, usecase.ErrConflict) || errors.Is(err, usecase.ErrUnavailable) {
 		return server.CreateOrder409JSONResponse{ConflictJSONResponse: conflict(err)}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return server.CreateOrder201JSONResponse(toOrder(order)), nil
 }

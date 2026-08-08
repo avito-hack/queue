@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +33,7 @@ func Test_GetHealth_ReturnOK(t *testing.T) {
 func Test_ValidateUserToken_ReturnUserID(t *testing.T) {
 	// given
 	service := usecase.NewService()
-	user, err := service.CreateUser("buyer", "token-1")
+	user, err := service.CreateUser(context.Background(), "buyer", "token-1")
 	require.NoError(t, err)
 	router, err := NewRouter(NewHandler(usecase.NewHealth(), service))
 	require.NoError(t, err)
@@ -66,11 +67,11 @@ func Test_ValidateUserToken_ReturnUnauthorizedWhenTokenMissing(t *testing.T) {
 func Test_CreateOrder_ReturnCreated(t *testing.T) {
 	// given
 	service := usecase.NewService()
-	seller, err := service.CreateUser("seller", "seller-token")
+	seller, err := service.CreateUser(context.Background(), "seller", "seller-token")
 	require.NoError(t, err)
-	buyer, err := service.CreateUser("buyer", "buyer-token")
+	buyer, err := service.CreateUser(context.Background(), "buyer", "buyer-token")
 	require.NoError(t, err)
-	listing, err := service.CreateListing(seller.ID, "item", 100, 1, true)
+	listing, err := service.CreateListing(context.Background(), seller.ID, "item", 100, 1, true)
 	require.NoError(t, err)
 	ticketID := uuid.NewString()
 	skuID := uuid.NewString()

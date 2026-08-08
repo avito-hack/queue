@@ -33,6 +33,23 @@ func (s *readerStub) GetOrder(context.Context, string) (Order, error) {
 	return Order{}, ErrNotFound
 }
 
+func (s *readerStub) CreateUser(_ context.Context, user User) error {
+	s.user = user
+	return nil
+}
+
+func (s *readerStub) CreateListing(context.Context, Listing) error {
+	return nil
+}
+
+func (s *readerStub) SaveListing(context.Context, Listing) error {
+	return nil
+}
+
+func (s *readerStub) CreateOrder(context.Context, Order) (Order, error) {
+	return Order{}, nil
+}
+
 func Test_ListListings_ReturnRepositoryData(t *testing.T) {
 	// given
 	expected := Listing{ID: "11111111-1111-4111-8111-111111111101"}
@@ -58,4 +75,19 @@ func Test_ValidateUserToken_ReturnRepositoryUser(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	assert.Equal(t, expected, user)
+}
+
+func Test_CreateUser_ValidateUserToken_ReturnCreatedUser(t *testing.T) {
+	// given
+	repository := &readerStub{}
+	service := NewService(repository)
+	created, err := service.CreateUser(context.Background(), "buyer", "demo-token")
+	require.NoError(t, err)
+
+	// when
+	validated, err := service.ValidateUserToken(context.Background(), "Bearer demo-token")
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, created, validated)
 }

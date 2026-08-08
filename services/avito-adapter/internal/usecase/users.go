@@ -8,19 +8,25 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) CreateUser(name, token string) (User, error) {
+func (s *Service) CreateUser(ctx context.Context, name, token string) (User, error) {
 	token = bearerToken(token)
 	if strings.TrimSpace(name) == "" || token == "" {
 		return User{}, ErrInvalid
 	}
+	user := User{ID: uuid.NewString(), Name: name, Token: token, CreatedAt: time.Now().UTC()}
+	if s.writer != nil {
+		if err := s.writer.CreateUser(ctx, user); err != nil {
+			return User{}, err
+		}
+		return user, nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, user := range s.users {
-		if user.Token == token {
+	for _, existing := range s.users {
+		if existing.Token == token {
 			return User{}, ErrConflict
 		}
 	}
-	user := User{ID: uuid.NewString(), Name: name, Token: token, CreatedAt: time.Now().UTC()}
 	s.users[user.ID] = user
 	return user, nil
 }

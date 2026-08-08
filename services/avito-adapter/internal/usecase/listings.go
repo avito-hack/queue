@@ -49,17 +49,26 @@ func (s *Service) ListListings(ctx context.Context, filter ListingFilter) ([]Lis
 	return listings[filter.Offset:end], total, nil
 }
 
-func (s *Service) CreateListing(sellerID, title string, price int64, quantity int, queueEnabled bool) (Listing, error) {
+func (s *Service) CreateListing(ctx context.Context, sellerID, title string, price int64, quantity int, queueEnabled bool) (Listing, error) {
 	if strings.TrimSpace(title) == "" || price < 0 || quantity < 0 {
 		return Listing{}, ErrInvalid
+	}
+	now := time.Now().UTC()
+	listing := Listing{ID: uuid.NewString(), SellerID: sellerID, Title: title, Price: price, Quantity: quantity, QueueEnabled: queueEnabled, Status: ListingActive, CreatedAt: now, UpdatedAt: now}
+	if s.writer != nil {
+		if _, err := s.reader.GetUser(ctx, sellerID); err != nil {
+			return Listing{}, err
+		}
+		if err := s.writer.CreateListing(ctx, listing); err != nil {
+			return Listing{}, err
+		}
+		return listing, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.users[sellerID]; !ok {
 		return Listing{}, ErrNotFound
 	}
-	now := time.Now().UTC()
-	listing := Listing{ID: uuid.NewString(), SellerID: sellerID, Title: title, Price: price, Quantity: quantity, QueueEnabled: queueEnabled, Status: ListingActive, CreatedAt: now, UpdatedAt: now}
 	s.listings[listing.ID] = listing
 	return listing, nil
 }
@@ -77,12 +86,10 @@ func (s *Service) GetListing(ctx context.Context, id string) (Listing, error) {
 	return listing, nil
 }
 
-func (s *Service) UpdateListing(id string, title *string, price *int64) (Listing, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	listing, ok := s.listings[id]
-	if !ok {
-		return Listing{}, ErrNotFound
+func (s *Service) UpdateListing(ctx context.Context, id string, title *string, price *int64) (Listing, error) {
+	listing, err := s.GetListing(ctx, id)
+	if err != nil {
+		return Listing{}, err
 	}
 	if listing.Status == ListingRemoved {
 		return Listing{}, ErrConflict
@@ -100,74 +107,103 @@ func (s *Service) UpdateListing(id string, title *string, price *int64) (Listing
 		listing.Price = *price
 	}
 	listing.UpdatedAt = time.Now().UTC()
+	if s.writer != nil {
+		if err := s.writer.SaveListing(ctx, listing); err != nil {
+			return Listing{}, err
+		}
+		return listing, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listings[id] = listing
 	return listing, nil
 }
 
-func (s *Service) ChangeQuantity(id string, quantity int) (Listing, error) {
+func (s *Service) ChangeQuantity(ctx context.Context, id string, quantity int) (Listing, error) {
 	if quantity < 0 {
 		return Listing{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	listing, ok := s.listings[id]
-	if !ok {
-		return Listing{}, ErrNotFound
+	listing, err := s.GetListing(ctx, id)
+	if err != nil {
+		return Listing{}, err
 	}
 	if listing.Status == ListingRemoved {
 		return Listing{}, ErrConflict
 	}
 	listing.Quantity = quantity
 	listing.UpdatedAt = time.Now().UTC()
+	if s.writer != nil {
+		if err := s.writer.SaveListing(ctx, listing); err != nil {
+			return Listing{}, err
+		}
+		return listing, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listings[id] = listing
 	return listing, nil
 }
 
-func (s *Service) SetQueueEnabled(id string, enabled bool) (Listing, error) {
-	return s.changeListing(id, func(l *Listing) { l.QueueEnabled = enabled })
+func (s *Service) SetQueueEnabled(ctx context.Context, id string, enabled bool) (Listing, error) {
+	return s.changeListing(ctx, id, func(l *Listing) { l.QueueEnabled = enabled })
 }
-func (s *Service) PauseListing(id string) (Listing, error) {
-	return s.changeListing(id, func(l *Listing) { l.Status = ListingPaused })
+func (s *Service) PauseListing(ctx context.Context, id string) (Listing, error) {
+	return s.changeListing(ctx, id, func(l *Listing) { l.Status = ListingPaused })
 }
-func (s *Service) ActivateListing(id string) (Listing, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	listing, ok := s.listings[id]
-	if !ok {
-		return Listing{}, ErrNotFound
+func (s *Service) ActivateListing(ctx context.Context, id string) (Listing, error) {
+	listing, err := s.GetListing(ctx, id)
+	if err != nil {
+		return Listing{}, err
 	}
 	if listing.Status == ListingRemoved {
 		return Listing{}, ErrConflict
 	}
 	listing.Status = ListingActive
 	listing.UpdatedAt = time.Now().UTC()
+	if s.writer != nil {
+		if err := s.writer.SaveListing(ctx, listing); err != nil {
+			return Listing{}, err
+		}
+		return listing, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listings[id] = listing
 	return listing, nil
 }
-func (s *Service) RemoveListing(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	listing, ok := s.listings[id]
-	if !ok {
-		return ErrNotFound
+func (s *Service) RemoveListing(ctx context.Context, id string) error {
+	listing, err := s.GetListing(ctx, id)
+	if err != nil {
+		return err
 	}
 	listing.Status = ListingRemoved
 	listing.UpdatedAt = time.Now().UTC()
+	if s.writer != nil {
+		return s.writer.SaveListing(ctx, listing)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listings[id] = listing
 	return nil
 }
-func (s *Service) changeListing(id string, change func(*Listing)) (Listing, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	listing, ok := s.listings[id]
-	if !ok {
-		return Listing{}, ErrNotFound
+func (s *Service) changeListing(ctx context.Context, id string, change func(*Listing)) (Listing, error) {
+	listing, err := s.GetListing(ctx, id)
+	if err != nil {
+		return Listing{}, err
 	}
 	if listing.Status == ListingRemoved {
 		return Listing{}, ErrConflict
 	}
 	change(&listing)
 	listing.UpdatedAt = time.Now().UTC()
+	if s.writer != nil {
+		if err := s.writer.SaveListing(ctx, listing); err != nil {
+			return Listing{}, err
+		}
+		return listing, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listings[id] = listing
 	return listing, nil
 }

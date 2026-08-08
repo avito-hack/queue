@@ -12,15 +12,15 @@ import (
 	"github.com/avito-hack/queue/services/avito-adapter/internal/usecase"
 )
 
-type Reader struct {
+type Repository struct {
 	pool *pgxpool.Pool
 }
 
-func NewReader(pool *pgxpool.Pool) *Reader {
-	return &Reader{pool: pool}
+func NewRepository(pool *pgxpool.Pool) *Repository {
+	return &Repository{pool: pool}
 }
 
-func (r *Reader) ListListings(ctx context.Context, filter usecase.ListingFilter) ([]usecase.Listing, int, error) {
+func (r *Repository) ListListings(ctx context.Context, filter usecase.ListingFilter) ([]usecase.Listing, int, error) {
 	conditions := make([]string, 0, 2)
 	arguments := make([]any, 0, 4)
 	if filter.SellerID != nil {
@@ -60,7 +60,7 @@ func (r *Reader) ListListings(ctx context.Context, filter usecase.ListingFilter)
 	return listings, total, nil
 }
 
-func (r *Reader) GetListing(ctx context.Context, id string) (usecase.Listing, error) {
+func (r *Repository) GetListing(ctx context.Context, id string) (usecase.Listing, error) {
 	listing, err := scanListing(r.pool.QueryRow(ctx, "SELECT id, seller_id, title, price, quantity, queue_enabled, status, created_at, updated_at FROM public.listings WHERE id = $1", id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return usecase.Listing{}, usecase.ErrNotFound
@@ -68,15 +68,15 @@ func (r *Reader) GetListing(ctx context.Context, id string) (usecase.Listing, er
 	return listing, err
 }
 
-func (r *Reader) GetUser(ctx context.Context, id string) (usecase.User, error) {
+func (r *Repository) GetUser(ctx context.Context, id string) (usecase.User, error) {
 	return r.getUser(ctx, "id", id, usecase.ErrNotFound)
 }
 
-func (r *Reader) GetUserByToken(ctx context.Context, token string) (usecase.User, error) {
+func (r *Repository) GetUserByToken(ctx context.Context, token string) (usecase.User, error) {
 	return r.getUser(ctx, "token", token, usecase.ErrUnauthorized)
 }
 
-func (r *Reader) getUser(ctx context.Context, column, value string, notFound error) (usecase.User, error) {
+func (r *Repository) getUser(ctx context.Context, column, value string, notFound error) (usecase.User, error) {
 	var user usecase.User
 	err := r.pool.QueryRow(ctx, "SELECT id, name, token, created_at FROM public.users WHERE "+column+" = $1", value).Scan(&user.ID, &user.Name, &user.Token, &user.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -88,14 +88,21 @@ func (r *Reader) getUser(ctx context.Context, column, value string, notFound err
 	return user, nil
 }
 
-func (r *Reader) GetOrder(ctx context.Context, id string) (usecase.Order, error) {
-	var order usecase.Order
-	err := r.pool.QueryRow(ctx, "SELECT id, ticket_id, listing_id, sku_id, user_id, idempotency_key, checkout_url, status, created_at FROM public.orders WHERE id = $1", id).Scan(&order.ID, &order.TicketID, &order.ListingID, &order.SkuID, &order.UserID, &order.IdempotencyKey, &order.CheckoutURL, &order.Status, &order.CreatedAt)
+func (r *Repository) GetOrder(ctx context.Context, id string) (usecase.Order, error) {
+	order, err := scanOrder(r.pool.QueryRow(ctx, "SELECT id, ticket_id, listing_id, sku_id, user_id, idempotency_key, checkout_url, status, created_at FROM public.orders WHERE id = $1", id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return usecase.Order{}, usecase.ErrNotFound
 	}
 	if err != nil {
 		return usecase.Order{}, fmt.Errorf("get order: %w", err)
+	}
+	return order, nil
+}
+
+func scanOrder(scanner listingScanner) (usecase.Order, error) {
+	var order usecase.Order
+	if err := scanner.Scan(&order.ID, &order.TicketID, &order.ListingID, &order.SkuID, &order.UserID, &order.IdempotencyKey, &order.CheckoutURL, &order.Status, &order.CreatedAt); err != nil {
+		return usecase.Order{}, err
 	}
 	return order, nil
 }
