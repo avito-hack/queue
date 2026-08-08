@@ -21,6 +21,20 @@ type issueTicketRepositoryStub struct {
 	receivedCommand IssueTicketCommand
 }
 
+type issueTicketListingReaderStub struct {
+	listing    TicketIssueListing
+	err        error
+	calls      int
+	receivedID uuid.UUID
+}
+
+func (s *issueTicketListingReaderStub) Get(_ context.Context, listingID uuid.UUID) (TicketIssueListing, error) {
+	s.calls++
+	s.receivedID = listingID
+
+	return s.listing, s.err
+}
+
 type issueTicketContextKey struct{}
 
 func (s *issueTicketRepositoryStub) Issue(
@@ -46,8 +60,9 @@ func Test_IssueTicket_ValidRequest_ReturnCreatedTicket(t *testing.T) {
 		domain.TicketAvailableActionDecline,
 	}
 	repository := &issueTicketRepositoryStub{result: expected}
+	listingReader := validIssueListingReader(request)
 	clockCalls := 0
-	useCase := NewIssueTicket(repository, activationTTL, func() time.Time {
+	useCase := NewIssueTicket(repository, listingReader, activationTTL, func() time.Time {
 		clockCalls++
 		return now
 	})
@@ -69,10 +84,13 @@ func Test_IssueTicket_ValidRequest_ReturnCreatedTicket(t *testing.T) {
 		UserID:             request.UserID,
 		ListingID:          request.ListingID,
 		SKUID:              request.SKUID,
+		ListingQuantity:    10,
 		IdempotencyKey:     idempotencyKey,
 		IssuedAt:           now,
 		ActivationDeadline: now.Add(activationTTL),
 	}, repository.receivedCommand)
+	assert.Equal(t, 1, listingReader.calls)
+	assert.Equal(t, request.ListingID, listingReader.receivedID)
 	assert.Equal(t, 1, clockCalls)
 }
 
@@ -122,8 +140,9 @@ func Test_IssueTicket_ReplayedTicket_ReturnTicketForEveryValidStatus(t *testing.
 				Created:      false,
 			}
 			repository := &issueTicketRepositoryStub{result: replayed}
+			listingReader := validIssueListingReader(request)
 			clockCalls := 0
-			useCase := NewIssueTicket(repository, 15*time.Minute, func() time.Time {
+			useCase := NewIssueTicket(repository, listingReader, 15*time.Minute, func() time.Time {
 				clockCalls++
 				return now
 			})
@@ -137,6 +156,7 @@ func Test_IssueTicket_ReplayedTicket_ReturnTicketForEveryValidStatus(t *testing.
 			assert.Equal(t, test.status, result.Ticket.Status)
 			assert.Equal(t, test.expectedActions, result.Ticket.AvailableActions)
 			assert.Equal(t, 1, repository.calls)
+			assert.Equal(t, 1, listingReader.calls)
 			assert.Equal(t, 1, clockCalls)
 		})
 	}
@@ -221,8 +241,9 @@ func Test_IssueTicket_InvalidInput_ReturnErrorBeforeClockAndRepository(t *testin
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &issueTicketRepositoryStub{}
+			listingReader := validIssueListingReader(validRequest)
 			clockCalls := 0
-			useCase := NewIssueTicket(repository, test.activationTTL, func() time.Time {
+			useCase := NewIssueTicket(repository, listingReader, test.activationTTL, func() time.Time {
 				clockCalls++
 				return time.Now()
 			})
@@ -236,6 +257,7 @@ func Test_IssueTicket_InvalidInput_ReturnErrorBeforeClockAndRepository(t *testin
 			assert.EqualError(t, err, test.expectedError)
 			assert.Equal(t, IssueTicketResult{}, result)
 			assert.Zero(t, repository.calls)
+			assert.Zero(t, listingReader.calls)
 			assert.Zero(t, clockCalls)
 		})
 	}
@@ -259,8 +281,9 @@ func Test_IssueTicket_RepositoryError_ReturnWrappedError(t *testing.T) {
 			now := time.Date(2026, time.August, 7, 14, 0, 0, 0, time.UTC)
 			activationTTL := 15 * time.Minute
 			repository := &issueTicketRepositoryStub{err: test.err}
+			listingReader := validIssueListingReader(request)
 			clockCalls := 0
-			useCase := NewIssueTicket(repository, activationTTL, func() time.Time {
+			useCase := NewIssueTicket(repository, listingReader, activationTTL, func() time.Time {
 				clockCalls++
 				return now
 			})
@@ -279,13 +302,82 @@ func Test_IssueTicket_RepositoryError_ReturnWrappedError(t *testing.T) {
 				UserID:             request.UserID,
 				ListingID:          request.ListingID,
 				SKUID:              request.SKUID,
+				ListingQuantity:    10,
 				IdempotencyKey:     idempotencyKey,
 				IssuedAt:           now,
 				ActivationDeadline: now.Add(activationTTL),
 			}, repository.receivedCommand)
+			assert.Equal(t, 1, listingReader.calls)
 			assert.Equal(t, 1, clockCalls)
 		})
 	}
+}
+
+func Test_IssueTicket_ListingCannotIssue_ReturnNotIssuable(t *testing.T) {
+	// given
+	request := validIssueTicketRequest()
+	tests := []struct {
+		name    string
+		listing TicketIssueListing
+	}{
+		{name: "empty quantity", listing: TicketIssueListing{ID: request.ListingID, QueueEnabled: true, Status: "active"}},
+		{name: "queue disabled", listing: TicketIssueListing{ID: request.ListingID, Quantity: 1, Status: "active"}},
+		{name: "listing paused", listing: TicketIssueListing{ID: request.ListingID, Quantity: 1, QueueEnabled: true, Status: "paused"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			listingReader := &issueTicketListingReaderStub{listing: test.listing}
+			repository := &issueTicketRepositoryStub{}
+			clockCalls := 0
+			useCase := NewIssueTicket(repository, listingReader, time.Minute, func() time.Time {
+				clockCalls++
+				return time.Now()
+			})
+
+			// when
+			_, err := useCase.Issue(context.Background(), request, uuid.New())
+
+			// then
+			require.ErrorIs(t, err, ErrTicketNotIssuable)
+			assert.Equal(t, 1, listingReader.calls)
+			assert.Zero(t, repository.calls)
+			assert.Zero(t, clockCalls)
+		})
+	}
+}
+
+func Test_IssueTicket_ListingReaderFailure_ReturnWrappedError(t *testing.T) {
+	// given
+	request := validIssueTicketRequest()
+	listingError := errors.New("listing failed")
+	listingReader := &issueTicketListingReaderStub{err: listingError}
+	repository := &issueTicketRepositoryStub{}
+	useCase := NewIssueTicket(repository, listingReader, time.Minute, time.Now)
+
+	// when
+	_, err := useCase.Issue(context.Background(), request, uuid.New())
+
+	// then
+	require.EqualError(t, err, "get listing for ticket issue: listing failed")
+	assert.ErrorIs(t, err, listingError)
+	assert.Zero(t, repository.calls)
+}
+
+func Test_IssueTicket_InvalidListingSnapshot_ReturnError(t *testing.T) {
+	// given
+	request := validIssueTicketRequest()
+	listingReader := validIssueListingReader(request)
+	listingReader.listing.ID = uuid.New()
+	repository := &issueTicketRepositoryStub{}
+	useCase := NewIssueTicket(repository, listingReader, time.Minute, time.Now)
+
+	// when
+	_, err := useCase.Issue(context.Background(), request, uuid.New())
+
+	// then
+	require.EqualError(t, err, "get listing for ticket issue: invalid listing")
+	assert.Zero(t, repository.calls)
 }
 
 func Test_IssueTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
@@ -366,8 +458,9 @@ func Test_IssueTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
 			invalidResult := validCreatedIssueTicketResult(request, now, activationTTL)
 			test.mutate(&invalidResult)
 			repository := &issueTicketRepositoryStub{result: invalidResult}
+			listingReader := validIssueListingReader(request)
 			clockCalls := 0
-			useCase := NewIssueTicket(repository, activationTTL, func() time.Time {
+			useCase := NewIssueTicket(repository, listingReader, activationTTL, func() time.Time {
 				clockCalls++
 				return now
 			})
@@ -379,6 +472,7 @@ func Test_IssueTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
 			assert.EqualError(t, err, "issue ticket: invalid issue result")
 			assert.Equal(t, IssueTicketResult{}, result)
 			assert.Equal(t, 1, repository.calls)
+			assert.Equal(t, 1, listingReader.calls)
 			assert.Equal(t, 1, clockCalls)
 		})
 	}
@@ -391,6 +485,15 @@ func validIssueTicketRequest() IssueTicketRequest {
 		ListingID:    uuid.New(),
 		SKUID:        uuid.New(),
 	}
+}
+
+func validIssueListingReader(request IssueTicketRequest) *issueTicketListingReaderStub {
+	return &issueTicketListingReaderStub{listing: TicketIssueListing{
+		ID:           request.ListingID,
+		Quantity:     10,
+		QueueEnabled: true,
+		Status:       "active",
+	}}
 }
 
 func validCreatedIssueTicketResult(

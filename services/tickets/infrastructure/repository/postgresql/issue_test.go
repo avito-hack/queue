@@ -23,7 +23,10 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 	operationID := uuid.New()
 	ticketID := uuid.New()
 	transaction := &activationTransactionStub{
-		rows: []activationRow{activationScanErrorRow(pgx.ErrNoRows)},
+		rows: []activationRow{
+			activationScanErrorRow(pgx.ErrNoRows),
+			issueActiveTicketCountRow(1),
+		},
 		execResults: []activationExecResult{
 			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
 			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
@@ -50,13 +53,18 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		UserID:       command.UserID,
 		Created:      true,
 	}, result)
-	require.Len(t, transaction.queryCalls, 1)
+	require.Len(t, transaction.queryCalls, 2)
 	assert.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
 	assert.Equal(t, []any{
 		toPGUUID(command.UserID),
 		issueOperation,
 		toPGUUID(command.IdempotencyKey),
 	}, transaction.queryCalls[0].args)
+	assert.Contains(t, transaction.queryCalls[1].query, "status = 'issued'")
+	assert.Equal(t, []any{
+		toPGUUID(command.ListingID),
+		toPGTimestamptz(command.IssuedAt),
+	}, transaction.queryCalls[1].args)
 	require.Len(t, transaction.execCalls, 3)
 	assert.Contains(t, transaction.execCalls[0].query, "ticket_id")
 	assert.Contains(t, transaction.execCalls[0].query, "NULL")
@@ -155,6 +163,58 @@ func TestIssueRepository_Issue_CompletedOperation_ReturnReplayAsExisting(t *test
 	assert.Empty(t, transaction.execCalls)
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Zero(t, transaction.rollbackCalls)
+}
+
+func TestIssueRepository_Issue_ListingCapacityExhausted_Rollback(t *testing.T) {
+	// given
+	command := issueCommandForTest()
+	command.ListingQuantity = 1
+	transaction := &activationTransactionStub{
+		rows: []activationRow{
+			activationScanErrorRow(pgx.ErrNoRows),
+			issueActiveTicketCountRow(2),
+		},
+		execResults: []activationExecResult{
+			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
+			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
+		},
+	}
+	repository := newIssueRepositoryForTest(transaction, uuid.New(), uuid.New())
+
+	// when
+	_, err := repository.Issue(context.Background(), command)
+
+	// then
+	require.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
+	assert.Equal(t, 2, len(transaction.execCalls))
+	assert.Zero(t, transaction.commitCalls)
+	assert.Equal(t, 1, transaction.rollbackCalls)
+}
+
+func TestIssueRepository_Issue_CountListingCapacityFailure_Rollback(t *testing.T) {
+	// given
+	command := issueCommandForTest()
+	countError := errors.New("count failed")
+	transaction := &activationTransactionStub{
+		rows: []activationRow{
+			activationScanErrorRow(pgx.ErrNoRows),
+			activationScanErrorRow(countError),
+		},
+		execResults: []activationExecResult{
+			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
+			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
+		},
+	}
+	repository := newIssueRepositoryForTest(transaction, uuid.New(), uuid.New())
+
+	// when
+	_, err := repository.Issue(context.Background(), command)
+
+	// then
+	require.EqualError(t, err, "count active listing tickets: count failed")
+	assert.ErrorIs(t, err, countError)
+	assert.Zero(t, transaction.commitCalls)
+	assert.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_ConcurrentSameKey_ReturnCompletedReplay(t *testing.T) {
@@ -541,7 +601,10 @@ func TestIssueRepository_Issue_CompleteOperationFailure_Rollback(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// given
 			transaction := &activationTransactionStub{
-				rows:        []activationRow{activationScanErrorRow(pgx.ErrNoRows)},
+				rows: []activationRow{
+					activationScanErrorRow(pgx.ErrNoRows),
+					issueActiveTicketCountRow(1),
+				},
 				execResults: test.execResults,
 			}
 			repository := newIssueRepositoryForTest(transaction, uuid.New(), uuid.New(), uuid.New())
@@ -747,10 +810,19 @@ func issueCommandForTest() usecase.IssueTicketCommand {
 		UserID:             uuid.New(),
 		ListingID:          uuid.New(),
 		SKUID:              uuid.New(),
+		ListingQuantity:    10,
 		IdempotencyKey:     uuid.New(),
 		IssuedAt:           issuedAt,
 		ActivationDeadline: issuedAt.Add(15 * time.Minute),
 	}
+}
+
+func issueActiveTicketCountRow(value int64) activationRow {
+	return activationRowStub{scan: func(destinations []any) error {
+		*destinations[0].(*int64) = value
+
+		return nil
+	}}
 }
 
 func newIssueResult(
@@ -849,7 +921,10 @@ func issueExistingPathTransaction(row activationRow) *activationTransactionStub 
 
 func issueSuccessfulTransaction() *activationTransactionStub {
 	return &activationTransactionStub{
-		rows: []activationRow{activationScanErrorRow(pgx.ErrNoRows)},
+		rows: []activationRow{
+			activationScanErrorRow(pgx.ErrNoRows),
+			issueActiveTicketCountRow(1),
+		},
 		execResults: []activationExecResult{
 			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},
 			{commandTag: pgconn.NewCommandTag("INSERT 0 1")},

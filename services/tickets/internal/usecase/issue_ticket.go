@@ -28,9 +28,21 @@ type IssueTicketCommand struct {
 	UserID             uuid.UUID
 	ListingID          uuid.UUID
 	SKUID              uuid.UUID
+	ListingQuantity    int
 	IdempotencyKey     uuid.UUID
 	IssuedAt           time.Time
 	ActivationDeadline time.Time
+}
+
+type TicketIssueListing struct {
+	ID           uuid.UUID
+	Quantity     int
+	QueueEnabled bool
+	Status       string
+}
+
+type TicketIssueListingReader interface {
+	Get(context.Context, uuid.UUID) (TicketIssueListing, error)
 }
 
 type IssueTicketResult struct {
@@ -46,12 +58,14 @@ type TicketIssueRepository interface {
 
 type IssueTicket struct {
 	repository    TicketIssueRepository
+	listingReader TicketIssueListingReader
 	activationTTL time.Duration
 	clock         Clock
 }
 
 func NewIssueTicket(
 	repository TicketIssueRepository,
+	listingReader TicketIssueListingReader,
 	activationTTL time.Duration,
 	clocks ...Clock,
 ) *IssueTicket {
@@ -62,6 +76,7 @@ func NewIssueTicket(
 
 	return &IssueTicket{
 		repository:    repository,
+		listingReader: listingReader,
 		activationTTL: activationTTL,
 		clock:         clock,
 	}
@@ -90,6 +105,20 @@ func (u *IssueTicket) Issue(
 	if u.activationTTL <= 0 {
 		return IssueTicketResult{}, fmt.Errorf("%w: activation TTL must be positive", ErrInvalidTicketIssue)
 	}
+	if u.listingReader == nil {
+		return IssueTicketResult{}, fmt.Errorf("%w: listing reader is nil", ErrInvalidTicketIssue)
+	}
+
+	listing, err := u.listingReader.Get(ctx, request.ListingID)
+	if err != nil {
+		return IssueTicketResult{}, fmt.Errorf("get listing for ticket issue: %w", err)
+	}
+	if listing.ID != request.ListingID || listing.Quantity < 0 {
+		return IssueTicketResult{}, errors.New("get listing for ticket issue: invalid listing")
+	}
+	if listing.Status != "active" || !listing.QueueEnabled || listing.Quantity == 0 {
+		return IssueTicketResult{}, ErrTicketNotIssuable
+	}
 
 	now := u.clock()
 	command := IssueTicketCommand{
@@ -97,6 +126,7 @@ func (u *IssueTicket) Issue(
 		UserID:             request.UserID,
 		ListingID:          request.ListingID,
 		SKUID:              request.SKUID,
+		ListingQuantity:    listing.Quantity,
 		IdempotencyKey:     idempotencyKey,
 		IssuedAt:           now,
 		ActivationDeadline: now.Add(u.activationTTL),

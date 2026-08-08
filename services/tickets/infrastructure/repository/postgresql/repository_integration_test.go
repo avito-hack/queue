@@ -39,6 +39,7 @@ func Test_IssueRepository_ConcurrentSameQueueEntry_CreateOneTicket(t *testing.T)
 		UserID:             uuid.New(),
 		ListingID:          uuid.New(),
 		SKUID:              uuid.New(),
+		ListingQuantity:    10,
 		IdempotencyKey:     uuid.New(),
 		IssuedAt:           now,
 		ActivationDeadline: now.Add(15 * time.Minute),
@@ -445,6 +446,7 @@ func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) 
 		UserID:             uuid.New(),
 		ListingID:          uuid.New(),
 		SKUID:              uuid.New(),
+		ListingQuantity:    10,
 		IdempotencyKey:     uuid.New(),
 		IssuedAt:           now,
 		ActivationDeadline: now.Add(15 * time.Minute),
@@ -460,6 +462,56 @@ func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) 
 
 	// then
 	require.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
+	require.Equal(t, int64(1), integrationTicketCount(t))
+}
+
+func Test_IssueRepository_ConcurrentLastListingUnit_IssueOneTicket(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	repository := NewIssueRepository(integrationPool)
+	now := time.Date(2026, time.August, 7, 10, 0, 0, 0, time.UTC)
+	listingID := uuid.New()
+	commands := []usecase.IssueTicketCommand{
+		{
+			QueueEntryID:       uuid.New(),
+			UserID:             uuid.New(),
+			ListingID:          listingID,
+			SKUID:              uuid.New(),
+			ListingQuantity:    1,
+			IdempotencyKey:     uuid.New(),
+			IssuedAt:           now,
+			ActivationDeadline: now.Add(15 * time.Minute),
+		},
+		{
+			QueueEntryID:       uuid.New(),
+			UserID:             uuid.New(),
+			ListingID:          listingID,
+			SKUID:              uuid.New(),
+			ListingQuantity:    1,
+			IdempotencyKey:     uuid.New(),
+			IssuedAt:           now,
+			ActivationDeadline: now.Add(15 * time.Minute),
+		},
+	}
+
+	// when
+	results := issueConcurrently(repository, commands)
+
+	// then
+	issued := 0
+	rejected := 0
+	for _, result := range results {
+		switch {
+		case result.err == nil:
+			issued++
+		case errors.Is(result.err, usecase.ErrTicketNotIssuable):
+			rejected++
+		default:
+			require.NoError(t, result.err)
+		}
+	}
+	require.Equal(t, 1, issued)
+	require.Equal(t, 1, rejected)
 	require.Equal(t, int64(1), integrationTicketCount(t))
 }
 
@@ -549,6 +601,7 @@ func issueIntegrationTicket(t *testing.T) usecase.IssueTicketResult {
 		UserID:             uuid.New(),
 		ListingID:          uuid.New(),
 		SKUID:              uuid.New(),
+		ListingQuantity:    10,
 		IdempotencyKey:     uuid.New(),
 		IssuedAt:           now,
 		ActivationDeadline: now.Add(15 * time.Minute),
@@ -569,6 +622,7 @@ func issueListingIntegrationTicket(
 		UserID:             uuid.New(),
 		ListingID:          listingID,
 		SKUID:              uuid.New(),
+		ListingQuantity:    10,
 		IdempotencyKey:     uuid.New(),
 		IssuedAt:           issuedAt,
 		ActivationDeadline: issuedAt.Add(time.Hour),

@@ -40,6 +40,9 @@ INSERT INTO public.idempotency_operations (
 ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING;
 
 -- name: InsertIssuedTicket :execrows
+WITH listing_lock AS (
+    SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(listing_id)::uuid::text, 0))
+)
 INSERT INTO public.tickets (
     id,
     queue_entry_id,
@@ -56,11 +59,11 @@ INSERT INTO public.tickets (
     finished_at,
     updated_at,
     version
-) VALUES (
+) SELECT
     sqlc.arg(id),
     sqlc.arg(queue_entry_id),
     sqlc.arg(user_id),
-    sqlc.arg(listing_id),
+    sqlc.arg(listing_id)::uuid,
     sqlc.arg(sku_id),
     'issued',
     sqlc.arg(activation_deadline),
@@ -72,7 +75,7 @@ INSERT INTO public.tickets (
     NULL,
     sqlc.arg(issued_at),
     1
-)
+FROM listing_lock
 ON CONFLICT (queue_entry_id) DO NOTHING;
 
 -- name: FindTicketByQueueEntry :one

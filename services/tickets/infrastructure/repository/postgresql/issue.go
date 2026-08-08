@@ -93,6 +93,21 @@ func (r *IssueRepository) issue(
 
 		return usecase.IssueTicketResult{}, fmt.Errorf("insert issued ticket: %w", err)
 	}
+	if ticketInserted {
+		activeTickets, err := sqlgen.New(transaction).CountActiveListingTickets(
+			ctx,
+			sqlgen.CountActiveListingTicketsParams{
+				ListingID: toPGUUID(command.ListingID),
+				ActiveAt:  toPGTimestamptz(command.IssuedAt),
+			},
+		)
+		if err != nil {
+			return usecase.IssueTicketResult{}, fmt.Errorf("count active listing tickets: %w", err)
+		}
+		if activeTickets > int64(command.ListingQuantity) {
+			return usecase.IssueTicketResult{}, usecase.ErrTicketNotIssuable
+		}
+	}
 
 	result := usecase.IssueTicketResult{
 		Ticket: domain.Ticket{

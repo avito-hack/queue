@@ -76,9 +76,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create Avito adapter order creator: %w", err)
 	}
+	listingReader, err := avitoadapter.NewListingReader(cfg.AvitoAdapter.URL, avitoHTTPClient)
+	if err != nil {
+		return fmt.Errorf("create Avito adapter listing reader: %w", err)
+	}
 	activateTicket := usecase.NewActivateTicket(activationRepository, orderCreator, time.Now)
 	declineTicket := usecase.NewDeclineTicket(declineRepository, time.Now)
-	issueTicket := usecase.NewIssueTicket(issueRepository, cfg.Ticket.ActivationTTL, time.Now)
+	issueTicket := usecase.NewIssueTicket(issueRepository, listingReader, cfg.Ticket.ActivationTTL, time.Now)
 	maintainTickets := usecase.NewMaintainTickets(
 		lifecycleRepository,
 		cfg.Workers.BatchSize,
