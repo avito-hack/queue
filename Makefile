@@ -68,7 +68,7 @@ build-tickets: generate-tickets
 	mkdir -p $(BIN_DIR)
 	cd services/tickets && $(GO) build -o $(BIN_DIR)/tickets ./cmd/app
 
-build-avito-adapter:
+build-avito-adapter: generate-avito-adapter
 	mkdir -p $(BIN_DIR)
 	cd services/avito-adapter && $(GO) build -o $(BIN_DIR)/avito-adapter ./cmd/app
 
