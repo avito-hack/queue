@@ -27,7 +27,7 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 func TestUserTokenResolver_ResolveUserID_ReturnUserID(t *testing.T) {
 	// given
 	expectedUserID := uuid.New()
-	responseBody, err := json.Marshal(generated.ValidateUserResult{UserId: expectedUserID})
+	responseBody, err := json.Marshal(generated.ValidateUserTokenResponse{UserId: expectedUserID})
 	require.NoError(t, err)
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		assert.Equal(t, http.MethodPost, request.Method)
@@ -35,9 +35,10 @@ func TestUserTokenResolver_ResolveUserID_ReturnUserID(t *testing.T) {
 		assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
 		assert.Empty(t, request.Header.Get("Authorization"))
 
-		var body generated.ValidateUserRequest
+		var body generated.ValidateUserTokenRequest
 		assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-		assert.Equal(t, "abc-token", body.Token)
+		assert.NotNil(t, body.Token)
+		assert.Equal(t, "abc-token", *body.Token)
 
 		return newHTTPResponse(http.StatusOK, string(responseBody)), nil
 	})}
@@ -55,7 +56,7 @@ func TestUserTokenResolver_ResolveUserID_ReturnUserID(t *testing.T) {
 func TestUserTokenResolver_ResolveUserID_AdapterRejectsToken_ReturnInvalidToken(t *testing.T) {
 	// given
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return newHTTPResponse(http.StatusUnauthorized, ""), nil
+		return newHTTPResponse(http.StatusUnauthorized, `{"message":"invalid token"}`), nil
 	})}
 	resolver, err := NewUserTokenResolver("http://avito-adapter:8080", client)
 	require.NoError(t, err)
@@ -83,7 +84,7 @@ func TestUserTokenResolver_ResolveUserID_AdapterReturnsUnexpectedStatus_ReturnEr
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return newHTTPResponse(test.statusCode, ""), nil
+				return newHTTPResponse(test.statusCode, `{"message":"unexpected status"}`), nil
 			})}
 			resolver, err := NewUserTokenResolver("http://avito-adapter:8080", client)
 			require.NoError(t, err)
