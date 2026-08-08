@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,19 +17,19 @@ func TestLoad_ReturnConfig(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, "127.0.0.1", config.HTTP.Host)
-	assert.Equal(t, 8090, config.HTTP.Port)
-	assert.Equal(t, 2*time.Second, config.HTTP.ReadTimeout)
-	assert.Equal(t, 4*time.Second, config.HTTP.WriteTimeout)
-	assert.Equal(t, 6*time.Second, config.HTTP.ShutdownTimeout)
-	assert.Equal(t, "postgres://tickets:password@postgres/tickets", config.PostgreSQL.URL)
-	assert.Equal(t, 2*time.Second, config.PostgreSQL.ConnectTimeout)
-	assert.Equal(t, "http://avito-adapter:8080", config.AvitoAdapter.URL)
-	assert.Equal(t, 3*time.Second, config.AvitoAdapter.Timeout)
-	assert.Equal(t, "amqp://tickets:password@rabbitmq:5672/", config.RabbitMQ.URL)
-	assert.Equal(t, "domain.events", config.RabbitMQ.Exchange)
-	assert.Equal(t, "tickets.listing-events", config.RabbitMQ.Queue)
-	assert.Equal(t, 12*time.Minute, config.Ticket.ActivationTTL)
+	require.Equal(t, "127.0.0.1", config.HTTP.Host)
+	require.Equal(t, 8090, config.HTTP.Port)
+	require.Equal(t, 2*time.Second, config.HTTP.ReadTimeout)
+	require.Equal(t, 4*time.Second, config.HTTP.WriteTimeout)
+	require.Equal(t, 6*time.Second, config.HTTP.ShutdownTimeout)
+	require.Equal(t, "postgres://tickets:password@postgres/tickets", config.PostgreSQL.URL)
+	require.Equal(t, 2*time.Second, config.PostgreSQL.ConnectTimeout)
+	require.Equal(t, "http://avito-adapter:8080", config.AvitoAdapter.URL)
+	require.Equal(t, 3*time.Second, config.AvitoAdapter.Timeout)
+	require.Equal(t, "amqp://tickets:password@rabbitmq:5672/", config.RabbitMQ.URL)
+	require.Equal(t, "domain.events", config.RabbitMQ.Exchange)
+	require.Equal(t, "tickets.listing-events", config.RabbitMQ.Queue)
+	require.Equal(t, 12*time.Minute, config.Ticket.ActivationTTL)
 }
 
 func TestLoad_DefaultTicketActivationTTL_ReturnFifteenMinutes(t *testing.T) {
@@ -43,7 +42,7 @@ func TestLoad_DefaultTicketActivationTTL_ReturnFifteenMinutes(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, 15*time.Minute, config.Ticket.ActivationTTL)
+	require.Equal(t, 15*time.Minute, config.Ticket.ActivationTTL)
 }
 
 func TestLoad_InvalidDependencyTimeout_ReturnError(t *testing.T) {

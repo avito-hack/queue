@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -56,13 +55,13 @@ func Test_Consumer_QuantityChanged_DispatchGeneratedPayload(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, eventID, handler.quantityCommand.Event.ID)
-	assert.Equal(t, body, handler.quantityCommand.Event.Payload)
-	assert.Equal(t, listingID, handler.quantityCommand.ListingID)
-	assert.Equal(t, sellerID, handler.quantityCommand.SellerID)
-	assert.Equal(t, 5, handler.quantityCommand.PreviousQuantity)
-	assert.Equal(t, 3, handler.quantityCommand.Quantity)
-	assert.Equal(t, changedAt, handler.quantityCommand.ChangedAt)
+	require.Equal(t, eventID, handler.quantityCommand.Event.ID)
+	require.Equal(t, body, handler.quantityCommand.Event.Payload)
+	require.Equal(t, listingID, handler.quantityCommand.ListingID)
+	require.Equal(t, sellerID, handler.quantityCommand.SellerID)
+	require.Equal(t, 5, handler.quantityCommand.PreviousQuantity)
+	require.Equal(t, 3, handler.quantityCommand.Quantity)
+	require.Equal(t, changedAt, handler.quantityCommand.ChangedAt)
 }
 
 func Test_Consumer_StatusChanged_DispatchGeneratedPayload(t *testing.T) {
@@ -81,11 +80,11 @@ func Test_Consumer_StatusChanged_DispatchGeneratedPayload(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, listingID, handler.statusCommand.ListingID)
-	assert.Equal(t, sellerID, handler.statusCommand.SellerID)
-	assert.Equal(t, "active", handler.statusCommand.PreviousStatus)
-	assert.Equal(t, "removed", handler.statusCommand.Status)
-	assert.Equal(t, changedAt, handler.statusCommand.ChangedAt)
+	require.Equal(t, listingID, handler.statusCommand.ListingID)
+	require.Equal(t, sellerID, handler.statusCommand.SellerID)
+	require.Equal(t, "active", handler.statusCommand.PreviousStatus)
+	require.Equal(t, "removed", handler.statusCommand.Status)
+	require.Equal(t, changedAt, handler.statusCommand.ChangedAt)
 }
 
 func Test_Consumer_InvalidMessage_ReturnPermanentError(t *testing.T) {
@@ -146,7 +145,7 @@ func Test_Consumer_HandlerFailed_ReturnTemporaryError(t *testing.T) {
 
 	// then
 	require.ErrorIs(t, err, handlerError)
-	assert.NotErrorIs(t, err, errInvalidListingEventMessage)
+	require.NotErrorIs(t, err, errInvalidListingEventMessage)
 }
 
 func validListingEventDelivery(eventID uuid.UUID, eventType string, body []byte) amqp.Delivery {

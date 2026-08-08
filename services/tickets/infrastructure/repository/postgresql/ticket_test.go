@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
@@ -142,13 +141,13 @@ func TestTicketRepository_Get_ReturnTicket(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, ticketID, ticket.ID)
-	assert.Equal(t, listingID, ticket.ListingID)
-	assert.Equal(t, skuID, ticket.SKUID)
-	assert.Equal(t, domain.TicketStatusIssued, ticket.Status)
-	assert.Equal(t, issuedAt, ticket.IssuedAt)
-	assert.Equal(t, activationDeadline, ticket.ActivationDeadline)
-	assert.Equal(t, sqlgen.GetTicketParams{
+	require.Equal(t, ticketID, ticket.ID)
+	require.Equal(t, listingID, ticket.ListingID)
+	require.Equal(t, skuID, ticket.SKUID)
+	require.Equal(t, domain.TicketStatusIssued, ticket.Status)
+	require.Equal(t, issuedAt, ticket.IssuedAt)
+	require.Equal(t, activationDeadline, ticket.ActivationDeadline)
+	require.Equal(t, sqlgen.GetTicketParams{
 		UserID: toPGUUID(userID),
 		ID:     toPGUUID(ticketID),
 	}, queryer.receivedGetParams)
@@ -162,7 +161,7 @@ func TestTicketRepository_Get_TicketDoesNotExist_ReturnTicketNotFound(t *testing
 	_, err := repository.Get(context.Background(), uuid.New(), uuid.New())
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrTicketNotFound)
+	require.ErrorIs(t, err, usecase.ErrTicketNotFound)
 }
 
 func TestTicketRepository_Get_ScanReturnsError_ReturnWrappedError(t *testing.T) {
@@ -175,8 +174,8 @@ func TestTicketRepository_Get_ScanReturnsError_ReturnWrappedError(t *testing.T) 
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, scanError)
-	assert.Equal(t, "scan failed", err.Error())
+	require.ErrorIs(t, err, scanError)
+	require.Equal(t, "scan failed", err.Error())
 }
 
 func TestTicketRepository_List_ReturnTickets(t *testing.T) {
@@ -211,19 +210,19 @@ func TestTicketRepository_List_ReturnTickets(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	require.Len(t, tickets, 1)
-	assert.Equal(t, ticketID, tickets[0].ID)
-	assert.Equal(t, listingID, tickets[0].ListingID)
-	assert.Equal(t, skuID, tickets[0].SKUID)
-	assert.Equal(t, domain.TicketStatusRedeemed, tickets[0].Status)
-	assert.Equal(t, issuedAt, tickets[0].IssuedAt)
-	assert.Equal(t, activationDeadline, tickets[0].ActivationDeadline)
-	assert.Equal(t, activatedAt, *tickets[0].ActivatedAt)
-	assert.Equal(t, orderID, *tickets[0].OrderID)
-	assert.Equal(t, "/checkout/1", *tickets[0].CheckoutURL)
-	assert.Equal(t, finishedAt, *tickets[0].FinishedAt)
-	assert.Nil(t, tickets[0].CloseReason)
-	assert.Equal(t, sqlgen.ListTicketsParams{UserID: toPGUUID(userID)}, queryer.receivedListParams)
-	assert.True(t, resultRows.closed)
+	require.Equal(t, ticketID, tickets[0].ID)
+	require.Equal(t, listingID, tickets[0].ListingID)
+	require.Equal(t, skuID, tickets[0].SKUID)
+	require.Equal(t, domain.TicketStatusRedeemed, tickets[0].Status)
+	require.Equal(t, issuedAt, tickets[0].IssuedAt)
+	require.Equal(t, activationDeadline, tickets[0].ActivationDeadline)
+	require.Equal(t, activatedAt, *tickets[0].ActivatedAt)
+	require.Equal(t, orderID, *tickets[0].OrderID)
+	require.Equal(t, "/checkout/1", *tickets[0].CheckoutURL)
+	require.Equal(t, finishedAt, *tickets[0].FinishedAt)
+	require.Nil(t, tickets[0].CloseReason)
+	require.Equal(t, sqlgen.ListTicketsParams{UserID: toPGUUID(userID)}, queryer.receivedListParams)
+	require.True(t, resultRows.closed)
 }
 
 func TestTicketRepository_List_WithFilters_ReturnScopedQuery(t *testing.T) {
@@ -241,9 +240,9 @@ func TestTicketRepository_List_WithFilters_ReturnScopedQuery(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Empty(t, tickets)
-	assert.NotNil(t, tickets)
-	assert.Equal(t, sqlgen.ListTicketsParams{
+	require.Empty(t, tickets)
+	require.NotNil(t, tickets)
+	require.Equal(t, sqlgen.ListTicketsParams{
 		UserID:    toPGUUID(userID),
 		Status:    toPGText(string(domain.TicketStatusRedeemed)),
 		ListingID: toPGUUID(listingID),
@@ -261,8 +260,8 @@ func TestTicketRepository_List_QueryReturnsError_ReturnWrappedError(t *testing.T
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, queryError)
-	assert.Equal(t, "query tickets: query failed", err.Error())
+	require.ErrorIs(t, err, queryError)
+	require.Equal(t, "query tickets: query failed", err.Error())
 }
 
 func TestTicketRepository_List_ScanReturnsError_ReturnWrappedError(t *testing.T) {
@@ -276,9 +275,9 @@ func TestTicketRepository_List_ScanReturnsError_ReturnWrappedError(t *testing.T)
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, scanError)
-	assert.Equal(t, "query tickets: scan failed", err.Error())
-	assert.True(t, resultRows.closed)
+	require.ErrorIs(t, err, scanError)
+	require.Equal(t, "query tickets: scan failed", err.Error())
+	require.True(t, resultRows.closed)
 }
 
 func TestTicketRepository_List_RowsReturnError_ReturnWrappedError(t *testing.T) {
@@ -292,8 +291,8 @@ func TestTicketRepository_List_RowsReturnError_ReturnWrappedError(t *testing.T) 
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, rowsError)
-	assert.Equal(t, "query tickets: rows failed", err.Error())
+	require.ErrorIs(t, err, rowsError)
+	require.Equal(t, "query tickets: rows failed", err.Error())
 }
 
 func TestTicketRepository_List_UnknownStatus_ReturnError(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -155,7 +154,7 @@ func TestActivationRepository_Prepare_IssuedTicket_ReturnPreparedActivation(t *t
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, usecase.PreparedActivation{
+	require.Equal(t, usecase.PreparedActivation{
 		OperationID: operationID,
 		Order: usecase.CreateOrderRequest{
 			TicketID:       ticketID,
@@ -166,23 +165,23 @@ func TestActivationRepository_Prepare_IssuedTicket_ReturnPreparedActivation(t *t
 		},
 	}, prepared)
 	require.Len(t, transaction.queryCalls, 4)
-	assert.Contains(t, transaction.queryCalls[0].query, "actor_id = $1")
-	assert.Contains(t, transaction.queryCalls[0].query, "FOR UPDATE")
-	assert.Equal(t, []any{toPGUUID(userID), activationOperation, toPGUUID(idempotencyKey)}, transaction.queryCalls[0].args)
-	assert.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1")
-	assert.Contains(t, transaction.queryCalls[1].query, "user_id = $2")
-	assert.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
-	assert.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID)}, transaction.queryCalls[1].args)
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.queryCalls[0].query, "actor_id = $1")
+	require.Contains(t, transaction.queryCalls[0].query, "FOR UPDATE")
+	require.Equal(t, []any{toPGUUID(userID), activationOperation, toPGUUID(idempotencyKey)}, transaction.queryCalls[0].args)
+	require.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1")
+	require.Contains(t, transaction.queryCalls[1].query, "user_id = $2")
+	require.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
+	require.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID)}, transaction.queryCalls[1].args)
+	require.Equal(t, []any{
 		toPGUUID(ticketID),
 		activationOperation,
 		activationOperationStateProcessing,
 	}, transaction.queryCalls[3].args)
-	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
+	require.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
 	require.Len(t, transaction.execCalls, 1)
-	assert.Contains(t, transaction.execCalls[0].query, "state")
-	assert.Contains(t, transaction.execCalls[0].query, "ON CONFLICT")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.execCalls[0].query, "state")
+	require.Contains(t, transaction.execCalls[0].query, "ON CONFLICT")
+	require.Equal(t, []any{
 		toPGUUID(operationID),
 		toPGUUID(idempotencyKey),
 		activationOperation,
@@ -193,9 +192,9 @@ func TestActivationRepository_Prepare_IssuedTicket_ReturnPreparedActivation(t *t
 		toPGTimestamptz(now.Add(activationOperationTTL)),
 		toPGTimestamptz(now),
 	}, transaction.execCalls[0].args)
-	assert.Equal(t, 1, beginner.calls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, 1, beginner.calls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_CompletedOperation_ReturnReplay(t *testing.T) {
@@ -236,10 +235,10 @@ func TestActivationRepository_Prepare_CompletedOperation_ReturnReplay(t *testing
 	// then
 	require.NoError(t, err)
 	require.NotNil(t, prepared.Replay)
-	assert.Equal(t, expected, *prepared.Replay)
-	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, expected, *prepared.Replay)
+	require.Empty(t, transaction.execCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_ExpiredProcessingOperationWithSameKey_ReturnActivationExpired(t *testing.T) {
@@ -277,10 +276,10 @@ func TestActivationRepository_Prepare_ExpiredProcessingOperationWithSameKey_Retu
 
 	// then
 	require.ErrorIs(t, err, usecase.ErrTicketActivationExpired)
-	assert.Len(t, transaction.queryCalls, 2)
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.Len(t, transaction.queryCalls, 2)
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_SameKeyForAnotherTicket_ReturnIdempotencyConflict(t *testing.T) {
@@ -308,10 +307,10 @@ func TestActivationRepository_Prepare_SameKeyForAnotherTicket_ReturnIdempotencyC
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrIdempotencyConflict)
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrIdempotencyConflict)
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_IneligibleTicket_ReturnDomainError(t *testing.T) {
@@ -373,10 +372,10 @@ func TestActivationRepository_Prepare_IneligibleTicket_ReturnDomainError(t *test
 			})
 
 			// then
-			assert.ErrorIs(t, err, test.expectedError)
-			assert.Empty(t, transaction.execCalls)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.ErrorIs(t, err, test.expectedError)
+			require.Empty(t, transaction.execCalls)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -427,11 +426,11 @@ func TestActivationRepository_Prepare_ConcurrentSameKeyCompletion_ReturnReplay(t
 	// then
 	require.NoError(t, err)
 	require.NotNil(t, prepared.Replay)
-	assert.Equal(t, expected, *prepared.Replay)
-	assert.Len(t, transaction.queryCalls, 3)
-	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
-	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
+	require.Equal(t, expected, *prepared.Replay)
+	require.Len(t, transaction.queryCalls, 3)
+	require.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
+	require.Empty(t, transaction.execCalls)
+	require.Equal(t, 1, transaction.commitCalls)
 }
 
 func TestActivationRepository_Prepare_ConcurrentExpiredSameKeyProcessing_ReturnActivationExpired(t *testing.T) {
@@ -471,10 +470,10 @@ func TestActivationRepository_Prepare_ConcurrentExpiredSameKeyProcessing_ReturnA
 	// then
 	require.ErrorIs(t, err, usecase.ErrTicketActivationExpired)
 	require.Len(t, transaction.queryCalls, 3)
-	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_DifferentKeyOperationIsProcessing_ReturnActivationInProgress(t *testing.T) {
@@ -502,14 +501,14 @@ func TestActivationRepository_Prepare_DifferentKeyOperationIsProcessing_ReturnAc
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrActivationInProgress)
+	require.ErrorIs(t, err, usecase.ErrActivationInProgress)
 	require.Len(t, transaction.queryCalls, 4)
-	assert.Contains(t, transaction.queryCalls[3].query, "ticket_id = $1")
-	assert.Contains(t, transaction.queryCalls[3].query, "state = $3")
-	assert.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.Contains(t, transaction.queryCalls[3].query, "ticket_id = $1")
+	require.Contains(t, transaction.queryCalls[3].query, "state = $3")
+	require.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_TicketOperationUniqueViolation_ReturnActivationInProgress(t *testing.T) {
@@ -544,9 +543,9 @@ func TestActivationRepository_Prepare_TicketOperationUniqueViolation_ReturnActiv
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrActivationInProgress)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrActivationInProgress)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWriteOutbox(t *testing.T) {
@@ -581,42 +580,42 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, usecase.ActivationResult{
+	require.Equal(t, usecase.ActivationResult{
 		TicketID:    ticketID,
 		Status:      domain.TicketStatusRedeemed,
 		OrderID:     order.ID,
 		CheckoutURL: order.CheckoutURL,
 	}, result)
 	require.Len(t, transaction.queryCalls, 1)
-	assert.Contains(t, transaction.queryCalls[0].query, "WHERE id = $1")
-	assert.Contains(t, transaction.queryCalls[0].query, "operation = $2")
-	assert.Contains(t, transaction.queryCalls[0].query, "FOR UPDATE")
-	assert.Equal(t, []any{toPGUUID(operationID), activationOperation}, transaction.queryCalls[0].args)
+	require.Contains(t, transaction.queryCalls[0].query, "WHERE id = $1")
+	require.Contains(t, transaction.queryCalls[0].query, "operation = $2")
+	require.Contains(t, transaction.queryCalls[0].query, "FOR UPDATE")
+	require.Equal(t, []any{toPGUUID(operationID), activationOperation}, transaction.queryCalls[0].args)
 	require.Len(t, transaction.execCalls, 3)
-	assert.Contains(t, transaction.execCalls[0].query, "status = 'redeemed'")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.execCalls[0].query, "status = 'redeemed'")
+	require.Equal(t, []any{
 		toPGTimestamptz(completedAt),
 		toPGUUID(order.ID),
 		toPGText(order.CheckoutURL),
 		toPGUUID(ticketID),
 		toPGUUID(userID),
 	}, transaction.execCalls[0].args)
-	assert.Contains(t, transaction.execCalls[1].query, "state = 'completed'")
-	assert.Equal(t, toPGInt4(activationResponseStatus), transaction.execCalls[1].args[0])
-	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[1].args[3])
-	assert.JSONEq(t, `{
+	require.Contains(t, transaction.execCalls[1].query, "state = 'completed'")
+	require.Equal(t, toPGInt4(activationResponseStatus), transaction.execCalls[1].args[0])
+	require.Equal(t, toPGUUID(operationID), transaction.execCalls[1].args[3])
+	require.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"status":"redeemed",
 		"order_id":"`+order.ID.String()+`",
 		"checkout_url":"/checkout/created"
 	}`, string(transaction.execCalls[1].args[1].([]byte)))
-	assert.Contains(t, transaction.execCalls[2].query, "public.outbox_events")
-	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[2].args[0])
-	assert.Equal(t, activationOutboxAggregateType, transaction.execCalls[2].args[1])
-	assert.Equal(t, toPGUUID(ticketID), transaction.execCalls[2].args[2])
-	assert.Equal(t, domain.TicketEventRedeemed, transaction.execCalls[2].args[3])
-	assert.Equal(t, activationOutboxState, transaction.execCalls[2].args[5])
-	assert.JSONEq(t, `{
+	require.Contains(t, transaction.execCalls[2].query, "public.outbox_events")
+	require.Equal(t, toPGUUID(eventID), transaction.execCalls[2].args[0])
+	require.Equal(t, activationOutboxAggregateType, transaction.execCalls[2].args[1])
+	require.Equal(t, toPGUUID(ticketID), transaction.execCalls[2].args[2])
+	require.Equal(t, domain.TicketEventRedeemed, transaction.execCalls[2].args[3])
+	require.Equal(t, activationOutboxState, transaction.execCalls[2].args[5])
+	require.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"user_id":"`+userID.String()+`",
 		"order_id":"`+order.ID.String()+`",
@@ -624,8 +623,8 @@ func TestActivationRepository_Complete_ProcessingOperation_ActivateTicketAndWrit
 		"status":"redeemed",
 		"redeemed_at":"2026-08-07T10:00:01Z"
 	}`, string(transaction.execCalls[2].args[4].([]byte)))
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Complete_InvalidCreatedOrder_ReturnError(t *testing.T) {
@@ -657,7 +656,7 @@ func TestActivationRepository_Complete_InvalidCreatedOrder_ReturnError(t *testin
 
 			// then
 			require.EqualError(t, err, test.expectedError)
-			assert.Zero(t, beginner.calls)
+			require.Zero(t, beginner.calls)
 		})
 	}
 }
@@ -696,10 +695,10 @@ func TestActivationRepository_Complete_CompletedOperation_ReturnReplay(t *testin
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
-	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, expected, result)
+	require.Empty(t, transaction.execCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Complete_TicketStateChanged_ReturnNotActivatable(t *testing.T) {
@@ -724,10 +723,10 @@ func TestActivationRepository_Complete_TicketStateChanged_ReturnNotActivatable(t
 	)
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrTicketNotActivatable)
-	assert.Len(t, transaction.execCalls, 1)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrTicketNotActivatable)
+	require.Len(t, transaction.execCalls, 1)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Complete_OutboxInsertFails_RollbackTransaction(t *testing.T) {
@@ -758,10 +757,10 @@ func TestActivationRepository_Complete_OutboxInsertFails_RollbackTransaction(t *
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, insertError)
-	assert.Equal(t, "insert activation event: insert outbox failed", err.Error())
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, insertError)
+	require.Equal(t, "insert activation event: insert outbox failed", err.Error())
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_CommitFails_RollbackTransaction(t *testing.T) {
@@ -795,10 +794,10 @@ func TestActivationRepository_Prepare_CommitFails_RollbackTransaction(t *testing
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, commitError)
-	assert.Equal(t, "commit activation transaction: commit failed", err.Error())
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, commitError)
+	require.Equal(t, "commit activation transaction: commit failed", err.Error())
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestActivationRepository_Prepare_RequestCanceled_RollbackWithDetachedContext(t *testing.T) {
@@ -819,8 +818,8 @@ func TestActivationRepository_Prepare_RequestCanceled_RollbackWithDetachedContex
 
 	// then
 	require.ErrorIs(t, err, queryError)
-	assert.Equal(t, 1, transaction.rollbackCalls)
-	assert.NoError(t, transaction.rollbackCtxErr)
+	require.Equal(t, 1, transaction.rollbackCalls)
+	require.NoError(t, transaction.rollbackCtxErr)
 }
 
 func activationScanErrorRow(err error) activationRow {

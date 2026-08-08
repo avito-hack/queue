@@ -3,7 +3,6 @@ package domain
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,7 +25,7 @@ func TestNormalizeCheckoutURL_SafeURL_ReturnNormalizedURL(t *testing.T) {
 
 			// then
 			require.NoError(t, err)
-			assert.Equal(t, test.expected, result)
+			require.Equal(t, test.expected, result)
 		})
 	}
 }

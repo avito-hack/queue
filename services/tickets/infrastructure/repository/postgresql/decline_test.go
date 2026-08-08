@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -61,31 +60,31 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, usecase.DeclineTicketResult{
+	require.Equal(t, usecase.DeclineTicketResult{
 		TicketID: ticketID,
 		Status:   domain.TicketStatusClosed,
 	}, result)
 	require.Len(t, transaction.queryCalls, 4)
-	assert.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
-	assert.Equal(t, []any{
+	require.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
+	require.Equal(t, []any{
 		toPGUUID(userID),
 		declineOperation,
 		toPGUUID(idempotencyKey),
 	}, transaction.queryCalls[0].args)
-	assert.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1")
-	assert.Contains(t, transaction.queryCalls[1].query, "user_id = $2")
-	assert.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
-	assert.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID)}, transaction.queryCalls[1].args)
-	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
-	assert.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.queryCalls[1].query, "WHERE id = $1")
+	require.Contains(t, transaction.queryCalls[1].query, "user_id = $2")
+	require.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
+	require.Equal(t, []any{toPGUUID(ticketID), toPGUUID(userID)}, transaction.queryCalls[1].args)
+	require.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
+	require.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
+	require.Equal(t, []any{
 		toPGUUID(ticketID),
 		activationOperation,
 		activationOperationStateProcessing,
 	}, transaction.queryCalls[3].args)
 	require.Len(t, transaction.execCalls, 4)
-	assert.Contains(t, transaction.execCalls[0].query, "ON CONFLICT")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.execCalls[0].query, "ON CONFLICT")
+	require.Equal(t, []any{
 		toPGUUID(operationID),
 		toPGUUID(idempotencyKey),
 		declineOperation,
@@ -96,25 +95,25 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 		toPGTimestamptz(now.Add(declineOperationTTL)),
 		toPGTimestamptz(now),
 	}, transaction.execCalls[0].args)
-	assert.Contains(t, transaction.execCalls[1].query, "status = 'closed'")
-	assert.Contains(t, transaction.execCalls[1].query, "close_reason = 'user_declined'")
-	assert.Contains(t, transaction.execCalls[1].query, "activation_deadline > $1")
-	assert.Equal(t, []any{toPGTimestamptz(now), toPGUUID(ticketID), toPGUUID(userID)}, transaction.execCalls[1].args)
-	assert.Contains(t, transaction.execCalls[2].query, "state = 'completed'")
-	assert.Equal(t, toPGInt4(declineResponseStatus), transaction.execCalls[2].args[0])
-	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[3])
-	assert.JSONEq(t, `{
+	require.Contains(t, transaction.execCalls[1].query, "status = 'closed'")
+	require.Contains(t, transaction.execCalls[1].query, "close_reason = 'user_declined'")
+	require.Contains(t, transaction.execCalls[1].query, "activation_deadline > $1")
+	require.Equal(t, []any{toPGTimestamptz(now), toPGUUID(ticketID), toPGUUID(userID)}, transaction.execCalls[1].args)
+	require.Contains(t, transaction.execCalls[2].query, "state = 'completed'")
+	require.Equal(t, toPGInt4(declineResponseStatus), transaction.execCalls[2].args[0])
+	require.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[3])
+	require.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"status":"closed"
 	}`, string(transaction.execCalls[2].args[1].([]byte)))
-	assert.Equal(t, toPGTimestamptz(now), transaction.execCalls[2].args[2])
-	assert.Equal(t, toPGUUID(eventID), transaction.execCalls[3].args[0])
-	assert.Equal(t, declineOutboxAggregateType, transaction.execCalls[3].args[1])
-	assert.Equal(t, toPGUUID(ticketID), transaction.execCalls[3].args[2])
-	assert.Equal(t, domain.TicketEventClosed, transaction.execCalls[3].args[3])
-	assert.Equal(t, declineOutboxState, transaction.execCalls[3].args[5])
-	assert.Equal(t, toPGTimestamptz(now), transaction.execCalls[3].args[6])
-	assert.JSONEq(t, `{
+	require.Equal(t, toPGTimestamptz(now), transaction.execCalls[2].args[2])
+	require.Equal(t, toPGUUID(eventID), transaction.execCalls[3].args[0])
+	require.Equal(t, declineOutboxAggregateType, transaction.execCalls[3].args[1])
+	require.Equal(t, toPGUUID(ticketID), transaction.execCalls[3].args[2])
+	require.Equal(t, domain.TicketEventClosed, transaction.execCalls[3].args[3])
+	require.Equal(t, declineOutboxState, transaction.execCalls[3].args[5])
+	require.Equal(t, toPGTimestamptz(now), transaction.execCalls[3].args[6])
+	require.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"queue_entry_id":"`+queueEntryID.String()+`",
 		"listing_id":"`+listingID.String()+`",
@@ -124,8 +123,8 @@ func TestDeclineRepository_Decline_IssuedTicket_CloseTicketAndWriteOutbox(t *tes
 		"close_reason":"user_declined",
 		"finished_at":"2026-08-07T12:00:00Z"
 	}`, string(transaction.execCalls[3].args[4].([]byte)))
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_CompletedOperation_ReturnReplay(t *testing.T) {
@@ -159,12 +158,12 @@ func TestDeclineRepository_Decline_CompletedOperation_ReturnReplay(t *testing.T)
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
+	require.Equal(t, expected, result)
 	require.Len(t, transaction.queryCalls, 1)
-	assert.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
-	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
+	require.Empty(t, transaction.execCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_ProcessingOperation_ReturnInvariantError(t *testing.T) {
@@ -191,10 +190,10 @@ func TestDeclineRepository_Decline_ProcessingOperation_ReturnInvariantError(t *t
 	})
 
 	// then
-	assert.EqualError(t, err, "decline operation is unexpectedly processing")
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.EqualError(t, err, "decline operation is unexpectedly processing")
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_CompletedOperationWithInvalidResponse_ReturnError(t *testing.T) {
@@ -221,10 +220,10 @@ func TestDeclineRepository_Decline_CompletedOperationWithInvalidResponse_ReturnE
 	})
 
 	// then
-	assert.EqualError(t, err, "decline operation has invalid response status")
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.EqualError(t, err, "decline operation has invalid response status")
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_ConcurrentSameKeyCompletedAfterTicketLock_ReturnReplay(t *testing.T) {
@@ -266,14 +265,14 @@ func TestDeclineRepository_Decline_ConcurrentSameKeyCompletedAfterTicketLock_Ret
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
+	require.Equal(t, expected, result)
 	require.Len(t, transaction.queryCalls, 3)
-	assert.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
-	assert.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
-	assert.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
-	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
+	require.Contains(t, transaction.queryCalls[1].query, "FOR UPDATE")
+	require.NotContains(t, transaction.queryCalls[2].query, "FOR UPDATE")
+	require.Empty(t, transaction.execCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_ConcurrentSameKeyInsertedBeforeInsert_ReturnReplay(t *testing.T) {
@@ -310,11 +309,11 @@ func TestDeclineRepository_Decline_ConcurrentSameKeyInsertedBeforeInsert_ReturnR
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
-	assert.Len(t, transaction.queryCalls, 5)
-	assert.Len(t, transaction.execCalls, 1)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, expected, result)
+	require.Len(t, transaction.queryCalls, 5)
+	require.Len(t, transaction.execCalls, 1)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_SameKeyForAnotherTicket_ReturnIdempotencyConflict(t *testing.T) {
@@ -341,10 +340,10 @@ func TestDeclineRepository_Decline_SameKeyForAnotherTicket_ReturnIdempotencyConf
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrIdempotencyConflict)
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrIdempotencyConflict)
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_TicketNotFound_ReturnNotFound(t *testing.T) {
@@ -364,10 +363,10 @@ func TestDeclineRepository_Decline_TicketNotFound_ReturnNotFound(t *testing.T) {
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrTicketNotFound)
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrTicketNotFound)
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_IneligibleTicket_ReturnNotDeclinable(t *testing.T) {
@@ -412,10 +411,10 @@ func TestDeclineRepository_Decline_IneligibleTicket_ReturnNotDeclinable(t *testi
 			})
 
 			// then
-			assert.ErrorIs(t, err, usecase.ErrTicketNotDeclinable)
-			assert.Empty(t, transaction.execCalls)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.ErrorIs(t, err, usecase.ErrTicketNotDeclinable)
+			require.Empty(t, transaction.execCalls)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -446,12 +445,12 @@ func TestDeclineRepository_Decline_ActivationProcessing_ReturnActivationInProgre
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrActivationInProgress)
+	require.ErrorIs(t, err, usecase.ErrActivationInProgress)
 	require.Len(t, transaction.queryCalls, 4)
-	assert.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
-	assert.Empty(t, transaction.execCalls)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.NotContains(t, transaction.queryCalls[3].query, "FOR UPDATE")
+	require.Empty(t, transaction.execCalls)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_TicketOperationUniqueViolation_ReturnNotDeclinable(t *testing.T) {
@@ -473,10 +472,10 @@ func TestDeclineRepository_Decline_TicketOperationUniqueViolation_ReturnNotDecli
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrTicketNotDeclinable)
-	assert.Len(t, transaction.execCalls, 1)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrTicketNotDeclinable)
+	require.Len(t, transaction.execCalls, 1)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_TicketUpdateAffectsNoRows_ReturnNotDeclinable(t *testing.T) {
@@ -498,10 +497,10 @@ func TestDeclineRepository_Decline_TicketUpdateAffectsNoRows_ReturnNotDeclinable
 	})
 
 	// then
-	assert.ErrorIs(t, err, usecase.ErrTicketNotDeclinable)
-	assert.Len(t, transaction.execCalls, 2)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, usecase.ErrTicketNotDeclinable)
+	require.Len(t, transaction.execCalls, 2)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_OutboxInsertFails_RollbackTransaction(t *testing.T) {
@@ -527,10 +526,10 @@ func TestDeclineRepository_Decline_OutboxInsertFails_RollbackTransaction(t *test
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, insertError)
-	assert.Equal(t, "insert decline event: insert outbox failed", err.Error())
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, insertError)
+	require.Equal(t, "insert decline event: insert outbox failed", err.Error())
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_CommitFails_RollbackTransaction(t *testing.T) {
@@ -557,10 +556,10 @@ func TestDeclineRepository_Decline_CommitFails_RollbackTransaction(t *testing.T)
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, commitError)
-	assert.Equal(t, "commit decline transaction: commit failed", err.Error())
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, commitError)
+	require.Equal(t, "commit decline transaction: commit failed", err.Error())
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestDeclineRepository_Decline_RequestCanceled_RollbackWithDetachedContext(t *testing.T) {
@@ -581,8 +580,8 @@ func TestDeclineRepository_Decline_RequestCanceled_RollbackWithDetachedContext(t
 
 	// then
 	require.ErrorIs(t, err, queryError)
-	assert.Equal(t, 1, transaction.rollbackCalls)
-	assert.NoError(t, transaction.rollbackCtxErr)
+	require.Equal(t, 1, transaction.rollbackCalls)
+	require.NoError(t, transaction.rollbackCtxErr)
 }
 
 func declineOperationRow(record declineOperationRecord) activationRow {

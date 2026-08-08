@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	generated "github.com/avito-hack/queue/services/tickets/gen/clients/avitoadapter"
@@ -28,17 +27,17 @@ func TestOrderCreator_CreateOrder_ReturnOrder(t *testing.T) {
 	}
 	expectedOrderID := uuid.New()
 	client := &http.Client{Transport: roundTripFunc(func(httpRequest *http.Request) (*http.Response, error) {
-		assert.Equal(t, http.MethodPost, httpRequest.Method)
-		assert.Equal(t, "http://avito-adapter:8080/v1/orders/create", httpRequest.URL.String())
-		assert.Equal(t, request.IdempotencyKey.String(), httpRequest.Header.Get("Idempotency-Key"))
-		assert.Equal(t, "application/json", httpRequest.Header.Get("Content-Type"))
+		require.Equal(t, http.MethodPost, httpRequest.Method)
+		require.Equal(t, "http://avito-adapter:8080/v1/orders/create", httpRequest.URL.String())
+		require.Equal(t, request.IdempotencyKey.String(), httpRequest.Header.Get("Idempotency-Key"))
+		require.Equal(t, "application/json", httpRequest.Header.Get("Content-Type"))
 
 		var body generated.CreateOrderRequest
-		assert.NoError(t, json.NewDecoder(httpRequest.Body).Decode(&body))
-		assert.Equal(t, request.TicketID, body.TicketId)
-		assert.Equal(t, request.ListingID, body.ListingId)
-		assert.Equal(t, request.SKUID, body.SkuId)
-		assert.Equal(t, request.UserID, body.UserId)
+		require.NoError(t, json.NewDecoder(httpRequest.Body).Decode(&body))
+		require.Equal(t, request.TicketID, body.TicketId)
+		require.Equal(t, request.ListingID, body.ListingId)
+		require.Equal(t, request.SKUID, body.SkuId)
+		require.Equal(t, request.UserID, body.UserId)
 
 		responseBody, err := json.Marshal(generated.Order{
 			Id:          expectedOrderID,
@@ -62,8 +61,8 @@ func TestOrderCreator_CreateOrder_ReturnOrder(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expectedOrderID, order.ID)
-	assert.Equal(t, "/checkout?ticket="+request.TicketID.String(), order.CheckoutURL)
+	require.Equal(t, expectedOrderID, order.ID)
+	require.Equal(t, "/checkout?ticket="+request.TicketID.String(), order.CheckoutURL)
 }
 
 func TestOrderCreator_CreateOrder_RequestReturnsError_ReturnUnavailable(t *testing.T) {
@@ -80,8 +79,8 @@ func TestOrderCreator_CreateOrder_RequestReturnsError_ReturnUnavailable(t *testi
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, usecase.ErrOrderUnavailable)
-	assert.ErrorIs(t, err, requestError)
+	require.ErrorIs(t, err, usecase.ErrOrderUnavailable)
+	require.ErrorIs(t, err, requestError)
 }
 
 func TestOrderCreator_CreateOrder_AdapterUnavailable_ReturnUnavailable(t *testing.T) {
@@ -100,7 +99,7 @@ func TestOrderCreator_CreateOrder_AdapterUnavailable_ReturnUnavailable(t *testin
 			_, err = creator.CreateOrder(context.Background(), validCreateOrderRequest())
 
 			// then
-			assert.ErrorIs(t, err, usecase.ErrOrderUnavailable)
+			require.ErrorIs(t, err, usecase.ErrOrderUnavailable)
 		})
 	}
 }
@@ -122,7 +121,7 @@ func TestOrderCreator_CreateOrder_AdapterRejectsRequest_ReturnRejected(t *testin
 
 			// then
 			require.EqualError(t, err, fmt.Sprintf("order creation rejected: create order status %d", status))
-			assert.ErrorIs(t, err, usecase.ErrOrderRejected)
+			require.ErrorIs(t, err, usecase.ErrOrderRejected)
 		})
 	}
 }
@@ -171,7 +170,7 @@ func TestOrderCreator_CreateOrder_InvalidResponse_ReturnError(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.NotErrorIs(t, err, usecase.ErrOrderUnavailable)
+			require.NotErrorIs(t, err, usecase.ErrOrderUnavailable)
 		})
 	}
 }
@@ -199,8 +198,8 @@ func TestCreatedOrderFromResponse_SafeCheckoutURL_ReturnOrder(t *testing.T) {
 
 			// then
 			require.NoError(t, err)
-			assert.Equal(t, order.Id, createdOrder.ID)
-			assert.Equal(t, checkoutURL, createdOrder.CheckoutURL)
+			require.Equal(t, order.Id, createdOrder.ID)
+			require.Equal(t, checkoutURL, createdOrder.CheckoutURL)
 		})
 	}
 }

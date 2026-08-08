@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/gen/server"
@@ -201,8 +200,8 @@ func Test_GetHealthz_ReturnOK(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Empty(t, recorder.Body.String())
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Body.String())
 }
 
 func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
@@ -264,8 +263,8 @@ func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, test.statusCode, recorder.Code)
-			assert.JSONEq(t, `{
+			require.Equal(t, test.statusCode, recorder.Code)
+			require.JSONEq(t, `{
 				"id":"`+ticketID.String()+`",
 				"listing_id":"`+listingID.String()+`",
 				"sku_id":"`+skuID.String()+`",
@@ -279,15 +278,15 @@ func Test_PostInternalV1TicketIssue_ReturnTicket(t *testing.T) {
 				"finish_reason":null,
 				"available_actions":["activate","decline"]
 			}`, recorder.Body.String())
-			assert.Equal(t, usecase.IssueTicketRequest{
+			require.Equal(t, usecase.IssueTicketRequest{
 				QueueEntryID: queueEntryID,
 				UserID:       userID,
 				ListingID:    listingID,
 				SKUID:        skuID,
 			}, issuer.receivedRequest)
-			assert.Equal(t, idempotencyKey, issuer.receivedIdempotencyKey)
-			assert.Equal(t, 1, issuer.calls)
-			assert.Empty(t, resolver.receivedToken)
+			require.Equal(t, idempotencyKey, issuer.receivedIdempotencyKey)
+			require.Equal(t, 1, issuer.calls)
+			require.Empty(t, resolver.receivedToken)
 		})
 	}
 }
@@ -335,9 +334,9 @@ func Test_PostInternalV1TicketIssue_UsecaseReturnsDomainError_ReturnMappedError(
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, test.statusCode, recorder.Code)
-			assert.JSONEq(t, test.response, recorder.Body.String())
-			assert.Equal(t, 1, issuer.calls)
+			require.Equal(t, test.statusCode, recorder.Code)
+			require.JSONEq(t, test.response, recorder.Body.String())
+			require.Equal(t, 1, issuer.calls)
 		})
 	}
 }
@@ -357,9 +356,9 @@ func Test_PostInternalV1TicketIssue_UsecaseReturnsError_ReturnInternalError(t *t
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
-	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
-	assert.Equal(t, 1, issuer.calls)
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	require.Equal(t, 1, issuer.calls)
 }
 
 func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T) {
@@ -405,8 +404,8 @@ func Test_PostInternalV1TicketIssue_InvalidRequest_ReturnBadRequest(t *testing.T
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, http.StatusBadRequest, recorder.Code)
-			assert.Zero(t, issuer.calls)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Zero(t, issuer.calls)
 		})
 	}
 }
@@ -421,10 +420,10 @@ func Test_IssueTicket_NilBody_ReturnBadRequest(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, server.IssueTicket400JSONResponse{
+	require.Equal(t, server.IssueTicket400JSONResponse{
 		BadRequestJSONResponse: badRequestError("request body is required"),
 	}, response)
-	assert.Zero(t, issuer.calls)
+	require.Zero(t, issuer.calls)
 }
 
 func newIssueTicketHTTPRequest(queueEntryID, userID, listingID, skuID uuid.UUID) *http.Request {
@@ -486,8 +485,8 @@ func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.JSONEq(t, `{
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{
 		"ticket": [{
 			"id": "`+ticketID.String()+`",
 			"listing_id": "`+listingID.String()+`",
@@ -503,14 +502,14 @@ func Test_GetV1TicketList_ReturnTickets(t *testing.T) {
 			"available_actions": []
 		}]
 	}`, recorder.Body.String())
-	assert.Equal(t, userID, lister.receivedUserID)
-	assert.Equal(t, "abc-token", resolver.receivedToken)
+	require.Equal(t, userID, lister.receivedUserID)
+	require.Equal(t, "abc-token", resolver.receivedToken)
 	require.NotNil(t, lister.receivedFilter.Status)
-	assert.Equal(t, domain.TicketStatusRedeemed, *lister.receivedFilter.Status)
+	require.Equal(t, domain.TicketStatusRedeemed, *lister.receivedFilter.Status)
 	require.NotNil(t, lister.receivedFilter.ListingID)
-	assert.Equal(t, listingID, *lister.receivedFilter.ListingID)
+	require.Equal(t, listingID, *lister.receivedFilter.ListingID)
 	require.NotNil(t, lister.receivedFilter.SKUID)
-	assert.Equal(t, skuID, *lister.receivedFilter.SKUID)
+	require.Equal(t, skuID, *lister.receivedFilter.SKUID)
 }
 
 func Test_GetV1TicketList_WithoutTickets_ReturnEmptyArray(t *testing.T) {
@@ -530,8 +529,8 @@ func Test_GetV1TicketList_WithoutTickets_ReturnEmptyArray(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.JSONEq(t, `{"ticket":[]}`, recorder.Body.String())
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{"ticket":[]}`, recorder.Body.String())
 }
 
 func Test_GetV1TicketList_WithoutToken_ReturnUnauthorized(t *testing.T) {
@@ -549,9 +548,9 @@ func Test_GetV1TicketList_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
-	assert.Zero(t, lister.calls)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	require.Zero(t, lister.calls)
 }
 
 func Test_GetV1TicketList_WithInvalidToken_ReturnUnauthorized(t *testing.T) {
@@ -568,9 +567,9 @@ func Test_GetV1TicketList_WithInvalidToken_ReturnUnauthorized(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is invalid"}`, recorder.Body.String())
-	assert.Zero(t, lister.calls)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.JSONEq(t, `{"error":"unauthorized","message":"bearer token is invalid"}`, recorder.Body.String())
+	require.Zero(t, lister.calls)
 }
 
 func Test_GetV1TicketList_AuthServiceReturnsError_ReturnInternalError(t *testing.T) {
@@ -587,9 +586,9 @@ func Test_GetV1TicketList_AuthServiceReturnsError_ReturnInternalError(t *testing
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
-	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
-	assert.Zero(t, lister.calls)
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	require.Zero(t, lister.calls)
 }
 
 func Test_GetV1TicketList_WithCustomTokenResolver_ReturnTicketsForResolvedUser(t *testing.T) {
@@ -607,9 +606,9 @@ func Test_GetV1TicketList_WithCustomTokenResolver_ReturnTicketsForResolvedUser(t
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "opaque-token", resolver.receivedToken)
-	assert.Equal(t, userID, lister.receivedUserID)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "opaque-token", resolver.receivedToken)
+	require.Equal(t, userID, lister.receivedUserID)
 }
 
 func Test_GetV1TicketList_WithAvitoAdapterResolver_ReturnTicketsForResolvedUser(t *testing.T) {
@@ -620,8 +619,8 @@ func Test_GetV1TicketList_WithAvitoAdapterResolver_ReturnTicketsForResolvedUser(
 		var body struct {
 			Token string `json:"token"`
 		}
-		assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-		assert.Equal(t, "abc-token", body.Token)
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		require.Equal(t, "abc-token", body.Token)
 
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -641,8 +640,8 @@ func Test_GetV1TicketList_WithAvitoAdapterResolver_ReturnTicketsForResolvedUser(
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, userID, lister.receivedUserID)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, userID, lister.receivedUserID)
 }
 
 func Test_GetV1TicketList_AvitoAdapterRejectsToken_ReturnUnauthorized(t *testing.T) {
@@ -667,9 +666,9 @@ func Test_GetV1TicketList_AvitoAdapterRejectsToken_ReturnUnauthorized(t *testing
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is invalid"}`, recorder.Body.String())
-	assert.Zero(t, lister.calls)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.JSONEq(t, `{"error":"unauthorized","message":"bearer token is invalid"}`, recorder.Body.String())
+	require.Zero(t, lister.calls)
 }
 
 func Test_GetV1TicketList_WithInvalidFilter_ReturnBadRequest(t *testing.T) {
@@ -701,8 +700,8 @@ func Test_GetV1TicketList_WithInvalidFilter_ReturnBadRequest(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, http.StatusBadRequest, recorder.Code)
-			assert.Zero(t, lister.calls)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Zero(t, lister.calls)
 		})
 	}
 }
@@ -723,8 +722,8 @@ func Test_GetV1TicketList_UsecaseReturnsError_ReturnInternalError(t *testing.T) 
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
-	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
 }
 
 func Test_GetV1Ticket_ReturnTicket(t *testing.T) {
@@ -760,8 +759,8 @@ func Test_GetV1Ticket_ReturnTicket(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.JSONEq(t, `{
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{
 		"id": "`+ticketID.String()+`",
 		"listing_id": "`+listingID.String()+`",
 		"sku_id": "`+skuID.String()+`",
@@ -775,9 +774,9 @@ func Test_GetV1Ticket_ReturnTicket(t *testing.T) {
 		"finish_reason": null,
 		"available_actions": ["activate", "decline"]
 	}`, recorder.Body.String())
-	assert.Equal(t, userID, getter.receivedUserID)
-	assert.Equal(t, ticketID, getter.receivedTicketID)
-	assert.Equal(t, 1, getter.calls)
+	require.Equal(t, userID, getter.receivedUserID)
+	require.Equal(t, ticketID, getter.receivedTicketID)
+	require.Equal(t, 1, getter.calls)
 }
 
 func Test_GetV1Ticket_TicketNotFound_ReturnNotFound(t *testing.T) {
@@ -797,9 +796,9 @@ func Test_GetV1Ticket_TicketNotFound_ReturnNotFound(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusNotFound, recorder.Code)
-	assert.JSONEq(t, `{"error":"ticket_not_found","message":"ticket not found"}`, recorder.Body.String())
-	assert.Equal(t, ticketID, getter.receivedTicketID)
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.JSONEq(t, `{"error":"ticket_not_found","message":"ticket not found"}`, recorder.Body.String())
+	require.Equal(t, ticketID, getter.receivedTicketID)
 }
 
 func Test_GetV1Ticket_UsecaseReturnsError_ReturnInternalError(t *testing.T) {
@@ -818,8 +817,8 @@ func Test_GetV1Ticket_UsecaseReturnsError_ReturnInternalError(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
-	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
 }
 
 func Test_GetV1Ticket_InvalidTicketID_ReturnBadRequest(t *testing.T) {
@@ -838,8 +837,8 @@ func Test_GetV1Ticket_InvalidTicketID_ReturnBadRequest(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Zero(t, getter.calls)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Zero(t, getter.calls)
 }
 
 func Test_GetV1Ticket_WithoutToken_ReturnUnauthorized(t *testing.T) {
@@ -857,9 +856,9 @@ func Test_GetV1Ticket_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
-	assert.Zero(t, getter.calls)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	require.Zero(t, getter.calls)
 }
 
 func Test_PostV1TicketActivate_ReturnRedeemedTicket(t *testing.T) {
@@ -888,17 +887,17 @@ func Test_PostV1TicketActivate_ReturnRedeemedTicket(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.JSONEq(t, `{
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"status":"redeemed",
 		"order_id":"`+orderID.String()+`",
 		"checkout_url":"/checkout?ticket=`+ticketID.String()+`"
 	}`, recorder.Body.String())
-	assert.Equal(t, userID, activator.receivedUserID)
-	assert.Equal(t, ticketID, activator.receivedTicketID)
-	assert.Equal(t, idempotencyKey, activator.receivedIdempotencyKey)
-	assert.Equal(t, 1, activator.calls)
+	require.Equal(t, userID, activator.receivedUserID)
+	require.Equal(t, ticketID, activator.receivedTicketID)
+	require.Equal(t, idempotencyKey, activator.receivedIdempotencyKey)
+	require.Equal(t, 1, activator.calls)
 }
 
 func Test_PostV1TicketActivate_UsecaseReturnsDomainError_ReturnMappedError(t *testing.T) {
@@ -977,10 +976,10 @@ func Test_PostV1TicketActivate_UsecaseReturnsDomainError_ReturnMappedError(t *te
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, test.statusCode, recorder.Code)
-			assert.JSONEq(t, test.response, recorder.Body.String())
-			assert.Equal(t, 1, activator.calls)
-			assert.Equal(t, ticketID, activator.receivedTicketID)
+			require.Equal(t, test.statusCode, recorder.Code)
+			require.JSONEq(t, test.response, recorder.Body.String())
+			require.Equal(t, 1, activator.calls)
+			require.Equal(t, ticketID, activator.receivedTicketID)
 		})
 	}
 }
@@ -1002,8 +1001,8 @@ func Test_PostV1TicketActivate_UsecaseReturnsError_ReturnInternalError(t *testin
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
-	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
 }
 
 func Test_PostV1TicketActivate_InvalidRequest_ReturnBadRequest(t *testing.T) {
@@ -1037,8 +1036,8 @@ func Test_PostV1TicketActivate_InvalidRequest_ReturnBadRequest(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, http.StatusBadRequest, recorder.Code)
-			assert.Zero(t, activator.calls)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Zero(t, activator.calls)
 		})
 	}
 }
@@ -1059,9 +1058,9 @@ func Test_PostV1TicketActivate_WithoutToken_ReturnUnauthorized(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
-	assert.Zero(t, activator.calls)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.JSONEq(t, `{"error":"unauthorized","message":"bearer token is required"}`, recorder.Body.String())
+	require.Zero(t, activator.calls)
 }
 
 func Test_PostV1TicketDecline_ReturnClosedTicket(t *testing.T) {
@@ -1085,16 +1084,16 @@ func Test_PostV1TicketDecline_ReturnClosedTicket(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.JSONEq(t, `{
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{
 		"ticket_id":"`+ticketID.String()+`",
 		"status":"closed"
 	}`, recorder.Body.String())
-	assert.Equal(t, userID, decliner.receivedUserID)
-	assert.Equal(t, ticketID, decliner.receivedTicketID)
-	assert.Equal(t, idempotencyKey, decliner.receivedIdempotencyKey)
-	assert.Equal(t, "abc-token", resolver.receivedToken)
-	assert.Equal(t, 1, decliner.calls)
+	require.Equal(t, userID, decliner.receivedUserID)
+	require.Equal(t, ticketID, decliner.receivedTicketID)
+	require.Equal(t, idempotencyKey, decliner.receivedIdempotencyKey)
+	require.Equal(t, "abc-token", resolver.receivedToken)
+	require.Equal(t, 1, decliner.calls)
 }
 
 func Test_PostV1TicketDecline_UsecaseReturnsDomainError_ReturnMappedError(t *testing.T) {
@@ -1155,10 +1154,10 @@ func Test_PostV1TicketDecline_UsecaseReturnsDomainError_ReturnMappedError(t *tes
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, test.statusCode, recorder.Code)
-			assert.JSONEq(t, test.response, recorder.Body.String())
-			assert.Equal(t, 1, decliner.calls)
-			assert.Equal(t, ticketID, decliner.receivedTicketID)
+			require.Equal(t, test.statusCode, recorder.Code)
+			require.JSONEq(t, test.response, recorder.Body.String())
+			require.Equal(t, 1, decliner.calls)
+			require.Equal(t, ticketID, decliner.receivedTicketID)
 		})
 	}
 }
@@ -1180,9 +1179,9 @@ func Test_PostV1TicketDecline_UsecaseReturnsError_ReturnInternalError(t *testing
 	router.ServeHTTP(recorder, request)
 
 	// then
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
-	assert.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
-	assert.Equal(t, 1, decliner.calls)
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.JSONEq(t, `{"error":"internal_error","message":"internal server error"}`, recorder.Body.String())
+	require.Equal(t, 1, decliner.calls)
 }
 
 func Test_PostV1TicketDecline_InvalidRequest_ReturnBadRequest(t *testing.T) {
@@ -1221,8 +1220,8 @@ func Test_PostV1TicketDecline_InvalidRequest_ReturnBadRequest(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, http.StatusBadRequest, recorder.Code)
-			assert.Zero(t, decliner.calls)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Zero(t, decliner.calls)
 		})
 	}
 }
@@ -1281,9 +1280,9 @@ func Test_PostV1TicketDecline_AuthenticationFails_ReturnError(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			// then
-			assert.Equal(t, test.statusCode, recorder.Code)
-			assert.JSONEq(t, test.response, recorder.Body.String())
-			assert.Zero(t, decliner.calls)
+			require.Equal(t, test.statusCode, recorder.Code)
+			require.JSONEq(t, test.response, recorder.Body.String())
+			require.Zero(t, decliner.calls)
 		})
 	}
 }

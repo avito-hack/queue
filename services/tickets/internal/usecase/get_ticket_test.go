@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -46,14 +45,14 @@ func TestGetTicket_Get_ReturnTicketWithActions(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, ticketID, ticket.ID)
-	assert.Equal(t, []domain.TicketAvailableAction{
+	require.Equal(t, ticketID, ticket.ID)
+	require.Equal(t, []domain.TicketAvailableAction{
 		domain.TicketAvailableActionActivate,
 		domain.TicketAvailableActionDecline,
 	}, ticket.AvailableActions)
-	assert.Equal(t, userID, repository.receivedUserID)
-	assert.Equal(t, ticketID, repository.receivedTicketID)
-	assert.Equal(t, 1, repository.calls)
+	require.Equal(t, userID, repository.receivedUserID)
+	require.Equal(t, ticketID, repository.receivedTicketID)
+	require.Equal(t, 1, repository.calls)
 }
 
 func TestGetTicket_Get_RepositoryReturnsNotFound_ReturnWrappedError(t *testing.T) {
@@ -66,9 +65,9 @@ func TestGetTicket_Get_RepositoryReturnsNotFound_ReturnWrappedError(t *testing.T
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrTicketNotFound)
-	assert.Equal(t, "get ticket: ticket not found", err.Error())
-	assert.Equal(t, 1, repository.calls)
+	require.ErrorIs(t, err, ErrTicketNotFound)
+	require.Equal(t, "get ticket: ticket not found", err.Error())
+	require.Equal(t, 1, repository.calls)
 }
 
 func TestGetTicket_Get_RepositoryReturnsError_ReturnWrappedError(t *testing.T) {
@@ -82,7 +81,7 @@ func TestGetTicket_Get_RepositoryReturnsError_ReturnWrappedError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, repositoryError)
-	assert.Equal(t, "get ticket: repository failed", err.Error())
-	assert.Equal(t, 1, repository.calls)
+	require.ErrorIs(t, err, repositoryError)
+	require.Equal(t, "get ticket: repository failed", err.Error())
+	require.Equal(t, 1, repository.calls)
 }

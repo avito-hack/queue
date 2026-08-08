@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -57,16 +56,16 @@ func Test_DeclineTicket_EligibleTicket_ReturnClosedTicket(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
-	assert.Equal(t, 1, repository.calls)
-	assert.Same(t, ctx, repository.receivedContext)
-	assert.Equal(t, DeclineTicketCommand{
+	require.Equal(t, expected, result)
+	require.Equal(t, 1, repository.calls)
+	require.Same(t, ctx, repository.receivedContext)
+	require.Equal(t, DeclineTicketCommand{
 		UserID:         userID,
 		TicketID:       ticketID,
 		IdempotencyKey: idempotencyKey,
 		Now:            now,
 	}, repository.receivedCommand)
-	assert.Equal(t, 1, clockCalls)
+	require.Equal(t, 1, clockCalls)
 }
 
 func Test_DeclineTicket_InvalidInput_ReturnError(t *testing.T) {
@@ -120,11 +119,11 @@ func Test_DeclineTicket_InvalidInput_ReturnError(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.ErrorIs(t, err, ErrInvalidDecline)
-			assert.EqualError(t, err, test.expectedError)
-			assert.Equal(t, DeclineTicketResult{}, result)
-			assert.Zero(t, repository.calls)
-			assert.Zero(t, clockCalls)
+			require.ErrorIs(t, err, ErrInvalidDecline)
+			require.EqualError(t, err, test.expectedError)
+			require.Equal(t, DeclineTicketResult{}, result)
+			require.Zero(t, repository.calls)
+			require.Zero(t, clockCalls)
 		})
 	}
 }
@@ -156,11 +155,11 @@ func Test_DeclineTicket_RepositoryError_ReturnWrappedError(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.ErrorIs(t, err, test.err)
-			assert.EqualError(t, err, "decline ticket: "+test.err.Error())
-			assert.Equal(t, DeclineTicketResult{}, result)
-			assert.Equal(t, 1, repository.calls)
-			assert.Equal(t, DeclineTicketCommand{
+			require.ErrorIs(t, err, test.err)
+			require.EqualError(t, err, "decline ticket: "+test.err.Error())
+			require.Equal(t, DeclineTicketResult{}, result)
+			require.Equal(t, 1, repository.calls)
+			require.Equal(t, DeclineTicketCommand{
 				UserID:         userID,
 				TicketID:       ticketID,
 				IdempotencyKey: idempotencyKey,
@@ -222,9 +221,9 @@ func Test_DeclineTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
 			result, err := useCase.Decline(context.Background(), uuid.New(), ticketID, uuid.New())
 
 			// then
-			assert.EqualError(t, err, "decline ticket: invalid decline result")
-			assert.Equal(t, DeclineTicketResult{}, result)
-			assert.Equal(t, 1, repository.calls)
+			require.EqualError(t, err, "decline ticket: invalid decline result")
+			require.Equal(t, DeclineTicketResult{}, result)
+			require.Equal(t, 1, repository.calls)
 		})
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -49,15 +48,15 @@ func TestListTickets_List_ReturnTicketsWithActions(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	require.Len(t, tickets, 2)
-	assert.Equal(t, []domain.TicketAvailableAction{
+	require.Equal(t, []domain.TicketAvailableAction{
 		domain.TicketAvailableActionActivate,
 		domain.TicketAvailableActionDecline,
 	}, tickets[0].AvailableActions)
-	assert.Empty(t, tickets[1].AvailableActions)
-	assert.NotNil(t, tickets[1].AvailableActions)
-	assert.Equal(t, userID, repository.receivedUserID)
-	assert.Equal(t, filter, repository.receivedFilter)
-	assert.Equal(t, 1, repository.calls)
+	require.Empty(t, tickets[1].AvailableActions)
+	require.NotNil(t, tickets[1].AvailableActions)
+	require.Equal(t, userID, repository.receivedUserID)
+	require.Equal(t, filter, repository.receivedFilter)
+	require.Equal(t, 1, repository.calls)
 }
 
 func TestListTickets_List_RepositoryReturnsNil_ReturnEmptySlice(t *testing.T) {
@@ -70,8 +69,8 @@ func TestListTickets_List_RepositoryReturnsNil_ReturnEmptySlice(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Empty(t, tickets)
-	assert.NotNil(t, tickets)
+	require.Empty(t, tickets)
+	require.NotNil(t, tickets)
 }
 
 func TestListTickets_List_RepositoryReturnsError_ReturnWrappedError(t *testing.T) {
@@ -85,8 +84,8 @@ func TestListTickets_List_RepositoryReturnsError_ReturnWrappedError(t *testing.T
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, repositoryError)
-	assert.Equal(t, "list tickets: repository failed", err.Error())
+	require.ErrorIs(t, err, repositoryError)
+	require.Equal(t, "list tickets: repository failed", err.Error())
 }
 
 func TestListTickets_List_InvalidFilter_ReturnError(t *testing.T) {
@@ -100,8 +99,8 @@ func TestListTickets_List_InvalidFilter_ReturnError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidTicketFilter)
-	assert.Zero(t, repository.calls)
+	require.ErrorIs(t, err, ErrInvalidTicketFilter)
+	require.Zero(t, repository.calls)
 }
 
 func TestListTickets_List_EmptyUserID_ReturnError(t *testing.T) {
@@ -114,6 +113,6 @@ func TestListTickets_List_EmptyUserID_ReturnError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidTicketFilter)
-	assert.Zero(t, repository.calls)
+	require.ErrorIs(t, err, ErrInvalidTicketFilter)
+	require.Zero(t, repository.calls)
 }

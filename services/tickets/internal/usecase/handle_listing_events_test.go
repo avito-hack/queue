@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -41,10 +40,10 @@ func Test_HandleListingEvents_QuantityDecreased_RevokeExcessTickets(t *testing.T
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, 2, revoked)
-	assert.Equal(t, 2, repository.command.RevocationLimit)
-	assert.Equal(t, domain.TicketCloseReasonSystemCancelled, repository.command.CloseReason)
-	assert.Equal(t, now, repository.command.HandledAt)
+	require.Equal(t, 2, revoked)
+	require.Equal(t, 2, repository.command.RevocationLimit)
+	require.Equal(t, domain.TicketCloseReasonSystemCancelled, repository.command.CloseReason)
+	require.Equal(t, now, repository.command.HandledAt)
 }
 
 func Test_HandleListingEvents_StatusChanged_RevokeAllListingTickets(t *testing.T) {
@@ -59,11 +58,11 @@ func Test_HandleListingEvents_StatusChanged_RevokeAllListingTickets(t *testing.T
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, 4, revoked)
-	assert.Zero(t, repository.command.RevocationLimit)
-	assert.True(t, repository.command.CloseAll)
-	assert.Equal(t, domain.TicketCloseReasonListingClosed, repository.command.CloseReason)
-	assert.Equal(t, now, repository.command.HandledAt)
+	require.Equal(t, 4, revoked)
+	require.Zero(t, repository.command.RevocationLimit)
+	require.True(t, repository.command.CloseAll)
+	require.Equal(t, domain.TicketCloseReasonListingClosed, repository.command.CloseReason)
+	require.Equal(t, now, repository.command.HandledAt)
 }
 
 func Test_HandleListingEvents_QuantityIncreased_RecordWithoutRevocation(t *testing.T) {
@@ -79,8 +78,8 @@ func Test_HandleListingEvents_QuantityIncreased_RecordWithoutRevocation(t *testi
 
 	// then
 	require.NoError(t, err)
-	assert.Zero(t, repository.command.RevocationLimit)
-	assert.False(t, repository.command.CloseAll)
+	require.Zero(t, repository.command.RevocationLimit)
+	require.False(t, repository.command.CloseAll)
 }
 
 func Test_HandleListingEvents_InvalidEvent_ReturnError(t *testing.T) {
@@ -131,7 +130,7 @@ func Test_HandleListingEvents_InvalidEvent_ReturnError(t *testing.T) {
 
 			// then
 			require.ErrorIs(t, err, ErrInvalidListingEvent)
-			assert.Equal(t, RevokeListingTicketsCommand{}, repository.command)
+			require.Equal(t, RevokeListingTicketsCommand{}, repository.command)
 		})
 	}
 }

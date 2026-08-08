@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTicket_ActionsAt_ReturnAvailableActions(t *testing.T) {
@@ -56,8 +56,8 @@ func TestTicket_ActionsAt_ReturnAvailableActions(t *testing.T) {
 			actions := ticket.ActionsAt(now)
 
 			// then
-			assert.Equal(t, test.expected, actions)
-			assert.NotNil(t, actions)
+			require.Equal(t, test.expected, actions)
+			require.NotNil(t, actions)
 		})
 	}
 }
@@ -84,7 +84,7 @@ func TestTicketStatus_Valid_ReturnValidity(t *testing.T) {
 			valid := status.Valid()
 
 			// then
-			assert.Equal(t, test.expected, valid)
+			require.Equal(t, test.expected, valid)
 		})
 	}
 }
@@ -114,7 +114,7 @@ func TestTicketCloseReason_Valid_ReturnValidity(t *testing.T) {
 			valid := reason.Valid()
 
 			// then
-			assert.Equal(t, test.expected, valid)
+			require.Equal(t, test.expected, valid)
 		})
 	}
 }

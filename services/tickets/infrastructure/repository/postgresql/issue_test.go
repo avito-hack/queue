@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -40,7 +39,7 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, usecase.IssueTicketResult{
+	require.Equal(t, usecase.IssueTicketResult{
 		Ticket: domain.Ticket{
 			ID:                 ticketID,
 			ListingID:          command.ListingID,
@@ -54,22 +53,22 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		Created:      true,
 	}, result)
 	require.Len(t, transaction.queryCalls, 2)
-	assert.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
-	assert.Equal(t, []any{
+	require.NotContains(t, transaction.queryCalls[0].query, "FOR UPDATE")
+	require.Equal(t, []any{
 		toPGUUID(command.UserID),
 		issueOperation,
 		toPGUUID(command.IdempotencyKey),
 	}, transaction.queryCalls[0].args)
-	assert.Contains(t, transaction.queryCalls[1].query, "status = 'issued'")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.queryCalls[1].query, "status = 'issued'")
+	require.Equal(t, []any{
 		toPGUUID(command.ListingID),
 		toPGTimestamptz(command.IssuedAt),
 	}, transaction.queryCalls[1].args)
 	require.Len(t, transaction.execCalls, 3)
-	assert.Contains(t, transaction.execCalls[0].query, "ticket_id")
-	assert.Contains(t, transaction.execCalls[0].query, "NULL")
-	assert.Contains(t, transaction.execCalls[0].query, "ON CONFLICT (actor_id, operation, idempotency_key)")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.execCalls[0].query, "ticket_id")
+	require.Contains(t, transaction.execCalls[0].query, "NULL")
+	require.Contains(t, transaction.execCalls[0].query, "ON CONFLICT (actor_id, operation, idempotency_key)")
+	require.Equal(t, []any{
 		toPGUUID(operationID),
 		toPGUUID(command.IdempotencyKey),
 		issueOperation,
@@ -79,12 +78,12 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		toPGTimestamptz(command.IssuedAt.Add(issueOperationTTL)),
 		toPGTimestamptz(command.IssuedAt),
 	}, transaction.execCalls[0].args)
-	assert.Contains(t, transaction.execCalls[1].query, "status")
-	assert.Contains(t, transaction.execCalls[1].query, "'issued'")
-	assert.Contains(t, transaction.execCalls[1].query, "version")
-	assert.Contains(t, transaction.execCalls[1].query, "ON CONFLICT (queue_entry_id) DO NOTHING")
-	assert.NotContains(t, transaction.execCalls[1].query, "ON CONFLICT DO NOTHING")
-	assert.Equal(t, []any{
+	require.Contains(t, transaction.execCalls[1].query, "status")
+	require.Contains(t, transaction.execCalls[1].query, "'issued'")
+	require.Contains(t, transaction.execCalls[1].query, "version")
+	require.Contains(t, transaction.execCalls[1].query, "ON CONFLICT (queue_entry_id) DO NOTHING")
+	require.NotContains(t, transaction.execCalls[1].query, "ON CONFLICT DO NOTHING")
+	require.Equal(t, []any{
 		toPGUUID(ticketID),
 		toPGUUID(command.QueueEntryID),
 		toPGUUID(command.UserID),
@@ -93,10 +92,10 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		toPGTimestamptz(command.ActivationDeadline),
 		toPGTimestamptz(command.IssuedAt),
 	}, transaction.execCalls[1].args)
-	assert.Contains(t, transaction.execCalls[2].query, "state = 'completed'")
-	assert.Equal(t, toPGInt4(issueCreatedResponseStatus), transaction.execCalls[2].args[0])
-	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[3])
-	assert.JSONEq(t, `{
+	require.Contains(t, transaction.execCalls[2].query, "state = 'completed'")
+	require.Equal(t, toPGInt4(issueCreatedResponseStatus), transaction.execCalls[2].args[0])
+	require.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[3])
+	require.JSONEq(t, `{
 		"id":"`+ticketID.String()+`",
 		"queue_entry_id":"`+command.QueueEntryID.String()+`",
 		"user_id":"`+command.UserID.String()+`",
@@ -111,9 +110,9 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		"finished_at":null,
 		"finish_reason":null
 	}`, string(transaction.execCalls[2].args[1].([]byte)))
-	assert.Equal(t, toPGTimestamptz(command.IssuedAt), transaction.execCalls[2].args[2])
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, toPGTimestamptz(command.IssuedAt), transaction.execCalls[2].args[2])
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_CompletedOperation_ReturnReplayAsExisting(t *testing.T) {
@@ -157,12 +156,12 @@ func TestIssueRepository_Issue_CompletedOperation_ReturnReplayAsExisting(t *test
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
-	assert.False(t, result.Created)
-	assert.Empty(t, result.Ticket.AvailableActions)
-	assert.Empty(t, transaction.execCalls)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, expected, result)
+	require.False(t, result.Created)
+	require.Empty(t, result.Ticket.AvailableActions)
+	require.Empty(t, transaction.execCalls)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_ListingCapacityExhausted_Rollback(t *testing.T) {
@@ -186,9 +185,9 @@ func TestIssueRepository_Issue_ListingCapacityExhausted_Rollback(t *testing.T) {
 
 	// then
 	require.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
-	assert.Equal(t, 2, len(transaction.execCalls))
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.Equal(t, 2, len(transaction.execCalls))
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_CountListingCapacityFailure_Rollback(t *testing.T) {
@@ -212,9 +211,9 @@ func TestIssueRepository_Issue_CountListingCapacityFailure_Rollback(t *testing.T
 
 	// then
 	require.EqualError(t, err, "count active listing tickets: count failed")
-	assert.ErrorIs(t, err, countError)
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.ErrorIs(t, err, countError)
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_ConcurrentSameKey_ReturnCompletedReplay(t *testing.T) {
@@ -246,12 +245,12 @@ func TestIssueRepository_Issue_ConcurrentSameKey_ReturnCompletedReplay(t *testin
 	// then
 	require.NoError(t, err)
 	expected.Created = false
-	assert.Equal(t, expected, result)
+	require.Equal(t, expected, result)
 	require.Len(t, transaction.queryCalls, 2)
-	assert.NotContains(t, transaction.queryCalls[1].query, "FOR UPDATE")
-	assert.Len(t, transaction.execCalls, 1)
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.NotContains(t, transaction.queryCalls[1].query, "FOR UPDATE")
+	require.Len(t, transaction.execCalls, 1)
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_ExistingQueueEntry_ReturnExistingAndNoOutbox(t *testing.T) {
@@ -289,14 +288,14 @@ func TestIssueRepository_Issue_ExistingQueueEntry_ReturnExistingAndNoOutbox(t *t
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, existing, result)
+	require.Equal(t, existing, result)
 	require.Len(t, transaction.queryCalls, 2)
-	assert.Equal(t, []any{toPGUUID(command.QueueEntryID)}, transaction.queryCalls[1].args)
+	require.Equal(t, []any{toPGUUID(command.QueueEntryID)}, transaction.queryCalls[1].args)
 	require.Len(t, transaction.execCalls, 3)
-	assert.Equal(t, toPGInt4(issueExistingResponseStatus), transaction.execCalls[2].args[0])
-	assert.NotContains(t, transaction.execCalls[2].query, "outbox")
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Zero(t, transaction.rollbackCalls)
+	require.Equal(t, toPGInt4(issueExistingResponseStatus), transaction.execCalls[2].args[0])
+	require.NotContains(t, transaction.execCalls[2].query, "outbox")
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Zero(t, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_ExistingQueueEntryWithDifferentScope_ReturnNotIssuable(t *testing.T) {
@@ -332,10 +331,10 @@ func TestIssueRepository_Issue_ExistingQueueEntryWithDifferentScope_ReturnNotIss
 			_, err := repository.Issue(context.Background(), command)
 
 			// then
-			assert.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
-			assert.Len(t, transaction.execCalls, 2)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
+			require.Len(t, transaction.execCalls, 2)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -366,10 +365,10 @@ func TestIssueRepository_Issue_OperationScopeConflict_ReturnIdempotencyConflict(
 			_, err := repository.Issue(context.Background(), command)
 
 			// then
-			assert.ErrorIs(t, err, usecase.ErrIdempotencyConflict)
-			assert.Empty(t, transaction.execCalls)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.ErrorIs(t, err, usecase.ErrIdempotencyConflict)
+			require.Empty(t, transaction.execCalls)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -400,9 +399,9 @@ func TestIssueRepository_Issue_OperationInInvalidState_ReturnInvariantError(t *t
 			_, err := repository.Issue(context.Background(), command)
 
 			// then
-			assert.EqualError(t, err, test.expectedError)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.EqualError(t, err, test.expectedError)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -453,9 +452,9 @@ func TestIssueRepository_Issue_CompletedOperationWithInvalidResponse_ReturnError
 
 			// then
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), test.expectedError)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.Contains(t, err.Error(), test.expectedError)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -474,9 +473,9 @@ func TestIssueRepository_Issue_OperationWithNullRequiredUUID_ReturnError(t *test
 	_, err := repository.Issue(context.Background(), issueCommandForTest())
 
 	// then
-	assert.EqualError(t, err, "find issue operation: issue operation has null required UUID")
-	assert.Zero(t, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.EqualError(t, err, "find issue operation: issue operation has null required UUID")
+	require.Zero(t, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_DatabasePathError_Rollback(t *testing.T) {
@@ -562,9 +561,9 @@ func TestIssueRepository_Issue_DatabasePathError_Rollback(t *testing.T) {
 			_, err := repository.Issue(context.Background(), command)
 
 			// then
-			assert.EqualError(t, err, test.expectedError)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.EqualError(t, err, test.expectedError)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -613,9 +612,9 @@ func TestIssueRepository_Issue_CompleteOperationFailure_Rollback(t *testing.T) {
 			_, err := repository.Issue(context.Background(), command)
 
 			// then
-			assert.EqualError(t, err, test.expectedError)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.EqualError(t, err, test.expectedError)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -682,9 +681,9 @@ func TestIssueRepository_Issue_InvalidExistingTicketRow_ReturnError(t *testing.T
 			_, err := repository.Issue(context.Background(), command)
 
 			// then
-			assert.EqualError(t, err, test.expectedError)
-			assert.Zero(t, transaction.commitCalls)
-			assert.Equal(t, 1, transaction.rollbackCalls)
+			require.EqualError(t, err, test.expectedError)
+			require.Zero(t, transaction.commitCalls)
+			require.Equal(t, 1, transaction.rollbackCalls)
 		})
 	}
 }
@@ -700,8 +699,8 @@ func TestIssueRepository_Issue_BeginFails_ReturnWrappedError(t *testing.T) {
 	_, err := repository.Issue(context.Background(), command)
 
 	// then
-	assert.EqualError(t, err, "begin issue transaction: begin failed")
-	assert.Equal(t, 1, beginner.calls)
+	require.EqualError(t, err, "begin issue transaction: begin failed")
+	require.Equal(t, 1, beginner.calls)
 }
 
 func TestIssueRepository_Issue_CommitFails_RollbackTransaction(t *testing.T) {
@@ -716,9 +715,9 @@ func TestIssueRepository_Issue_CommitFails_RollbackTransaction(t *testing.T) {
 	_, err := repository.Issue(context.Background(), command)
 
 	// then
-	assert.EqualError(t, err, "commit issue transaction: commit failed")
-	assert.Equal(t, 1, transaction.commitCalls)
-	assert.Equal(t, 1, transaction.rollbackCalls)
+	require.EqualError(t, err, "commit issue transaction: commit failed")
+	require.Equal(t, 1, transaction.commitCalls)
+	require.Equal(t, 1, transaction.rollbackCalls)
 }
 
 func TestIssueRepository_Issue_RollbackFails_ReturnOperationAndRollbackErrors(t *testing.T) {
@@ -737,8 +736,8 @@ func TestIssueRepository_Issue_RollbackFails_ReturnOperationAndRollbackErrors(t 
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, queryError)
-	assert.ErrorIs(t, err, rollbackError)
+	require.ErrorIs(t, err, queryError)
+	require.ErrorIs(t, err, rollbackError)
 }
 
 func TestIssueRepository_Issue_RequestCanceled_RollbackWithDetachedContext(t *testing.T) {
@@ -754,8 +753,8 @@ func TestIssueRepository_Issue_RequestCanceled_RollbackWithDetachedContext(t *te
 
 	// then
 	require.ErrorIs(t, err, queryError)
-	assert.Equal(t, 1, transaction.rollbackCalls)
-	assert.NoError(t, transaction.rollbackCtxErr)
+	require.Equal(t, 1, transaction.rollbackCalls)
+	require.NoError(t, transaction.rollbackCtxErr)
 }
 
 func TestIssueRequestHash_IdempotencyKeyAndTimesChanged_ReturnSameHash(t *testing.T) {
@@ -771,7 +770,7 @@ func TestIssueRequestHash_IdempotencyKeyAndTimesChanged_ReturnSameHash(t *testin
 	actual := issueRequestHash(changedKeyAndTimes)
 
 	// then
-	assert.Equal(t, original, actual)
+	require.Equal(t, original, actual)
 }
 
 func TestIssueRequestHash_ScopeUUIDChanged_ReturnDifferentHash(t *testing.T) {
@@ -797,7 +796,7 @@ func TestIssueRequestHash_ScopeUUIDChanged_ReturnDifferentHash(t *testing.T) {
 			actual := issueRequestHash(changed)
 
 			// then
-			assert.NotEqual(t, original, actual)
+			require.NotEqual(t, original, actual)
 		})
 	}
 }

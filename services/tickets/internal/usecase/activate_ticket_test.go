@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -127,21 +126,21 @@ func Test_ActivateTicket_EligibleTicket_ReturnActivationResult(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expected, result)
-	assert.Equal(t, 1, repository.prepareCalls)
-	assert.Equal(t, PrepareActivationCommand{
+	require.Equal(t, expected, result)
+	require.Equal(t, 1, repository.prepareCalls)
+	require.Equal(t, PrepareActivationCommand{
 		UserID:         userID,
 		TicketID:       ticketID,
 		IdempotencyKey: idempotencyKey,
 		Now:            preparedAt,
 	}, repository.receivedPrepareCommand)
-	assert.Equal(t, 1, orderCreator.calls)
-	assert.Equal(t, orderRequest, orderCreator.receivedRequest)
-	assert.Equal(t, 1, repository.completeCalls)
-	assert.Equal(t, operationID, repository.receivedOperationID)
-	assert.Equal(t, order, repository.receivedOrder)
-	assert.Equal(t, completedAt, repository.receivedCompletionTime)
-	assert.Equal(t, 2, clockCalls)
+	require.Equal(t, 1, orderCreator.calls)
+	require.Equal(t, orderRequest, orderCreator.receivedRequest)
+	require.Equal(t, 1, repository.completeCalls)
+	require.Equal(t, operationID, repository.receivedOperationID)
+	require.Equal(t, order, repository.receivedOrder)
+	require.Equal(t, completedAt, repository.receivedCompletionTime)
+	require.Equal(t, 2, clockCalls)
 }
 
 func Test_ActivateTicket_CompletedOperation_ReturnReplayWithoutCreatingOrder(t *testing.T) {
@@ -168,11 +167,11 @@ func Test_ActivateTicket_CompletedOperation_ReturnReplayWithoutCreatingOrder(t *
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, replay, result)
-	assert.Equal(t, 1, repository.prepareCalls)
-	assert.Zero(t, repository.completeCalls)
-	assert.Zero(t, orderCreator.calls)
-	assert.Equal(t, 1, clockCalls)
+	require.Equal(t, replay, result)
+	require.Equal(t, 1, repository.prepareCalls)
+	require.Zero(t, repository.completeCalls)
+	require.Zero(t, orderCreator.calls)
+	require.Equal(t, 1, clockCalls)
 }
 
 func Test_ActivateTicket_InvalidPreparedActivation_ReturnError(t *testing.T) {
@@ -239,8 +238,8 @@ func Test_ActivateTicket_InvalidPreparedActivation_ReturnError(t *testing.T) {
 
 			// then
 			require.EqualError(t, err, test.expectedError)
-			assert.Zero(t, orderCreator.calls)
-			assert.Zero(t, repository.completeCalls)
+			require.Zero(t, orderCreator.calls)
+			require.Zero(t, repository.completeCalls)
 		})
 	}
 }
@@ -265,8 +264,8 @@ func Test_ActivateTicket_InvalidReplay_ReturnError(t *testing.T) {
 
 	// then
 	require.EqualError(t, err, "prepare ticket activation: invalid activation replay")
-	assert.Zero(t, orderCreator.calls)
-	assert.Zero(t, repository.completeCalls)
+	require.Zero(t, orderCreator.calls)
+	require.Zero(t, repository.completeCalls)
 }
 
 func Test_ActivateTicket_EmptyIdentifier_ReturnInvalidActivation(t *testing.T) {
@@ -314,10 +313,10 @@ func Test_ActivateTicket_EmptyIdentifier_ReturnInvalidActivation(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.ErrorIs(t, err, ErrInvalidActivation)
-			assert.Equal(t, test.expectedError, err.Error())
-			assert.Zero(t, repository.prepareCalls)
-			assert.Zero(t, orderCreator.calls)
+			require.ErrorIs(t, err, ErrInvalidActivation)
+			require.Equal(t, test.expectedError, err.Error())
+			require.Zero(t, repository.prepareCalls)
+			require.Zero(t, orderCreator.calls)
 		})
 	}
 }
@@ -346,11 +345,11 @@ func Test_ActivateTicket_PrepareFails_ReturnDomainError(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.ErrorIs(t, err, test.err)
-			assert.Equal(t, "prepare ticket activation: "+test.err.Error(), err.Error())
-			assert.Equal(t, 1, repository.prepareCalls)
-			assert.Zero(t, repository.completeCalls)
-			assert.Zero(t, orderCreator.calls)
+			require.ErrorIs(t, err, test.err)
+			require.Equal(t, "prepare ticket activation: "+test.err.Error(), err.Error())
+			require.Equal(t, 1, repository.prepareCalls)
+			require.Zero(t, repository.completeCalls)
+			require.Zero(t, orderCreator.calls)
 		})
 	}
 }
@@ -382,11 +381,11 @@ func Test_ActivateTicket_OrderUnavailable_ReturnOrderUnavailable(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrOrderUnavailable)
-	assert.Equal(t, "create order: order service unavailable", err.Error())
-	assert.Equal(t, 1, orderCreator.calls)
-	assert.Zero(t, repository.completeCalls)
-	assert.Equal(t, 1, repository.failCalls)
+	require.ErrorIs(t, err, ErrOrderUnavailable)
+	require.Equal(t, "create order: order service unavailable", err.Error())
+	require.Equal(t, 1, orderCreator.calls)
+	require.Zero(t, repository.completeCalls)
+	require.Equal(t, 1, repository.failCalls)
 }
 
 func Test_ActivateTicket_OrderUnavailable_RetrySameOperation(t *testing.T) {
@@ -439,11 +438,11 @@ func Test_ActivateTicket_OrderUnavailable_RetrySameOperation(t *testing.T) {
 	// then
 	require.ErrorIs(t, firstErr, ErrOrderUnavailable)
 	require.NoError(t, secondErr)
-	assert.Equal(t, expected, result)
-	assert.Equal(t, 2, repository.prepareCalls)
-	assert.Equal(t, 2, orderCalls)
-	assert.Equal(t, 1, repository.completeCalls)
-	assert.Equal(t, 1, repository.failCalls)
+	require.Equal(t, expected, result)
+	require.Equal(t, 2, repository.prepareCalls)
+	require.Equal(t, 2, orderCalls)
+	require.Equal(t, 1, repository.completeCalls)
+	require.Equal(t, 1, repository.failCalls)
 }
 
 func Test_ActivateTicket_CreateOrderFails_ReturnWrappedError(t *testing.T) {
@@ -474,10 +473,10 @@ func Test_ActivateTicket_CreateOrderFails_ReturnWrappedError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, orderError)
-	assert.Equal(t, "create order: create order failed", err.Error())
-	assert.Zero(t, repository.completeCalls)
-	assert.Equal(t, 1, repository.failCalls)
+	require.ErrorIs(t, err, orderError)
+	require.Equal(t, "create order: create order failed", err.Error())
+	require.Zero(t, repository.completeCalls)
+	require.Equal(t, 1, repository.failCalls)
 }
 
 func Test_ActivateTicket_InvalidCreatedOrder_ReturnError(t *testing.T) {
@@ -517,9 +516,9 @@ func Test_ActivateTicket_InvalidCreatedOrder_ReturnError(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "create order: invalid created order")
-			assert.Zero(t, repository.completeCalls)
-			assert.Equal(t, 1, repository.failCalls)
+			require.Contains(t, err.Error(), "create order: invalid created order")
+			require.Zero(t, repository.completeCalls)
+			require.Equal(t, 1, repository.failCalls)
 		})
 	}
 }
@@ -552,10 +551,10 @@ func Test_ActivateTicket_CompleteFails_ReturnWrappedError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, completeError)
-	assert.Equal(t, "complete ticket activation: complete activation failed", err.Error())
-	assert.Equal(t, 1, orderCreator.calls)
-	assert.Equal(t, 1, repository.completeCalls)
+	require.ErrorIs(t, err, completeError)
+	require.Equal(t, "complete ticket activation: complete activation failed", err.Error())
+	require.Equal(t, 1, orderCreator.calls)
+	require.Equal(t, 1, repository.completeCalls)
 }
 
 func Test_ActivateTicket_CompleteReturnsInvalidResult_ReturnError(t *testing.T) {
@@ -594,5 +593,5 @@ func Test_ActivateTicket_CompleteReturnsInvalidResult_ReturnError(t *testing.T) 
 
 	// then
 	require.EqualError(t, err, "complete ticket activation: invalid activation result")
-	assert.Equal(t, 1, repository.completeCalls)
+	require.Equal(t, 1, repository.completeCalls)
 }

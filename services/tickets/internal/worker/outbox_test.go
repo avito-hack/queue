@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
@@ -79,9 +78,9 @@ func Test_Outbox_RunOnce_PendingEvents_PublishConcurrently(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []uuid.UUID{events[0].ID, events[1].ID, events[2].ID}, publisher.published)
-	assert.ElementsMatch(t, publisher.published, repository.published)
-	assert.Empty(t, repository.retried)
+	require.ElementsMatch(t, []uuid.UUID{events[0].ID, events[1].ID, events[2].ID}, publisher.published)
+	require.ElementsMatch(t, publisher.published, repository.published)
+	require.Empty(t, repository.retried)
 }
 
 func Test_Outbox_RunOnce_PublishFails_ScheduleRetry(t *testing.T) {
@@ -96,6 +95,6 @@ func Test_Outbox_RunOnce_PublishFails_ScheduleRetry(t *testing.T) {
 
 	// then
 	require.EqualError(t, err, "publish failed")
-	assert.Empty(t, repository.published)
-	assert.Equal(t, []uuid.UUID{event.ID}, repository.retried)
+	require.Empty(t, repository.published)
+	require.Equal(t, []uuid.UUID{event.ID}, repository.retried)
 }

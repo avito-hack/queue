@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,8 +14,8 @@ func TestListingReader_Get_ReturnListing(t *testing.T) {
 	// given
 	listingID := uuid.New()
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		assert.Equal(t, http.MethodGet, request.Method)
-		assert.Equal(t, "http://avito-adapter:8080/v1/listings/"+listingID.String(), request.URL.String())
+		require.Equal(t, http.MethodGet, request.Method)
+		require.Equal(t, "http://avito-adapter:8080/v1/listings/"+listingID.String(), request.URL.String())
 
 		return newHTTPResponse(http.StatusOK, `{
 			"id":"`+listingID.String()+`",
@@ -38,10 +37,10 @@ func TestListingReader_Get_ReturnListing(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, listingID, listing.ID)
-	assert.Equal(t, 3, listing.Quantity)
-	assert.True(t, listing.QueueEnabled)
-	assert.Equal(t, "active", listing.Status)
+	require.Equal(t, listingID, listing.ID)
+	require.Equal(t, 3, listing.Quantity)
+	require.True(t, listing.QueueEnabled)
+	require.Equal(t, "active", listing.Status)
 }
 
 func TestListingReader_Get_UnexpectedStatus_ReturnError(t *testing.T) {
@@ -73,5 +72,5 @@ func TestListingReader_Get_RequestFailure_ReturnError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, requestError)
+	require.ErrorIs(t, err, requestError)
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -327,18 +326,18 @@ func Test_ListingEventRepository_QuantityDecreased_CloseOldestExcessOnce(t *test
 	require.Len(t, states, 4)
 	for index, state := range states {
 		require.True(t, state.ID.Valid)
-		assert.Equal(t, ticketIDs[index], uuid.UUID(state.ID.Bytes))
+		require.Equal(t, ticketIDs[index], uuid.UUID(state.ID.Bytes))
 		if index < 2 {
-			assert.Equal(t, string(domain.TicketStatusClosed), state.Status)
+			require.Equal(t, string(domain.TicketStatusClosed), state.Status)
 			require.True(t, state.CloseReason.Valid)
-			assert.Equal(t, string(domain.TicketCloseReasonSystemCancelled), state.CloseReason.String)
+			require.Equal(t, string(domain.TicketCloseReasonSystemCancelled), state.CloseReason.String)
 			continue
 		}
-		assert.Equal(t, string(domain.TicketStatusIssued), state.Status)
-		assert.False(t, state.CloseReason.Valid)
+		require.Equal(t, string(domain.TicketStatusIssued), state.Status)
+		require.False(t, state.CloseReason.Valid)
 	}
-	assert.Equal(t, int64(1), integrationInboxCount(t))
-	assert.Equal(t, int64(2), integrationOutboxTypeCount(t, domain.TicketEventClosed))
+	require.Equal(t, int64(1), integrationInboxCount(t))
+	require.Equal(t, int64(2), integrationOutboxTypeCount(t, domain.TicketEventClosed))
 }
 
 func Test_ListingEventRepository_StatusChanged_KeepTicketBeingActivated(t *testing.T) {
@@ -380,16 +379,16 @@ func Test_ListingEventRepository_StatusChanged_KeepTicketBeingActivated(t *testi
 		activating.Ticket.ID,
 	)
 	require.NoError(t, err)
-	assert.Equal(t, domain.TicketStatusIssued, activatingTicket.Status)
+	require.Equal(t, domain.TicketStatusIssued, activatingTicket.Status)
 	revokedTicket, err := NewTicketRepository(integrationPool).Get(
 		context.Background(),
 		revocable.UserID,
 		revocable.Ticket.ID,
 	)
 	require.NoError(t, err)
-	assert.Equal(t, domain.TicketStatusClosed, revokedTicket.Status)
+	require.Equal(t, domain.TicketStatusClosed, revokedTicket.Status)
 	require.NotNil(t, revokedTicket.CloseReason)
-	assert.Equal(t, domain.TicketCloseReasonListingClosed, *revokedTicket.CloseReason)
+	require.Equal(t, domain.TicketCloseReasonListingClosed, *revokedTicket.CloseReason)
 }
 
 func Test_OutboxRepository_ClaimRetryAndPublish_ChangeDeliveryState(t *testing.T) {
@@ -437,7 +436,7 @@ func Test_TicketsSchema_ActiveStatus_RejectObsoleteLifecycle(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ck_tickets_")
+	require.Contains(t, err.Error(), "ck_tickets_")
 }
 
 func Test_TicketsSchema_ExternalCloseReason_RejectUnknownReason(t *testing.T) {
@@ -450,7 +449,7 @@ func Test_TicketsSchema_ExternalCloseReason_RejectUnknownReason(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ck_tickets_close_reason")
+	require.Contains(t, err.Error(), "ck_tickets_close_reason")
 }
 
 func Test_TicketsSchema_InboxTable_ReturnPresent(t *testing.T) {
@@ -460,7 +459,7 @@ func Test_TicketsSchema_InboxTable_ReturnPresent(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.True(t, exists)
+	require.True(t, exists)
 }
 
 func Test_OutboxSchema_UnknownEventType_RejectEvent(t *testing.T) {
@@ -480,7 +479,7 @@ func Test_OutboxSchema_UnknownEventType_RejectEvent(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ck_outbox_events_type")
+	require.Contains(t, err.Error(), "ck_outbox_events_type")
 }
 
 func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) {

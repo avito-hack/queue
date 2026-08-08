@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -37,7 +36,7 @@ func Test_EncodeEventPayload_TicketClosed_ReturnTypedJSON(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.JSONEq(t, string(event.Payload), string(payload))
+	require.JSONEq(t, string(event.Payload), string(payload))
 }
 
 func Test_EncodeEventPayload_IncompleteTicketRedeemed_ReturnError(t *testing.T) {
@@ -52,7 +51,7 @@ func Test_EncodeEventPayload_IncompleteTicketRedeemed_ReturnError(t *testing.T) 
 
 	// then
 	require.Error(t, err)
-	assert.Equal(t, "encode ticket.redeemed: incomplete payload", err.Error())
+	require.Equal(t, "encode ticket.redeemed: incomplete payload", err.Error())
 }
 
 func Test_EncodeEventPayload_TicketRedeemed_ReturnTypedJSON(t *testing.T) {
@@ -74,7 +73,7 @@ func Test_EncodeEventPayload_TicketRedeemed_ReturnTypedJSON(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.JSONEq(t, string(event.Payload), string(payload))
+	require.JSONEq(t, string(event.Payload), string(payload))
 }
 
 func Test_EncodeEventPayload_UnknownEvent_ReturnError(t *testing.T) {
@@ -86,7 +85,7 @@ func Test_EncodeEventPayload_UnknownEvent_ReturnError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Equal(t, `unsupported event type "ticket.unknown"`, err.Error())
+	require.Equal(t, `unsupported event type "ticket.unknown"`, err.Error())
 }
 
 func Test_EncodeEventPayload_ExtraField_ReturnError(t *testing.T) {
@@ -111,7 +110,7 @@ func Test_EncodeEventPayload_ExtraField_ReturnError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown field "extra"`)
+	require.Contains(t, err.Error(), `unknown field "extra"`)
 }
 
 func Test_PublisherPublish_EmptyEventID_ReturnError(t *testing.T) {
@@ -123,5 +122,5 @@ func Test_PublisherPublish_EmptyEventID_ReturnError(t *testing.T) {
 
 	// then
 	require.Error(t, err)
-	assert.Equal(t, "publish event: empty event id", err.Error())
+	require.Equal(t, "publish event: empty event id", err.Error())
 }

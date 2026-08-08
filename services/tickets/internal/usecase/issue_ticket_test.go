@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
@@ -76,10 +75,10 @@ func Test_IssueTicket_ValidRequest_ReturnCreatedTicket(t *testing.T) {
 		domain.TicketAvailableActionActivate,
 		domain.TicketAvailableActionDecline,
 	}
-	assert.Equal(t, expected, result)
-	assert.Equal(t, 1, repository.calls)
-	assert.Same(t, ctx, repository.receivedContext)
-	assert.Equal(t, IssueTicketCommand{
+	require.Equal(t, expected, result)
+	require.Equal(t, 1, repository.calls)
+	require.Same(t, ctx, repository.receivedContext)
+	require.Equal(t, IssueTicketCommand{
 		QueueEntryID:       request.QueueEntryID,
 		UserID:             request.UserID,
 		ListingID:          request.ListingID,
@@ -89,9 +88,9 @@ func Test_IssueTicket_ValidRequest_ReturnCreatedTicket(t *testing.T) {
 		IssuedAt:           now,
 		ActivationDeadline: now.Add(activationTTL),
 	}, repository.receivedCommand)
-	assert.Equal(t, 1, listingReader.calls)
-	assert.Equal(t, request.ListingID, listingReader.receivedID)
-	assert.Equal(t, 1, clockCalls)
+	require.Equal(t, 1, listingReader.calls)
+	require.Equal(t, request.ListingID, listingReader.receivedID)
+	require.Equal(t, 1, clockCalls)
 }
 
 func Test_IssueTicket_ReplayedTicket_ReturnTicketForEveryValidStatus(t *testing.T) {
@@ -152,12 +151,12 @@ func Test_IssueTicket_ReplayedTicket_ReturnTicketForEveryValidStatus(t *testing.
 
 			// then
 			require.NoError(t, err)
-			assert.False(t, result.Created)
-			assert.Equal(t, test.status, result.Ticket.Status)
-			assert.Equal(t, test.expectedActions, result.Ticket.AvailableActions)
-			assert.Equal(t, 1, repository.calls)
-			assert.Equal(t, 1, listingReader.calls)
-			assert.Equal(t, 1, clockCalls)
+			require.False(t, result.Created)
+			require.Equal(t, test.status, result.Ticket.Status)
+			require.Equal(t, test.expectedActions, result.Ticket.AvailableActions)
+			require.Equal(t, 1, repository.calls)
+			require.Equal(t, 1, listingReader.calls)
+			require.Equal(t, 1, clockCalls)
 		})
 	}
 }
@@ -253,12 +252,12 @@ func Test_IssueTicket_InvalidInput_ReturnErrorBeforeClockAndRepository(t *testin
 
 			// then
 			require.Error(t, err)
-			assert.ErrorIs(t, err, ErrInvalidTicketIssue)
-			assert.EqualError(t, err, test.expectedError)
-			assert.Equal(t, IssueTicketResult{}, result)
-			assert.Zero(t, repository.calls)
-			assert.Zero(t, listingReader.calls)
-			assert.Zero(t, clockCalls)
+			require.ErrorIs(t, err, ErrInvalidTicketIssue)
+			require.EqualError(t, err, test.expectedError)
+			require.Equal(t, IssueTicketResult{}, result)
+			require.Zero(t, repository.calls)
+			require.Zero(t, listingReader.calls)
+			require.Zero(t, clockCalls)
 		})
 	}
 }
@@ -293,11 +292,11 @@ func Test_IssueTicket_RepositoryError_ReturnWrappedError(t *testing.T) {
 
 			// then
 			require.Error(t, err)
-			assert.ErrorIs(t, err, test.err)
-			assert.EqualError(t, err, "issue ticket: "+test.err.Error())
-			assert.Equal(t, IssueTicketResult{}, result)
-			assert.Equal(t, 1, repository.calls)
-			assert.Equal(t, IssueTicketCommand{
+			require.ErrorIs(t, err, test.err)
+			require.EqualError(t, err, "issue ticket: "+test.err.Error())
+			require.Equal(t, IssueTicketResult{}, result)
+			require.Equal(t, 1, repository.calls)
+			require.Equal(t, IssueTicketCommand{
 				QueueEntryID:       request.QueueEntryID,
 				UserID:             request.UserID,
 				ListingID:          request.ListingID,
@@ -307,8 +306,8 @@ func Test_IssueTicket_RepositoryError_ReturnWrappedError(t *testing.T) {
 				IssuedAt:           now,
 				ActivationDeadline: now.Add(activationTTL),
 			}, repository.receivedCommand)
-			assert.Equal(t, 1, listingReader.calls)
-			assert.Equal(t, 1, clockCalls)
+			require.Equal(t, 1, listingReader.calls)
+			require.Equal(t, 1, clockCalls)
 		})
 	}
 }
@@ -340,9 +339,9 @@ func Test_IssueTicket_ListingCannotIssue_ReturnNotIssuable(t *testing.T) {
 
 			// then
 			require.ErrorIs(t, err, ErrTicketNotIssuable)
-			assert.Equal(t, 1, listingReader.calls)
-			assert.Zero(t, repository.calls)
-			assert.Zero(t, clockCalls)
+			require.Equal(t, 1, listingReader.calls)
+			require.Zero(t, repository.calls)
+			require.Zero(t, clockCalls)
 		})
 	}
 }
@@ -360,8 +359,8 @@ func Test_IssueTicket_ListingReaderFailure_ReturnWrappedError(t *testing.T) {
 
 	// then
 	require.EqualError(t, err, "get listing for ticket issue: listing failed")
-	assert.ErrorIs(t, err, listingError)
-	assert.Zero(t, repository.calls)
+	require.ErrorIs(t, err, listingError)
+	require.Zero(t, repository.calls)
 }
 
 func Test_IssueTicket_InvalidListingSnapshot_ReturnError(t *testing.T) {
@@ -377,7 +376,7 @@ func Test_IssueTicket_InvalidListingSnapshot_ReturnError(t *testing.T) {
 
 	// then
 	require.EqualError(t, err, "get listing for ticket issue: invalid listing")
-	assert.Zero(t, repository.calls)
+	require.Zero(t, repository.calls)
 }
 
 func Test_IssueTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
@@ -469,11 +468,11 @@ func Test_IssueTicket_InvalidRepositoryResult_ReturnError(t *testing.T) {
 			result, err := useCase.Issue(context.Background(), request, uuid.New())
 
 			// then
-			assert.EqualError(t, err, "issue ticket: invalid issue result")
-			assert.Equal(t, IssueTicketResult{}, result)
-			assert.Equal(t, 1, repository.calls)
-			assert.Equal(t, 1, listingReader.calls)
-			assert.Equal(t, 1, clockCalls)
+			require.EqualError(t, err, "issue ticket: invalid issue result")
+			require.Equal(t, IssueTicketResult{}, result)
+			require.Equal(t, 1, repository.calls)
+			require.Equal(t, 1, listingReader.calls)
+			require.Equal(t, 1, clockCalls)
 		})
 	}
 }

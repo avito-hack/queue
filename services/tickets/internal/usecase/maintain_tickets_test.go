@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,8 +47,8 @@ func Test_MaintainTickets_Run_ExpiredAndStaleTickets_ProcessBatch(t *testing.T) 
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, TicketMaintenanceResult{Expired: 3, RecoveredActivations: 2}, result)
-	assert.Equal(t, now, repository.receivedExpiration)
-	assert.Equal(t, now.Add(-time.Minute), repository.receivedStaleBefore)
-	assert.Equal(t, 100, repository.receivedLimit)
+	require.Equal(t, TicketMaintenanceResult{Expired: 3, RecoveredActivations: 2}, result)
+	require.Equal(t, now, repository.receivedExpiration)
+	require.Equal(t, now.Add(-time.Minute), repository.receivedStaleBefore)
+	require.Equal(t, 100, repository.receivedLimit)
 }

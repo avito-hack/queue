@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	generated "github.com/avito-hack/queue/services/tickets/gen/clients/avitoadapter"
@@ -30,15 +29,15 @@ func TestUserTokenResolver_ResolveUserID_ReturnUserID(t *testing.T) {
 	responseBody, err := json.Marshal(generated.ValidateUserTokenResult{UserId: expectedUserID})
 	require.NoError(t, err)
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		assert.Equal(t, http.MethodPost, request.Method)
-		assert.Equal(t, "http://avito-adapter:8080/v1/users/validate", request.URL.String())
-		assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
-		assert.Empty(t, request.Header.Get("Authorization"))
+		require.Equal(t, http.MethodPost, request.Method)
+		require.Equal(t, "http://avito-adapter:8080/v1/users/validate", request.URL.String())
+		require.Equal(t, "application/json", request.Header.Get("Content-Type"))
+		require.Empty(t, request.Header.Get("Authorization"))
 
 		var body generated.ValidateUserTokenRequest
-		assert.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-		assert.NotNil(t, body.Token)
-		assert.Equal(t, "abc-token", *body.Token)
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		require.NotNil(t, body.Token)
+		require.Equal(t, "abc-token", *body.Token)
 
 		return newHTTPResponse(http.StatusOK, string(responseBody)), nil
 	})}
@@ -50,7 +49,7 @@ func TestUserTokenResolver_ResolveUserID_ReturnUserID(t *testing.T) {
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, expectedUserID, userID)
+	require.Equal(t, expectedUserID, userID)
 }
 
 func TestUserTokenResolver_ResolveUserID_AdapterRejectsToken_ReturnInvalidToken(t *testing.T) {
@@ -65,7 +64,7 @@ func TestUserTokenResolver_ResolveUserID_AdapterRejectsToken_ReturnInvalidToken(
 	_, err = resolver.ResolveUserID(context.Background(), "invalid-token")
 
 	// then
-	assert.ErrorIs(t, err, identityauth.ErrInvalidToken)
+	require.ErrorIs(t, err, identityauth.ErrInvalidToken)
 }
 
 func TestUserTokenResolver_ResolveUserID_AdapterReturnsUnexpectedStatus_ReturnError(t *testing.T) {
@@ -94,7 +93,7 @@ func TestUserTokenResolver_ResolveUserID_AdapterReturnsUnexpectedStatus_ReturnEr
 
 			// then
 			require.EqualError(t, err, fmt.Sprintf("validate user: unexpected status %d", test.statusCode))
-			assert.NotErrorIs(t, err, identityauth.ErrInvalidToken)
+			require.NotErrorIs(t, err, identityauth.ErrInvalidToken)
 		})
 	}
 }
@@ -122,7 +121,7 @@ func TestUserTokenResolver_ResolveUserID_AdapterReturnsInvalidBody_ReturnError(t
 
 			// then
 			require.Error(t, err)
-			assert.NotErrorIs(t, err, identityauth.ErrInvalidToken)
+			require.NotErrorIs(t, err, identityauth.ErrInvalidToken)
 		})
 	}
 }
@@ -141,7 +140,7 @@ func TestUserTokenResolver_ResolveUserID_RequestReturnsError_ReturnError(t *test
 
 	// then
 	require.Error(t, err)
-	assert.ErrorIs(t, err, requestError)
+	require.ErrorIs(t, err, requestError)
 }
 
 func TestUserTokenResolver_ResolveUserID_AdapterRedirects_ReturnErrorWithoutFollowingRedirect(t *testing.T) {
@@ -162,7 +161,7 @@ func TestUserTokenResolver_ResolveUserID_AdapterRedirects_ReturnErrorWithoutFoll
 
 	// then
 	require.EqualError(t, err, "validate user: unexpected status 307")
-	assert.Equal(t, 1, calls)
+	require.Equal(t, 1, calls)
 }
 
 func TestNewUserTokenResolver_InvalidConfiguration_ReturnError(t *testing.T) {
