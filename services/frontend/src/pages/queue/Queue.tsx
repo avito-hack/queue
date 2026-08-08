@@ -10,6 +10,7 @@ import { ticketApi } from '../../features/ticket/api'
 import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigation'
 import { removeTicket } from '../../features/ticket/ticketSlice'
 import { ticketAllows } from '../../features/ticket/types'
+import { reportApiError } from '../../shared/api/errors'
 import { QueueCard } from './QueueCard'
 import { QueueEmpty } from './QueueEmpty'
 import { SummaryTile } from './SummaryTile'
@@ -59,7 +60,7 @@ export function Queue() {
         }
         navigate(target.path)
       } catch (error) {
-        console.error(error)
+        reportApiError(error, 'Не удалось активировать тикет')
         // бэк недоступен — демо-заглушка своего checkout
         setTicketTile(null)
         goToDemoCheckout(id)
@@ -79,7 +80,7 @@ export function Queue() {
       try {
         await queueApi.leaveQueue(productId)
       } catch (error) {
-        console.error(error)
+        reportApiError(error, 'Не удалось выйти из очереди')
         // бэк может быть недоступен — убираем из store для демо
       } finally {
         dispatch(leaveQueue(entryId))
@@ -191,7 +192,7 @@ export function Queue() {
             try {
               await ticketApi.declineTicket(id)
             } catch (error) {
-              console.error(error)
+              reportApiError(error, 'Не удалось отказаться от тикета')
             } finally {
               dispatch(removeTicket(id))
               setTicketTile(null)

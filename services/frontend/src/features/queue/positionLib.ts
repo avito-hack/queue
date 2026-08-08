@@ -1,3 +1,4 @@
+import { currentUserId } from '../../shared/auth/currentUser'
 import type {
   ItemQueueMemberStatus,
   ItemQueueState,
@@ -99,6 +100,36 @@ export function queueItemsFromUserQueues(
   }
 
   return { updates, removeProductIds }
+}
+
+/**
+ * Построить плитки очереди с нуля из GET /v1/user/queues (hydrate).
+ * Терминальные статусы пропускаем — их закрывают тикеты / отсутствие в линии.
+ */
+export function queueEntriesFromUserQueues(
+  infos: UserQueueInfo[],
+): QueueEntry[] {
+  const userId = currentUserId()
+  const entries: QueueEntry[] = []
+
+  for (const info of infos) {
+    if (!info.item_id) continue
+    const status = queueStatusFromMemberStatus(info.status)
+    if (status !== 'queued' && status !== 'soldout') continue
+
+    entries.push({
+      id: `${info.item_id}-${userId}`,
+      productId: info.item_id,
+      status,
+      memberStatus: info.status as ItemQueueMemberStatus | undefined,
+      position:
+        status === 'queued' && typeof info.position === 'number'
+          ? info.position
+          : undefined,
+    })
+  }
+
+  return entries
 }
 
 /** Применить { position } к конкретной очереди itemId. */

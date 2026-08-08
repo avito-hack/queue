@@ -4,6 +4,7 @@ import type { Product } from '../../features/product/types'
 import { CatalogCard } from './CatalogCard'
 import { productApi } from '../../features/product/api'
 import { setProductItems } from '../../features/product/productSlice'
+import { reportApiError } from '../../shared/api/errors'
 
 const DEMO_SELLER = '00000000-0000-4000-8000-000000000010'
 const now = '2026-08-06T12:00:00.000Z'
@@ -116,7 +117,7 @@ export function Catalog() {
         const products = await productApi.getProducts()
         dispatch(setProductItems(products))
       } catch (e) {
-        console.error(e)
+        reportApiError(e, 'Не удалось загрузить каталог')
         dispatch(setProductItems(mockProducts))
       }
     })()
@@ -139,11 +140,17 @@ export function Catalog() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {products.map((product) => (
-          <CatalogCard key={product.id} product={product} />
-        ))}
-      </div>
+      {products.length === 0 ? (
+        <div className="rounded-2xl bg-white p-8 text-center text-avito-muted">
+          Пока нет активных объявлений.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {products.map((product) => (
+            <CatalogCard key={product.id} product={product} />
+          ))}
+        </div>
+      )}
     </section>
   )
 }

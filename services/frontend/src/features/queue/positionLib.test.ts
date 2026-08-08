@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  queueEntriesFromUserQueues,
   queueItemWithPosition,
   queueItemsFromUserQueues,
 } from './positionLib'
@@ -69,6 +70,38 @@ describe('queueItemsFromUserQueues', () => {
       updates: [],
       removeProductIds: ['listing-a'],
     })
+  })
+})
+
+describe('queueEntriesFromUserQueues', () => {
+  it('creates queued/soldout entries for hydrate', () => {
+    localStorage.clear()
+    expect(
+      queueEntriesFromUserQueues([
+        { item_id: 'listing-a', position: 4, status: 'waiting_in_line' },
+        { item_id: 'listing-b', position: 1, status: 'item_out_of_stock' },
+        {
+          item_id: 'listing-c',
+          position: 1,
+          status: 'acquired_purchase_rights',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 'listing-a-00000000-0000-4000-8000-000000000001',
+        productId: 'listing-a',
+        status: 'queued',
+        memberStatus: 'waiting_in_line',
+        position: 4,
+      },
+      {
+        id: 'listing-b-00000000-0000-4000-8000-000000000001',
+        productId: 'listing-b',
+        status: 'soldout',
+        memberStatus: 'item_out_of_stock',
+        position: undefined,
+      },
+    ])
   })
 })
 

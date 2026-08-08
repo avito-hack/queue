@@ -35,8 +35,12 @@ const TicketItemsSlice = createSlice({
         (item) => item.id !== action.payload,
       )
     },
+    setTicketItems(state, action: PayloadAction<TicketEntry[]>) {
+      state.ticketItems = action.payload
+    },
   },
 })
 
-export const { upsertTicket, removeTicket } = TicketItemsSlice.actions
+export const { upsertTicket, removeTicket, setTicketItems } =
+  TicketItemsSlice.actions
 export default TicketItemsSlice.reducer

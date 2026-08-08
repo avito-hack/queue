@@ -3,6 +3,7 @@ import reducer, {
   joinQueue,
   leaveQueue,
   removeQueuedByProductId,
+  setQueueItems,
   updateQueueItem,
 } from './queueSlice'
 import type { QueueEntry } from './types'
@@ -44,5 +45,12 @@ describe('queueSlice', () => {
     const withOne = reducer(undefined, joinQueue(queued))
     const state = reducer(withOne, removeQueuedByProductId('p1'))
     expect(state.queueItems).toEqual([])
+  })
+
+  it('replaces all items on setQueueItems (hydrate)', () => {
+    const withOne = reducer(undefined, joinQueue(queued))
+    const next = [{ ...queued, id: 'e2', position: 1 }]
+    const state = reducer(withOne, setQueueItems(next))
+    expect(state.queueItems).toEqual(next)
   })
 })

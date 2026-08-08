@@ -13,10 +13,19 @@ const ProductItemsSlice = createSlice({
   initialState,
   reducers: {
     setProductItems(state, action: PayloadAction<Product[]>) {
-        state.productItems = action.payload
+      state.productItems = action.payload
+    },
+    upsertProduct(state, action: PayloadAction<Product>) {
+      const next = action.payload
+      const idx = state.productItems.findIndex((item) => item.id === next.id)
+      if (idx >= 0) {
+        state.productItems[idx] = next
+        return
+      }
+      state.productItems.push(next)
     },
   },
 })
 
-export const { setProductItems } = ProductItemsSlice.actions
+export const { setProductItems, upsertProduct } = ProductItemsSlice.actions
 export default ProductItemsSlice.reducer

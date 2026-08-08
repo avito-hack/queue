@@ -7,8 +7,21 @@ export type ActivateTicketResponse = {
   checkout_url?: string
 }
 
-const listTickets = async () => {
-  const response = await api.get('/v1/ticket/list')
+/** Элемент списка — поля, которые маппит toTicketEntry. */
+export type TicketListItemDto = {
+  id?: string
+  listing_id?: string
+  status?: string
+  activation_deadline?: string
+  available_actions?: string[]
+}
+
+export type TicketListResponse = {
+  ticket?: TicketListItemDto[]
+}
+
+const listTickets = async (): Promise<TicketListResponse> => {
+  const response = await api.get<TicketListResponse>('/v1/ticket/list')
   return response.data
 }
 

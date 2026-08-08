@@ -1,12 +1,10 @@
 import { api } from '../../shared/api/client'
-import { mapListingToProduct } from './mapListing'
+import {
+  mapListingToProduct,
+  type ListingListResponse,
+} from './mapListing'
 import type { Product } from './types'
 
-/**
- * Один listing по id.
- * Через nginx: /v1/avito/... → adapter (нужен rewrite на /v1/listings).
- * По OpenAPI сервиса путь: GET /v1/listings/{listingId}.
- */
 const getListing = async (listingId: string): Promise<Product> => {
   const response = await api.get(`/v1/avito/listings/${listingId}`)
   const product = mapListingToProduct(response.data)
@@ -16,14 +14,15 @@ const getListing = async (listingId: string): Promise<Product> => {
   return product
 }
 
-/**
- * Списка всех listings в OpenAPI нет.
- * Если бэк когда-нибудь отдаст массив — замапим; иначе Catalog уйдёт в mock.
- */
 const getProducts = async (): Promise<Product[]> => {
-  const response = await api.get('/v1/avito/listings')
-  const raw = response.data
-  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.listings) ? raw.listings : null
+  const response = await api.get<ListingListResponse>('/v1/avito/listings', {
+    params: {
+      status: 'active',
+      limit: 100,
+      offset: 0,
+    },
+  })
+  const list = Array.isArray(response.data?.items) ? response.data.items : null
   if (!list) {
     throw new Error('Listings list is not available')
   }

@@ -34,6 +34,9 @@ const QueueItemsSlice = createSlice({
         item.id === action.payload.id ? action.payload : item,
       )
     },
+    setQueueItems(state, action: PayloadAction<QueueEntry[]>) {
+      state.queueItems = action.payload
+    },
   },
 })
 
@@ -42,5 +45,6 @@ export const {
   leaveQueue,
   removeQueuedByProductId,
   updateQueueItem,
+  setQueueItems,
 } = QueueItemsSlice.actions
 export default QueueItemsSlice.reducer

@@ -5,6 +5,8 @@ import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import clockIcon from '../../assets/clock.svg'
 import { JoinSuccessModal } from '../../components/modals/JoinSuccessModal'
 import { SoldOutModal } from '../../components/modals/SoldOutModal'
+import { productApi } from '../../features/product/api'
+import { upsertProduct } from '../../features/product/productSlice'
 import { queueApi } from '../../features/queue/api'
 import { getProductActionLabel } from '../../features/queue/lib'
 import {
@@ -12,6 +14,7 @@ import {
   updateQueueItem,
 } from '../../features/queue/queueSlice'
 import type { ItemQueueState, QueueEntry } from '../../features/queue/types'
+import { reportApiError } from '../../shared/api/errors'
 
 const similarProducts = [
   { emoji: '👟', price: '14 500 ₽', title: 'Кроссовки Northline Base' },
@@ -50,6 +53,7 @@ export function Product() {
   const [soldOutDismissed, setSoldOutDismissed] = useState(false)
   const [prevProductId, setPrevProductId] = useState(productId)
   const [queueState, setQueueState] = useState<ItemQueueState | null>(null)
+  const [listingLoadError, setListingLoadError] = useState(false)
   const [notified, setNotified] = useState(
     () => localStorage.getItem(notifyStorageKey(productId)) === '1',
   )
@@ -80,9 +84,28 @@ export function Product() {
     setSoldOutDismissed(false)
     setJoinedEntry(null)
     setQueueState(null)
+    setListingLoadError(false)
   }
 
-  // /state в OpenAPI без length — тянем enum; число «уже в очереди» пока из listing/mock.
+  useEffect(() => {
+    if (!productId || product) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const listing = await productApi.getListing(productId)
+        if (cancelled) return
+        dispatch(upsertProduct(listing))
+      } catch (error) {
+        if (cancelled) return
+        reportApiError(error, 'Не удалось загрузить товар')
+        setListingLoadError(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [dispatch, product, productId])
+
   useEffect(() => {
     if (!productId) return
     let cancelled = false
@@ -128,7 +151,8 @@ export function Product() {
       const entry = await queueApi.joinQueue(targetProductId)
       completeJoin(entry)
     } catch (error) {
-      console.error(error)
+      reportApiError(error, 'Не удалось встать в очередь')
+      // demo-fallback, пока бэк нестабилен
       completeJoin({
         id: `${targetProductId}-entry`,
         productId: targetProductId,
@@ -144,6 +168,13 @@ export function Product() {
   }
 
   if (!product) {
+    if (!listingLoadError) {
+      return (
+        <section className="rounded-2xl bg-white p-8 text-center text-avito-muted">
+          Загружаем товар…
+        </section>
+      )
+    }
     return (
       <section className="rounded-2xl bg-white p-8 text-center text-avito-muted">
         Товар не найден. Откройте его из{' '}
