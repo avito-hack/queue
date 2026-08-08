@@ -12,7 +12,7 @@ GO_SERVICES := queue tickets avito-adapter
 	lint lint-tickets lint-avito-adapter lint-frontend lint-queue \
 	test test-tickets test-avito-adapter test-frontend test-queue \
 	build build-queue build-tickets build-avito-adapter build-frontend \
-	up down logs
+	clean up down logs
 
 generate: $(addprefix generate-,$(GO_SERVICES))
 
@@ -75,6 +75,15 @@ build-queue: generate-queue
 
 build-frontend:
 	cd services/frontend && $(NPM) ci && $(NPM) run build
+
+clean:
+	rm -rf \
+		$(BIN_DIR) \
+		services/frontend/dist \
+		services/frontend/dist-ssr \
+		services/queue/gen \
+		services/tickets/gen
+	rm -f services/avito-adapter/gen/server/server.gen.go
 
 up:
 	$(COMPOSE) up -d
