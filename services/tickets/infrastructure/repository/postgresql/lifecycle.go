@@ -50,9 +50,10 @@ func (r *LifecycleRepository) ExpireIssued(ctx context.Context, now time.Time, l
 			if rowsAffected == 0 {
 				continue
 			}
-			if err := r.insertLifecycleOutbox(
+			if err := insertLifecycleOutbox(
 				ctx,
 				transaction,
+				r.newID(),
 				ticket,
 				domain.TicketStatusClosed,
 				domain.TicketCloseReasonActivationTimeout,
@@ -127,9 +128,10 @@ func lifecycleTickets(rows []sqlgen.SelectExpiredTicketsRow) ([]lifecycleTicket,
 	return tickets, nil
 }
 
-func (r *LifecycleRepository) insertLifecycleOutbox(
+func insertLifecycleOutbox(
 	ctx context.Context,
 	transaction pgx.Tx,
+	eventID uuid.UUID,
 	ticket lifecycleTicket,
 	status domain.TicketStatus,
 	reason domain.TicketCloseReason,
@@ -150,7 +152,7 @@ func (r *LifecycleRepository) insertLifecycleOutbox(
 		return fmt.Errorf("encode lifecycle event: %w", err)
 	}
 	rowsAffected, err := sqlgen.New(transaction).InsertLifecycleOutbox(ctx, sqlgen.InsertLifecycleOutboxParams{
-		ID:          toPGUUID(r.newID()),
+		ID:          toPGUUID(eventID),
 		AggregateID: toPGUUID(ticket.ID),
 		EventType:   eventType,
 		Payload:     payload,

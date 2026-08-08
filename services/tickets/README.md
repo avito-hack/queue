@@ -55,6 +55,7 @@ docker run --rm \
 | `AVITO_ADAPTER_TIMEOUT` | `3s` |
 | `RABBITMQ_URL` | обязательный URL RabbitMQ |
 | `RABBITMQ_EXCHANGE` | `domain.events` |
+| `RABBITMQ_LISTING_EVENTS_QUEUE` | `tickets.listing-events` |
 | `TICKET_ACTIVATION_TTL` | `15m` |
 | `TICKET_MAINTENANCE_INTERVAL` | `1s` |
 | `ACTIVATION_RECOVERY_TIMEOUT` | `1m` |
@@ -72,4 +73,4 @@ docker run --rm \
 
 ## События
 
-Контракт исходящих событий находится в `events/events.yaml`. Tickets публикует `ticket.closed` после отказа или истечения срока активации и `ticket.redeemed` после успешного создания заказа. Оплата заказа и жизненный цикл резервации остаются внутри стандартных сервисов Авито и не обрабатываются tickets.
+Контракт исходящих событий находится в `docs/events/events.yaml`. Tickets публикует `ticket.closed` после отказа, истечения срока активации или отзыва права из-за изменения объявления и `ticket.redeemed` после успешного создания заказа. Сервис получает `listing.quantity.changed` и `listing.status.changed` из durable-очереди RabbitMQ и идемпотентно обрабатывает их через inbox. Оплата заказа и жизненный цикл резервации остаются внутри стандартных сервисов Авито и не обрабатываются tickets.

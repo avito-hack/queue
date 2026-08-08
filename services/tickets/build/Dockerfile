@@ -5,6 +5,7 @@ COPY services/tickets/go.mod services/tickets/go.sum ./
 RUN go mod download
 COPY services/tickets/ ./
 COPY schemas/services/avito-adapter/openapi.yaml /src/schemas/services/avito-adapter/openapi.yaml
+COPY schemas/services/avito-adapter/events/events.yaml /src/schemas/services/avito-adapter/events/events.yaml
 RUN go generate ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/tickets ./cmd/app
 

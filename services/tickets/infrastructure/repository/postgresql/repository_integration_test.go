@@ -240,6 +240,110 @@ func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testi
 	require.Equal(t, domain.TicketStatusClosed, declined.Status)
 }
 
+func Test_ListingEventRepository_QuantityDecreased_CloseOldestExcessOnce(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	listingID := uuid.New()
+	issuedAt := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	ticketIDs := make([]uuid.UUID, 0, 4)
+	for index := range 4 {
+		result := issueListingIntegrationTicket(t, listingID, issuedAt.Add(time.Duration(index)*time.Minute))
+		ticketIDs = append(ticketIDs, result.Ticket.ID)
+	}
+	eventID := uuid.New()
+	command := usecase.RevokeListingTicketsCommand{
+		Event: usecase.IncomingListingEvent{
+			ID:      eventID,
+			Type:    domain.ListingEventQuantityChanged,
+			Source:  "avito-adapter",
+			Payload: []byte(`{"quantity":2}`),
+		},
+		ListingID:       listingID,
+		RevocationLimit: 2,
+		CloseReason:     domain.TicketCloseReasonSystemCancelled,
+		HandledAt:       issuedAt.Add(10 * time.Minute),
+	}
+	repository := NewListingEventRepository(integrationPool)
+
+	// when
+	revoked, err := repository.RevokeListingTickets(context.Background(), command)
+	replayed, replayErr := repository.RevokeListingTickets(context.Background(), command)
+
+	// then
+	require.NoError(t, err)
+	require.NoError(t, replayErr)
+	require.Equal(t, 2, revoked)
+	require.Zero(t, replayed)
+	states, err := sqlgen.New(integrationPool).ListListingTicketStates(context.Background(), toPGUUID(listingID))
+	require.NoError(t, err)
+	require.Len(t, states, 4)
+	for index, state := range states {
+		require.True(t, state.ID.Valid)
+		assert.Equal(t, ticketIDs[index], uuid.UUID(state.ID.Bytes))
+		if index < 2 {
+			assert.Equal(t, string(domain.TicketStatusClosed), state.Status)
+			require.True(t, state.CloseReason.Valid)
+			assert.Equal(t, string(domain.TicketCloseReasonSystemCancelled), state.CloseReason.String)
+			continue
+		}
+		assert.Equal(t, string(domain.TicketStatusIssued), state.Status)
+		assert.False(t, state.CloseReason.Valid)
+	}
+	assert.Equal(t, int64(1), integrationInboxCount(t))
+	assert.Equal(t, int64(2), integrationOutboxTypeCount(t, domain.TicketEventClosed))
+}
+
+func Test_ListingEventRepository_StatusChanged_KeepTicketBeingActivated(t *testing.T) {
+	// given
+	truncateIntegrationTables(t)
+	listingID := uuid.New()
+	issuedAt := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	activating := issueListingIntegrationTicket(t, listingID, issuedAt)
+	revocable := issueListingIntegrationTicket(t, listingID, issuedAt.Add(time.Minute))
+	_, err := NewActivationRepository(integrationPool).Prepare(context.Background(), usecase.PrepareActivationCommand{
+		UserID:         activating.UserID,
+		TicketID:       activating.Ticket.ID,
+		IdempotencyKey: uuid.New(),
+		Now:            issuedAt.Add(2 * time.Minute),
+	})
+	require.NoError(t, err)
+	command := usecase.RevokeListingTicketsCommand{
+		Event: usecase.IncomingListingEvent{
+			ID:      uuid.New(),
+			Type:    domain.ListingEventStatusChanged,
+			Source:  "avito-adapter",
+			Payload: []byte(`{"status":"paused"}`),
+		},
+		ListingID:   listingID,
+		CloseAll:    true,
+		CloseReason: domain.TicketCloseReasonListingClosed,
+		HandledAt:   issuedAt.Add(3 * time.Minute),
+	}
+
+	// when
+	revoked, err := NewListingEventRepository(integrationPool).RevokeListingTickets(context.Background(), command)
+
+	// then
+	require.NoError(t, err)
+	require.Equal(t, 1, revoked)
+	activatingTicket, err := NewTicketRepository(integrationPool).Get(
+		context.Background(),
+		activating.UserID,
+		activating.Ticket.ID,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, domain.TicketStatusIssued, activatingTicket.Status)
+	revokedTicket, err := NewTicketRepository(integrationPool).Get(
+		context.Background(),
+		revocable.UserID,
+		revocable.Ticket.ID,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, domain.TicketStatusClosed, revokedTicket.Status)
+	require.NotNil(t, revokedTicket.CloseReason)
+	assert.Equal(t, domain.TicketCloseReasonListingClosed, *revokedTicket.CloseReason)
+}
+
 func Test_OutboxRepository_ClaimRetryAndPublish_ChangeDeliveryState(t *testing.T) {
 	// given
 	truncateIntegrationTables(t)
@@ -454,6 +558,26 @@ func issueIntegrationTicket(t *testing.T) usecase.IssueTicketResult {
 	return result
 }
 
+func issueListingIntegrationTicket(
+	t *testing.T,
+	listingID uuid.UUID,
+	issuedAt time.Time,
+) usecase.IssueTicketResult {
+	t.Helper()
+	result, err := NewIssueRepository(integrationPool).Issue(context.Background(), usecase.IssueTicketCommand{
+		QueueEntryID:       uuid.New(),
+		UserID:             uuid.New(),
+		ListingID:          listingID,
+		SKUID:              uuid.New(),
+		IdempotencyKey:     uuid.New(),
+		IssuedAt:           issuedAt,
+		ActivationDeadline: issuedAt.Add(time.Hour),
+	})
+	require.NoError(t, err)
+
+	return result
+}
+
 func issueConcurrently(
 	repository *IssueRepository,
 	commands []usecase.IssueTicketCommand,
@@ -559,6 +683,14 @@ func integrationOutboxTypeCount(t *testing.T, eventType string) int64 {
 func integrationOutboxStatusCount(t *testing.T, status string) int64 {
 	t.Helper()
 	count, err := sqlgen.New(integrationPool).CountOutboxEventsByStatus(context.Background(), status)
+	require.NoError(t, err)
+
+	return count
+}
+
+func integrationInboxCount(t *testing.T) int64 {
+	t.Helper()
+	count, err := sqlgen.New(integrationPool).CountInboxEvents(context.Background())
 	require.NoError(t, err)
 
 	return count

@@ -69,3 +69,13 @@ WHERE event_type = sqlc.arg(event_type);
 SELECT COUNT(*)
 FROM public.outbox_events
 WHERE status = sqlc.arg(status);
+
+-- name: CountInboxEvents :one
+SELECT COUNT(*)
+FROM public.inbox_events;
+
+-- name: ListListingTicketStates :many
+SELECT id, status, close_reason
+FROM public.tickets
+WHERE listing_id = sqlc.arg(listing_id)
+ORDER BY issued_at, id;

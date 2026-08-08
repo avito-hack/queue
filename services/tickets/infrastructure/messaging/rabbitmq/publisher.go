@@ -150,7 +150,7 @@ func validateTicketClosedPayload(payload eventschemas.TicketClosedPayload) error
 		return fmt.Errorf("unexpected status %q", *payload.Status)
 	}
 	switch *payload.CloseReason {
-	case "activation_timeout", "user_declined":
+	case "activation_timeout", "user_declined", "listing_closed", "system_cancelled":
 	default:
 		return fmt.Errorf("unexpected close reason %q", *payload.CloseReason)
 	}

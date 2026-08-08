@@ -41,6 +41,7 @@ type TicketConfig struct {
 type RabbitMQConfig struct {
 	URL      string
 	Exchange string
+	Queue    string
 }
 
 type WorkerConfig struct {
@@ -155,6 +156,7 @@ func Load() (Config, error) {
 		RabbitMQ: RabbitMQConfig{
 			URL:      rabbitMQURL,
 			Exchange: value("RABBITMQ_EXCHANGE", "domain.events"),
+			Queue:    value("RABBITMQ_LISTING_EVENTS_QUEUE", "tickets.listing-events"),
 		},
 		Ticket: TicketConfig{
 			ActivationTTL: activationTTL,

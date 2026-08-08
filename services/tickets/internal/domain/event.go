@@ -1,6 +1,8 @@
 package domain
 
 const (
-	TicketEventClosed   = "ticket.closed"
-	TicketEventRedeemed = "ticket.redeemed"
+	ListingEventQuantityChanged = "listing.quantity.changed"
+	ListingEventStatusChanged   = "listing.status.changed"
+	TicketEventClosed           = "ticket.closed"
+	TicketEventRedeemed         = "ticket.redeemed"
 )

@@ -27,7 +27,7 @@ func Test_EncodeEventPayload_TicketClosed_ReturnTypedJSON(t *testing.T) {
 			"listing_id":"` + listingID.String() + `",
 			"sku_id":"` + skuID.String() + `",
 			"status":"closed",
-			"close_reason":"activation_timeout",
+			"close_reason":"system_cancelled",
 			"finished_at":"2026-08-07T10:00:00Z"
 		}`),
 	}

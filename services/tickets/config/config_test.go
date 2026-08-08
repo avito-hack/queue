@@ -28,6 +28,8 @@ func TestLoad_ReturnConfig(t *testing.T) {
 	assert.Equal(t, "http://avito-adapter:8080", config.AvitoAdapter.URL)
 	assert.Equal(t, 3*time.Second, config.AvitoAdapter.Timeout)
 	assert.Equal(t, "amqp://tickets:password@rabbitmq:5672/", config.RabbitMQ.URL)
+	assert.Equal(t, "domain.events", config.RabbitMQ.Exchange)
+	assert.Equal(t, "tickets.listing-events", config.RabbitMQ.Queue)
 	assert.Equal(t, 12*time.Minute, config.Ticket.ActivationTTL)
 }
 

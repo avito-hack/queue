@@ -59,6 +59,7 @@ func run() error {
 	declineRepository := postgresql.NewDeclineRepository(database)
 	issueRepository := postgresql.NewIssueRepository(database)
 	lifecycleRepository := postgresql.NewLifecycleRepository(database)
+	listingEventRepository := postgresql.NewListingEventRepository(database)
 	outboxRepository := postgresql.NewOutboxRepository(database)
 	listTickets := usecase.NewListTickets(ticketRepository, time.Now)
 	getTicket := usecase.NewGetTicket(ticketRepository, time.Now)
@@ -84,11 +85,23 @@ func run() error {
 		cfg.Workers.ActivationRecoveryTimeout,
 		time.Now,
 	)
+	handleListingEvents := usecase.NewHandleListingEvents(listingEventRepository, time.Now)
 	rabbitConnection, err := amqp.Dial(cfg.RabbitMQ.URL)
 	if err != nil {
 		return fmt.Errorf("connect to RabbitMQ: %w", err)
 	}
 	defer func() { _ = rabbitConnection.Close() }()
+	consumer, err := brokerrabbit.NewConsumer(
+		rabbitConnection,
+		cfg.RabbitMQ.Exchange,
+		cfg.RabbitMQ.Queue,
+		cfg.Workers.BatchSize,
+		handleListingEvents,
+	)
+	if err != nil {
+		return fmt.Errorf("create listing events consumer: %w", err)
+	}
+	defer func() { _ = consumer.Close() }()
 	publisher, err := brokerrabbit.NewPublisher(rabbitConnection, cfg.RabbitMQ.Exchange)
 	if err != nil {
 		return fmt.Errorf("create outbox publisher: %w", err)
@@ -127,7 +140,7 @@ func run() error {
 		serverError <- httpServer.ListenAndServe()
 	}()
 
-	workerError := make(chan error, 2)
+	workerError := make(chan error, 3)
 	var workerWaitGroup sync.WaitGroup
 	startWorker := func(name string, run func(context.Context) error) {
 		workerWaitGroup.Add(1)
@@ -144,6 +157,7 @@ func run() error {
 	}
 	startWorker("maintenance", maintenanceWorker.Run)
 	startWorker("outbox", outboxWorker.Run)
+	startWorker("listing events", consumer.Run)
 
 	var runError error
 	select {

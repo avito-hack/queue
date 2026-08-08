@@ -83,7 +83,7 @@ components:
     ticketClosed:
       name: ticket.closed
       title: Ticket closed
-      summary: Тикет закрыт по отказу пользователя или истечению срока активации.
+      summary: Тикет закрыт по отказу, истечению срока активации или отзыву права системой.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/ticketClosedPayload"
@@ -142,6 +142,8 @@ components:
           enum:
             - activation_timeout
             - user_declined
+            - listing_closed
+            - system_cancelled
         finished_at:
           type: string
           format: date-time

@@ -44,7 +44,7 @@ func (c *OrderCreator) CreateOrder(ctx context.Context, request usecase.CreateOr
 	}
 	defer func() { _ = httpResponse.Body.Close() }()
 
-	response, err := generated.ParseCreateOrderResponse(httpResponse)
+	response, err := generated.ParseCreateOrderHTTPResponse(httpResponse)
 	if err != nil {
 		if orderUnavailableStatus(httpResponse.StatusCode) {
 			return usecase.CreatedOrder{}, fmt.Errorf("%w: create order status %d", usecase.ErrOrderUnavailable, httpResponse.StatusCode)
