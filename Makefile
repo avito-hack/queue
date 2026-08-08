@@ -47,16 +47,17 @@ lint-queue:
 
 test: test-tickets test-avito-adapter test-frontend test-queue
 
-test-tickets: generate-tickets
+test-tickets: generate-tickets lint-tickets
 	cd services/tickets && $(GO) test ./...
 
-test-avito-adapter:
+test-avito-adapter: generate-avito-adapter lint-avito-adapter
 	cd services/avito-adapter && $(GO) test ./...
+
+test-queue: generate-queue lint-queue
+	cd services/queue && $(GO) test ./...
 
 test-frontend:
 	cd services/frontend && $(NPM) ci && $(NPM) run lint
-
-test-queue: lint-queue
 
 build: $(addprefix build-,$(GO_SERVICES)) build-frontend
 
