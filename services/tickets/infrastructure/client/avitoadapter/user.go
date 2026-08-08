@@ -25,7 +25,7 @@ func NewUserTokenResolver(baseURL string, client *http.Client) (*UserTokenResolv
 }
 
 func (r *UserTokenResolver) ResolveUserID(ctx context.Context, token string) (uuid.UUID, error) {
-	response, err := r.client.ValidateUserWithResponse(ctx, generated.ValidateUserJSONRequestBody{Token: token})
+	response, err := r.client.ValidateUserTokenWithResponse(ctx, generated.ValidateUserTokenJSONRequestBody{Token: &token})
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("validate user request: %w", err)
 	}
