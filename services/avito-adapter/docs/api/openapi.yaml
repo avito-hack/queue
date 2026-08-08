@@ -45,7 +45,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidateUserTokenResponse'
+                $ref: '#/components/schemas/ValidateUserTokenResult'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalServerError' }
         '502': { $ref: '#/components/responses/BadGateway' }
@@ -321,7 +321,7 @@ components:
     ValidateUserTokenRequest:
       type: object
       properties: { token: { type: string, minLength: 1 } }
-    ValidateUserTokenResponse:
+    ValidateUserTokenResult:
       type: object
       required: [user_id]
       properties:

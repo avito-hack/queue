@@ -27,7 +27,7 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 func TestUserTokenResolver_ResolveUserID_ReturnUserID(t *testing.T) {
 	// given
 	expectedUserID := uuid.New()
-	responseBody, err := json.Marshal(generated.ValidateUserTokenResponse{UserId: expectedUserID})
+	responseBody, err := json.Marshal(generated.ValidateUserTokenResult{UserId: expectedUserID})
 	require.NoError(t, err)
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		assert.Equal(t, http.MethodPost, request.Method)
