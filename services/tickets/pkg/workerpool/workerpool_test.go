@@ -74,8 +74,6 @@ func Test_Pool_ShutdownDeadlineExpiresBeforeWorkersStop_ReturnDeadlineExceeded(t
 
 		close(block)
 		require.NoError(t, p.Shutdown(context.Background()))
-		for range p.Results() {
-		}
 	})
 }
 
