@@ -1,11 +1,22 @@
 package auth
 
 import (
+	"context"
     "errors"
     "time"
 
     "github.com/golang-jwt/jwt/v5"
 )
+
+func AuthorizationHeader(ctx context.Context) (string, bool) {
+	header, ok := ctx.Value(AuthorizationHeaderKey).(string)
+	return header, ok
+}
+
+func UserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(UserIDKey).(string)
+	return userID, ok
+}
 
 type contextKey string
 

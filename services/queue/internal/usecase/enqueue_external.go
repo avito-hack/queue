@@ -38,11 +38,11 @@ func (s *itemQueueService) ensureItemAvailable(ctx context.Context, itemID uuid.
 		return ErrQueueUnavailable
 	}
 
-	if listing.Status != avitoclient.ListingStatusActive {
+	if listing.Status != avitoclient.Active {
 		return ErrQueueUnavailable
 	}
 
-	if listing.AvailableQuantity <= 0 {
+	if listing.Quantity <= 0 {
 		return ErrQueueUnavailable
 	}
 
@@ -87,7 +87,7 @@ func (s *itemQueueService) ensureUserHasNoActiveTicket(ctx context.Context, item
 	}
 
 	for _, ticket := range list.Ticket {
-		if ticket.Status == ticketsclient.Active || ticket.Status == ticketsclient.Issued || ticket.Status == ticketsclient.Redeemed {
+		if ticket.Status == ticketsclient.Issued || ticket.Status == ticketsclient.Redeemed {
 			return ErrUserHasActiveTicket
 		}
 	}
