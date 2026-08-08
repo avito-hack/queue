@@ -40,7 +40,7 @@ lint-queue:
 		--skip-rule security-defined \
 		--skip-rule info-license \
 		--skip-rule no-unused-components \
-		services/queue/api/openapi.yaml
+		services/queue/docs/api/openapi.yaml
 
 lint-frontend:
 	cd services/frontend && $(NPM) ci && $(NPM) run lint
