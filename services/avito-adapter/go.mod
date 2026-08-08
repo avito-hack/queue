@@ -3,12 +3,14 @@ module github.com/avito-hack/queue/services/avito-adapter
 go 1.24.0
 
 require (
+	github.com/bdragon300/go-asyncapi/run v0.0.0-20260111064117-e9ede27542aa
 	github.com/getkin/kin-openapi v0.127.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.5.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.1.1
+	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/stretchr/testify v1.9.0
 )
 

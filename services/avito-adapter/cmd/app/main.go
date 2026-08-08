@@ -11,11 +11,14 @@ import (
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/avito-hack/queue/services/avito-adapter/config"
+	brokerrabbit "github.com/avito-hack/queue/services/avito-adapter/infrastructure/messaging/rabbitmq"
 	"github.com/avito-hack/queue/services/avito-adapter/infrastructure/repository/postgresql"
 	transporthttp "github.com/avito-hack/queue/services/avito-adapter/infrastructure/transport/http"
 	"github.com/avito-hack/queue/services/avito-adapter/internal/usecase"
+	"github.com/avito-hack/queue/services/avito-adapter/internal/worker"
 )
 
 func main() {
@@ -42,6 +45,16 @@ func run() error {
 		return fmt.Errorf("connect to postgres: %w", err)
 	}
 	cancelDatabase()
+	rabbitConnection, err := amqp.Dial(cfg.RabbitMQ.URL)
+	if err != nil {
+		return fmt.Errorf("connect to RabbitMQ: %w", err)
+	}
+	defer func() { _ = rabbitConnection.Close() }()
+	publisher, err := brokerrabbit.NewPublisher(rabbitConnection, cfg.RabbitMQ.Exchange)
+	if err != nil {
+		return fmt.Errorf("create event publisher: %w", err)
+	}
+	defer func() { _ = publisher.Close() }()
 
 	health := usecase.NewHealth(database)
 	service := usecase.NewService(postgresql.NewRepository(database))
@@ -66,6 +79,12 @@ func run() error {
 
 	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	workerError := make(chan error, 1)
+	go func() {
+		if err := worker.NewOutbox(database, publisher).Run(signalContext); err != nil {
+			workerError <- err
+		}
+	}()
 
 	select {
 	case <-signalContext.Done():
@@ -80,5 +99,10 @@ func run() error {
 			return nil
 		}
 		return fmt.Errorf("serve HTTP: %w", err)
+	case err := <-workerError:
+		if err != nil {
+			return fmt.Errorf("outbox worker: %w", err)
+		}
+		return nil
 	}
 }

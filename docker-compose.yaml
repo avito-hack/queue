@@ -151,6 +151,7 @@ services:
       dockerfile: services/avito-adapter/build/Dockerfile
     environment:
       DATABASE_URL: postgres://${AVITO_ADAPTER_POSTGRES_USER}:${AVITO_ADAPTER_POSTGRES_PASSWORD}@postgres:5432/${AVITO_ADAPTER_POSTGRES_DB}?sslmode=disable
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tickets}:${RABBITMQ_PASSWORD:-tickets}@rabbitmq:5672/
     expose:
       - "8080"
     healthcheck:
@@ -164,6 +165,8 @@ services:
         condition: service_healthy
       goose:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
     restart: on-failure
 
   frontend:

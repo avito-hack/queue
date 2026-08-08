@@ -1,0 +1,162 @@
+asyncapi: 3.0.0
+info:
+  title: Avito adapter events
+  version: 1.0.0
+  description: Исходящие события изменения физического остатка и статуса объявления продавцом.
+defaultContentType: application/json
+
+servers:
+  rabbitmq:
+    host: rabbitmq:5672
+    protocol: amqp
+    protocolVersion: 0.9.1
+    description: RabbitMQ broker
+    security:
+      - $ref: "#/components/securitySchemes/brokerCredentials"
+
+channels:
+  listingQuantityChanged:
+    address: listing.quantity.changed
+    description: Продавец изменил физическое количество товара.
+    messages:
+      listingQuantityChanged:
+        $ref: "#/components/messages/listingQuantityChanged"
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: domain.events
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: 0.3.0
+
+  listingStatusChanged:
+    address: listing.status.changed
+    description: Продавец приостановил или снял объявление.
+    messages:
+      listingStatusChanged:
+        $ref: "#/components/messages/listingStatusChanged"
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: domain.events
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: 0.3.0
+
+operations:
+  sendListingQuantityChanged:
+    action: send
+    channel:
+      $ref: "#/channels/listingQuantityChanged"
+    messages:
+      - $ref: "#/channels/listingQuantityChanged/messages/listingQuantityChanged"
+    bindings:
+      amqp:
+        deliveryMode: 2
+        mandatory: false
+        timestamp: true
+        bindingVersion: 0.3.0
+
+  sendListingStatusChanged:
+    action: send
+    channel:
+      $ref: "#/channels/listingStatusChanged"
+    messages:
+      - $ref: "#/channels/listingStatusChanged/messages/listingStatusChanged"
+    bindings:
+      amqp:
+        deliveryMode: 2
+        mandatory: false
+        timestamp: true
+        bindingVersion: 0.3.0
+
+components:
+  securitySchemes:
+    brokerCredentials:
+      type: userPassword
+
+  messages:
+    listingQuantityChanged:
+      name: listing.quantity.changed
+      title: Listing quantity changed
+      summary: Продавец изменил физический остаток товара.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/listingQuantityChangedPayload"
+      bindings:
+        amqp:
+          messageType: listing.quantity.changed
+          bindingVersion: 0.3.0
+
+    listingStatusChanged:
+      name: listing.status.changed
+      title: Listing status changed
+      summary: Объявление приостановлено или окончательно снято продавцом.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/listingStatusChangedPayload"
+      bindings:
+        amqp:
+          messageType: listing.status.changed
+          bindingVersion: 0.3.0
+
+  schemas:
+    listingQuantityChangedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - listing_id
+        - seller_id
+        - previous_quantity
+        - quantity
+        - changed_at
+      properties:
+        listing_id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        previous_quantity:
+          type: integer
+          minimum: 0
+        quantity:
+          type: integer
+          minimum: 0
+        changed_at:
+          type: string
+          format: date-time
+
+    listingStatusChangedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - listing_id
+        - seller_id
+        - previous_status
+        - status
+        - changed_at
+      properties:
+        listing_id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        previous_status:
+          type: string
+          enum:
+            - active
+            - paused
+        status:
+          type: string
+          enum:
+            - paused
+            - removed
+        changed_at:
+          type: string
+          format: date-time

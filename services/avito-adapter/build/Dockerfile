@@ -4,7 +4,7 @@ WORKDIR /src
 COPY services/avito-adapter/go.mod services/avito-adapter/go.sum ./
 RUN go mod download
 COPY services/avito-adapter/ .
-RUN mkdir -p gen/server
+RUN mkdir -p gen/server gen/events
 RUN go generate ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/avito-adapter ./cmd/app
 

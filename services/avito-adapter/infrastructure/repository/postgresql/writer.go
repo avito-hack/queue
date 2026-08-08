@@ -2,9 +2,12 @@ package postgresql
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -34,12 +37,53 @@ func (r *Repository) CreateListing(ctx context.Context, listing usecase.Listing)
 }
 
 func (r *Repository) SaveListing(ctx context.Context, listing usecase.Listing) error {
-	result, err := r.pool.Exec(ctx, "UPDATE public.listings SET title = $2, price = $3, quantity = $4, queue_enabled = $5, status = $6, updated_at = $7 WHERE id = $1", listing.ID, listing.Title, listing.Price, listing.Quantity, listing.QueueEnabled, listing.Status, listing.UpdatedAt)
+	transaction, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin save listing: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	var previousQuantity int
+	var previousStatus usecase.ListingStatus
+	var sellerID string
+	err = transaction.QueryRow(ctx, "SELECT quantity, status, seller_id FROM public.listings WHERE id = $1 FOR UPDATE", listing.ID).Scan(&previousQuantity, &previousStatus, &sellerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return usecase.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock listing: %w", err)
+	}
+	result, err := transaction.Exec(ctx, "UPDATE public.listings SET title = $2, price = $3, quantity = $4, queue_enabled = $5, status = $6, updated_at = $7 WHERE id = $1", listing.ID, listing.Title, listing.Price, listing.Quantity, listing.QueueEnabled, listing.Status, listing.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save listing: %w", err)
 	}
 	if result.RowsAffected() == 0 {
 		return usecase.ErrNotFound
+	}
+	if previousQuantity != listing.Quantity {
+		if err := insertOutboxEvent(ctx, transaction, "listing.quantity.changed", map[string]any{"listing_id": listing.ID, "seller_id": sellerID, "previous_quantity": previousQuantity, "quantity": listing.Quantity, "changed_at": listing.UpdatedAt}); err != nil {
+			return err
+		}
+	}
+	if previousStatus != listing.Status && (listing.Status == usecase.ListingPaused || listing.Status == usecase.ListingRemoved) {
+		if err := insertOutboxEvent(ctx, transaction, "listing.status.changed", map[string]any{"listing_id": listing.ID, "seller_id": sellerID, "previous_status": previousStatus, "status": listing.Status, "changed_at": listing.UpdatedAt}); err != nil {
+			return err
+		}
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return fmt.Errorf("commit save listing: %w", err)
+	}
+	return nil
+}
+
+func insertOutboxEvent(ctx context.Context, transaction pgx.Tx, eventType string, payload any) error {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode %s: %w", eventType, err)
+	}
+	now := time.Now().UTC()
+	_, err = transaction.Exec(ctx, "INSERT INTO public.outbox_events (id, event_type, payload, created_at, available_at) VALUES ($1, $2, $3, $4, $4)", uuid.NewString(), eventType, encoded, now)
+	if err != nil {
+		return fmt.Errorf("insert %s: %w", eventType, err)
 	}
 	return nil
 }

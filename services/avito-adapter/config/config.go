@@ -10,7 +10,10 @@ import (
 type Config struct {
 	HTTP       HTTPConfig
 	PostgreSQL PostgreSQLConfig
+	RabbitMQ   RabbitMQConfig
 }
+
+type RabbitMQConfig struct{ URL, Exchange string }
 
 type PostgreSQLConfig struct {
 	URL            string
@@ -54,6 +57,10 @@ func Load() (Config, error) {
 	if databaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}
+	rabbitMQURL := value("RABBITMQ_URL", "")
+	if rabbitMQURL == "" {
+		return Config{}, fmt.Errorf("RABBITMQ_URL is required")
+	}
 
 	return Config{HTTP: HTTPConfig{
 		Host:            value("HTTP_HOST", "0.0.0.0"),
@@ -61,7 +68,7 @@ func Load() (Config, error) {
 		ReadTimeout:     readTimeout,
 		WriteTimeout:    writeTimeout,
 		ShutdownTimeout: shutdownTimeout,
-	}, PostgreSQL: PostgreSQLConfig{URL: databaseURL, ConnectTimeout: connectTimeout}}, nil
+	}, PostgreSQL: PostgreSQLConfig{URL: databaseURL, ConnectTimeout: connectTimeout}, RabbitMQ: RabbitMQConfig{URL: rabbitMQURL, Exchange: value("RABBITMQ_EXCHANGE", "domain.events")}}, nil
 }
 
 func value(name, fallback string) string {
