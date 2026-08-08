@@ -5,16 +5,19 @@ LINTER := golangci-lint
 COMPOSE := docker compose
 BIN_DIR := $(CURDIR)/bin
 
-GO_SERVICES := tickets avito-adapter
+GO_SERVICES := queue tickets avito-adapter
 
 .PHONY: \
-	generate generate-tickets generate-avito-adapter \
+	generate generate-queue generate-tickets generate-avito-adapter \
 	lint lint-tickets lint-avito-adapter lint-frontend lint-queue \
 	test test-tickets test-avito-adapter test-frontend test-queue \
-	build build-tickets build-avito-adapter build-frontend \
+	build build-queue build-tickets build-avito-adapter build-frontend \
 	up down logs
 
 generate: $(addprefix generate-,$(GO_SERVICES))
+
+generate-queue:
+	cd services/queue && $(GO) generate ./...
 
 generate-tickets:
 	cd services/tickets && $(GO) generate ./...
@@ -56,6 +59,10 @@ test-frontend:
 test-queue: lint-queue
 
 build: $(addprefix build-,$(GO_SERVICES)) build-frontend
+
+build-queue: generate-queue
+	mkdir -p $(BIN_DIR)
+	cd services/queue && $(GO) build -o $(BIN_DIR)/queue ./cmd/app
 
 build-tickets: generate-tickets
 	mkdir -p $(BIN_DIR)
