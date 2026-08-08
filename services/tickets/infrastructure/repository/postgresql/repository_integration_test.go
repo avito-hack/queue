@@ -18,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
@@ -58,8 +59,8 @@ func Test_IssueRepository_ConcurrentSameQueueEntry_CreateOneTicket(t *testing.T)
 	}
 	require.Equal(t, 1, created)
 	require.Equal(t, results[0].value.Ticket.ID, results[1].value.Ticket.ID)
-	require.Equal(t, 1, integrationRowCount(t, "public.tickets"))
-	require.Zero(t, integrationRowCount(t, "public.outbox_events"))
+	require.Equal(t, int64(1), integrationTicketCount(t))
+	require.Zero(t, integrationOutboxCount(t))
 }
 
 func Test_ActivationRepository_ConcurrentPrepare_CreateOneOperation(t *testing.T) {
@@ -96,7 +97,7 @@ func Test_ActivationRepository_ConcurrentPrepare_CreateOneOperation(t *testing.T
 	}
 	require.Equal(t, 1, succeeded)
 	require.Equal(t, 1, inProgress)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.idempotency_operations", "operation = 'activate_ticket'"))
+	require.Equal(t, int64(1), integrationOperationCount(t, activationOperation))
 }
 
 func Test_ActivationRepository_ConcurrentComplete_PersistOneOrder(t *testing.T) {
@@ -125,15 +126,12 @@ func Test_ActivationRepository_ConcurrentComplete_PersistOneOrder(t *testing.T) 
 	}
 	require.Equal(t, results[0].value, results[1].value)
 	require.Contains(t, []uuid.UUID{orders[0].ID, orders[1].ID}, results[0].value.OrderID)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = '"+domain.TicketEventRedeemed+"'"))
+	require.Equal(t, int64(1), integrationOutboxTypeCount(t, domain.TicketEventRedeemed))
 
-	var orderID uuid.UUID
-	require.NoError(t, integrationPool.QueryRow(
-		context.Background(),
-		"SELECT order_id FROM public.tickets WHERE id = $1",
-		issued.Ticket.ID,
-	).Scan(&orderID))
-	require.Equal(t, results[0].value.OrderID, orderID)
+	orderID, err := sqlgen.New(integrationPool).GetTicketOrderID(context.Background(), toPGUUID(issued.Ticket.ID))
+	require.NoError(t, err)
+	require.True(t, orderID.Valid)
+	require.Equal(t, results[0].value.OrderID, uuid.UUID(orderID.Bytes))
 }
 
 func Test_DeclineRepository_ConcurrentDecline_CloseTicketOnce(t *testing.T) {
@@ -168,7 +166,7 @@ func Test_DeclineRepository_ConcurrentDecline_CloseTicketOnce(t *testing.T) {
 	}
 	require.Equal(t, 1, succeeded)
 	require.Equal(t, 1, notDeclinable)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = '"+domain.TicketEventClosed+"'"))
+	require.Equal(t, int64(1), integrationOutboxTypeCount(t, domain.TicketEventClosed))
 }
 
 func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
@@ -193,7 +191,7 @@ func Test_LifecycleRepository_ExpiredIssued_CloseAndPublishOnce(t *testing.T) {
 	require.NotNil(t, ticket.CloseReason)
 	require.Equal(t, domain.TicketCloseReasonActivationTimeout, *ticket.CloseReason)
 	require.NotNil(t, ticket.FinishedAt)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "event_type = '"+domain.TicketEventClosed+"'"))
+	require.Equal(t, int64(1), integrationOutboxTypeCount(t, domain.TicketEventClosed))
 }
 
 func Test_LifecycleRepository_StaleActivation_RecoverForRetryAndDecline(t *testing.T) {
@@ -274,7 +272,7 @@ func Test_OutboxRepository_ClaimRetryAndPublish_ChangeDeliveryState(t *testing.T
 	require.Empty(t, beforeRetry)
 	require.Equal(t, 1, claimed[0].Attempts)
 	require.Equal(t, 2, retried[0].Attempts)
-	require.Equal(t, 1, integrationRowCountWhere(t, "public.outbox_events", "status = 'published'"))
+	require.Equal(t, int64(1), integrationOutboxStatusCount(t, "published"))
 }
 
 func Test_TicketsSchema_ActiveStatus_RejectObsoleteLifecycle(t *testing.T) {
@@ -283,11 +281,7 @@ func Test_TicketsSchema_ActiveStatus_RejectObsoleteLifecycle(t *testing.T) {
 	issued := issueIntegrationTicket(t)
 
 	// when
-	_, err := integrationPool.Exec(
-		context.Background(),
-		"UPDATE public.tickets SET status = 'active' WHERE id = $1",
-		issued.Ticket.ID,
-	)
+	err := sqlgen.New(integrationPool).SetTicketObsoleteStatus(context.Background(), toPGUUID(issued.Ticket.ID))
 
 	// then
 	require.Error(t, err)
@@ -300,11 +294,7 @@ func Test_TicketsSchema_ExternalCloseReason_RejectUnknownReason(t *testing.T) {
 	issued := issueIntegrationTicket(t)
 
 	// when
-	_, err := integrationPool.Exec(
-		context.Background(),
-		"UPDATE public.tickets SET status = 'closed', finished_at = updated_at, close_reason = 'reservation_released' WHERE id = $1",
-		issued.Ticket.ID,
-	)
+	err := sqlgen.New(integrationPool).CloseTicketWithUnknownReason(context.Background(), toPGUUID(issued.Ticket.ID))
 
 	// then
 	require.Error(t, err)
@@ -313,18 +303,12 @@ func Test_TicketsSchema_ExternalCloseReason_RejectUnknownReason(t *testing.T) {
 
 func Test_TicketsSchema_InboxTable_ReturnPresent(t *testing.T) {
 	// given
-	var tableName *string
-
 	// when
-	err := integrationPool.QueryRow(
-		context.Background(),
-		"SELECT to_regclass('public.inbox_events')::text",
-	).Scan(&tableName)
+	exists, err := sqlgen.New(integrationPool).InboxTableExists(context.Background())
 
 	// then
 	require.NoError(t, err)
-	require.NotNil(t, tableName)
-	assert.Equal(t, "inbox_events", *tableName)
+	assert.True(t, exists)
 }
 
 func Test_OutboxSchema_UnknownEventType_RejectEvent(t *testing.T) {
@@ -332,14 +316,14 @@ func Test_OutboxSchema_UnknownEventType_RejectEvent(t *testing.T) {
 	truncateIntegrationTables(t)
 
 	// when
-	_, err := integrationPool.Exec(
+	err := sqlgen.New(integrationPool).InsertOutboxEventWithType(
 		context.Background(),
-		`INSERT INTO public.outbox_events (
-			id, aggregate_type, aggregate_id, event_type, payload, status, attempts, available_at
-		) VALUES ($1, 'ticket', $2, 'ticket.unknown', '{}', 'pending', 0, $3)`,
-		uuid.New(),
-		uuid.New(),
-		time.Now(),
+		sqlgen.InsertOutboxEventWithTypeParams{
+			ID:          toPGUUID(uuid.New()),
+			AggregateID: toPGUUID(uuid.New()),
+			EventType:   "ticket.unknown",
+			AvailableAt: toPGTimestamptz(time.Now()),
+		},
 	)
 
 	// then
@@ -372,7 +356,7 @@ func Test_IssueRepository_SecondLiveTicketForListing_RejectTicket(t *testing.T) 
 
 	// then
 	require.ErrorIs(t, err, usecase.ErrTicketNotIssuable)
-	require.Equal(t, 1, integrationRowCount(t, "public.tickets"))
+	require.Equal(t, int64(1), integrationTicketCount(t))
 }
 
 type integrationResult[T any] struct {
@@ -449,10 +433,7 @@ func applyIntegrationMigrations(ctx context.Context, migrations []string) error 
 
 func truncateIntegrationTables(t *testing.T) {
 	t.Helper()
-	_, err := integrationPool.Exec(
-		context.Background(),
-		"TRUNCATE public.inbox_events, public.outbox_events, public.idempotency_operations, public.tickets CASCADE",
-	)
+	err := sqlgen.New(integrationPool).TruncateIntegrationTables(context.Background())
 	require.NoError(t, err)
 }
 
@@ -543,19 +524,42 @@ func runConcurrently(count int, action func(int)) {
 	waitGroup.Wait()
 }
 
-func integrationRowCount(t *testing.T, table string) int {
+func integrationTicketCount(t *testing.T) int64 {
 	t.Helper()
+	count, err := sqlgen.New(integrationPool).CountTickets(context.Background())
+	require.NoError(t, err)
 
-	return integrationRowCountWhere(t, table, "TRUE")
+	return count
 }
 
-func integrationRowCountWhere(t *testing.T, table, condition string) int {
+func integrationOutboxCount(t *testing.T) int64 {
 	t.Helper()
-	var count int
-	require.NoError(t, integrationPool.QueryRow(
-		context.Background(),
-		fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", table, condition),
-	).Scan(&count))
+	count, err := sqlgen.New(integrationPool).CountOutboxEvents(context.Background())
+	require.NoError(t, err)
+
+	return count
+}
+
+func integrationOperationCount(t *testing.T, operation string) int64 {
+	t.Helper()
+	count, err := sqlgen.New(integrationPool).CountIdempotencyOperationsByOperation(context.Background(), operation)
+	require.NoError(t, err)
+
+	return count
+}
+
+func integrationOutboxTypeCount(t *testing.T, eventType string) int64 {
+	t.Helper()
+	count, err := sqlgen.New(integrationPool).CountOutboxEventsByType(context.Background(), eventType)
+	require.NoError(t, err)
+
+	return count
+}
+
+func integrationOutboxStatusCount(t *testing.T, status string) int64 {
+	t.Helper()
+	count, err := sqlgen.New(integrationPool).CountOutboxEventsByStatus(context.Background(), status)
+	require.NoError(t, err)
 
 	return count
 }

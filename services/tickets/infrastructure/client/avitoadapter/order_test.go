@@ -29,7 +29,7 @@ func TestOrderCreator_CreateOrder_ReturnOrder(t *testing.T) {
 	expectedOrderID := uuid.New()
 	client := &http.Client{Transport: roundTripFunc(func(httpRequest *http.Request) (*http.Response, error) {
 		assert.Equal(t, http.MethodPost, httpRequest.Method)
-		assert.Equal(t, "http://avito-adapter:8080/v1/orders", httpRequest.URL.String())
+		assert.Equal(t, "http://avito-adapter:8080/v1/orders/create", httpRequest.URL.String())
 		assert.Equal(t, request.IdempotencyKey.String(), httpRequest.Header.Get("Idempotency-Key"))
 		assert.Equal(t, "application/json", httpRequest.Header.Get("Content-Type"))
 

@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
@@ -30,78 +31,6 @@ const (
 	declineTicketConstraint         = "uq_idempotency_operations_ticket_operation"
 	declineRollbackTimeout          = 5 * time.Second
 )
-
-const findDeclineOperationQuery = `SELECT
-    id,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body
-FROM public.idempotency_operations
-WHERE actor_id = $1 AND operation = $2 AND idempotency_key = $3`
-
-const lockTicketForDeclineQuery = `SELECT
-    queue_entry_id,
-    listing_id,
-    sku_id,
-    status,
-    activation_deadline
-FROM public.tickets
-WHERE id = $1 AND user_id = $2
-FOR UPDATE`
-
-const hasProcessingActivationQuery = `SELECT EXISTS (
-    SELECT 1
-    FROM public.idempotency_operations
-    WHERE ticket_id = $1 AND operation = $2 AND state = $3
-)`
-
-const insertDeclineOperationQuery = `INSERT INTO public.idempotency_operations (
-    id,
-    idempotency_key,
-    operation,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body,
-    expires_at,
-    updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, $8, $9)
-ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING`
-
-const declineTicketQuery = `UPDATE public.tickets
-SET status = 'closed',
-    close_reason = 'user_declined',
-    finished_at = $3,
-    updated_at = $3,
-    version = version + 1
-WHERE id = $1
-  AND user_id = $2
-  AND status = 'issued'
-  AND activation_deadline > $3`
-
-const completeDeclineOperationQuery = `UPDATE public.idempotency_operations
-SET state = 'completed',
-    response_status = $2,
-    response_body = $3,
-    updated_at = $4
-WHERE id = $1 AND state = 'processing'`
-
-const insertDeclineOutboxQuery = `INSERT INTO public.outbox_events (
-    id,
-    aggregate_type,
-    aggregate_id,
-    event_type,
-    payload,
-    status,
-    attempts,
-    available_at,
-    published_at
-) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, NULL)`
 
 type DeclineRepository struct {
 	transactions activationTransactionBeginner
@@ -208,56 +137,51 @@ func (r *DeclineRepository) decline(
 		return usecase.DeclineTicketResult{}, fmt.Errorf("encode decline event: %w", err)
 	}
 
-	commandTag, err := transaction.Exec(
-		ctx,
-		declineTicketQuery,
-		toPGUUID(command.TicketID),
-		toPGUUID(command.UserID),
-		command.Now,
-	)
+	queries := sqlgen.New(transaction)
+	rowsAffected, err := queries.DeclineTicket(ctx, sqlgen.DeclineTicketParams{
+		FinishedAt: toPGTimestamptz(command.Now),
+		ID:         toPGUUID(command.TicketID),
+		UserID:     toPGUUID(command.UserID),
+	})
 	if err != nil {
 		return usecase.DeclineTicketResult{}, fmt.Errorf("decline ticket: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
+	if rowsAffected != 1 {
 		return usecase.DeclineTicketResult{}, usecase.ErrTicketNotDeclinable
 	}
 
-	commandTag, err = transaction.Exec(
-		ctx,
-		completeDeclineOperationQuery,
-		toPGUUID(operationID),
-		declineResponseStatus,
-		responseBody,
-		command.Now,
-	)
+	rowsAffected, err = queries.CompleteDeclineOperation(ctx, sqlgen.CompleteDeclineOperationParams{
+		ResponseStatus: toPGInt4(declineResponseStatus),
+		ResponseBody:   responseBody,
+		UpdatedAt:      toPGTimestamptz(command.Now),
+		ID:             toPGUUID(operationID),
+	})
 	if err != nil {
 		return usecase.DeclineTicketResult{}, fmt.Errorf("complete decline operation: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
+	if rowsAffected != 1 {
 		return usecase.DeclineTicketResult{}, fmt.Errorf(
 			"complete decline operation: unexpected affected rows %d",
-			commandTag.RowsAffected(),
+			rowsAffected,
 		)
 	}
 
-	commandTag, err = transaction.Exec(
-		ctx,
-		insertDeclineOutboxQuery,
-		toPGUUID(r.newID()),
-		declineOutboxAggregateType,
-		toPGUUID(command.TicketID),
-		domain.TicketEventClosed,
-		outboxPayload,
-		declineOutboxState,
-		command.Now,
-	)
+	rowsAffected, err = queries.InsertDeclineOutbox(ctx, sqlgen.InsertDeclineOutboxParams{
+		ID:            toPGUUID(r.newID()),
+		AggregateType: declineOutboxAggregateType,
+		AggregateID:   toPGUUID(command.TicketID),
+		EventType:     domain.TicketEventClosed,
+		Payload:       outboxPayload,
+		Status:        declineOutboxState,
+		AvailableAt:   toPGTimestamptz(command.Now),
+	})
 	if err != nil {
 		return usecase.DeclineTicketResult{}, fmt.Errorf("insert decline event: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
+	if rowsAffected != 1 {
 		return usecase.DeclineTicketResult{}, fmt.Errorf(
 			"insert decline event: unexpected affected rows %d",
-			commandTag.RowsAffected(),
+			rowsAffected,
 		)
 	}
 
@@ -304,41 +228,47 @@ func findDeclineOperation(
 	userID uuid.UUID,
 	idempotencyKey uuid.UUID,
 ) (declineOperationRecord, error) {
-	return scanDeclineOperation(transaction.QueryRow(
-		ctx,
-		findDeclineOperationQuery,
-		toPGUUID(userID),
-		declineOperation,
-		toPGUUID(idempotencyKey),
-	))
-}
-
-func scanDeclineOperation(row activationRow) (declineOperationRecord, error) {
-	var record declineOperationRecord
-	var id pgtype.UUID
-	var actorID pgtype.UUID
-	var ticketID pgtype.UUID
-	var responseStatus pgtype.Int4
-
-	err := row.Scan(
-		&id,
-		&actorID,
-		&ticketID,
-		&record.RequestHash,
-		&record.State,
-		&responseStatus,
-		&record.ResponseBody,
-	)
+	row, err := sqlgen.New(transaction).FindDeclineOperation(ctx, sqlgen.FindDeclineOperationParams{
+		ActorID:        toPGUUID(userID),
+		Operation:      declineOperation,
+		IdempotencyKey: toPGUUID(idempotencyKey),
+	})
 	if err != nil {
 		return declineOperationRecord{}, err
 	}
+
+	return declineOperationFromFields(
+		row.ID,
+		row.ActorID,
+		row.TicketID,
+		row.RequestHash,
+		row.State,
+		row.ResponseStatus,
+		row.ResponseBody,
+	)
+}
+
+func declineOperationFromFields(
+	id pgtype.UUID,
+	actorID pgtype.UUID,
+	ticketID pgtype.UUID,
+	requestHash string,
+	state string,
+	responseStatus pgtype.Int4,
+	responseBody []byte,
+) (declineOperationRecord, error) {
 	if !id.Valid || !actorID.Valid || !ticketID.Valid {
 		return declineOperationRecord{}, fmt.Errorf("decline operation has null required UUID")
 	}
 
-	record.ID = uuid.UUID(id.Bytes)
-	record.ActorID = uuid.UUID(actorID.Bytes)
-	record.TicketID = uuid.UUID(ticketID.Bytes)
+	record := declineOperationRecord{
+		ID:           uuid.UUID(id.Bytes),
+		ActorID:      uuid.UUID(actorID.Bytes),
+		TicketID:     uuid.UUID(ticketID.Bytes),
+		RequestHash:  requestHash,
+		State:        state,
+		ResponseBody: responseBody,
+	}
 	if responseStatus.Valid {
 		value := responseStatus.Int32
 		record.ResponseStatus = &value
@@ -353,37 +283,24 @@ func lockTicketForDecline(
 	userID uuid.UUID,
 	ticketID uuid.UUID,
 ) (declineTicketRecord, error) {
-	var record declineTicketRecord
-	var queueEntryID pgtype.UUID
-	var listingID pgtype.UUID
-	var skuID pgtype.UUID
-	var status string
-
-	err := transaction.QueryRow(
-		ctx,
-		lockTicketForDeclineQuery,
-		toPGUUID(ticketID),
-		toPGUUID(userID),
-	).Scan(
-		&queueEntryID,
-		&listingID,
-		&skuID,
-		&status,
-		&record.ActivationDeadline,
-	)
+	row, err := sqlgen.New(transaction).LockTicketForDecline(ctx, sqlgen.LockTicketForDeclineParams{
+		ID:     toPGUUID(ticketID),
+		UserID: toPGUUID(userID),
+	})
 	if err != nil {
 		return declineTicketRecord{}, err
 	}
-	if !queueEntryID.Valid || !listingID.Valid || !skuID.Valid {
+	if !row.QueueEntryID.Valid || !row.ListingID.Valid || !row.SkuID.Valid || !row.ActivationDeadline.Valid {
 		return declineTicketRecord{}, fmt.Errorf("ticket has null required UUID")
 	}
 
-	record.QueueEntryID = uuid.UUID(queueEntryID.Bytes)
-	record.ListingID = uuid.UUID(listingID.Bytes)
-	record.SKUID = uuid.UUID(skuID.Bytes)
-	record.Status = domain.TicketStatus(status)
-
-	return record, nil
+	return declineTicketRecord{
+		QueueEntryID:       uuid.UUID(row.QueueEntryID.Bytes),
+		ListingID:          uuid.UUID(row.ListingID.Bytes),
+		SKUID:              uuid.UUID(row.SkuID.Bytes),
+		Status:             domain.TicketStatus(row.Status),
+		ActivationDeadline: row.ActivationDeadline.Time,
+	}, nil
 }
 
 func hasProcessingActivation(
@@ -391,19 +308,11 @@ func hasProcessingActivation(
 	transaction activationTransaction,
 	ticketID uuid.UUID,
 ) (bool, error) {
-	var exists bool
-	err := transaction.QueryRow(
-		ctx,
-		hasProcessingActivationQuery,
-		toPGUUID(ticketID),
-		activationOperation,
-		activationOperationStateProcessing,
-	).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-
-	return exists, nil
+	return sqlgen.New(transaction).HasProcessingActivation(ctx, sqlgen.HasProcessingActivationParams{
+		TicketID:  toPGUUID(ticketID),
+		Operation: activationOperation,
+		State:     activationOperationStateProcessing,
+	})
 }
 
 func insertDeclineOperation(
@@ -413,24 +322,25 @@ func insertDeclineOperation(
 	command usecase.DeclineTicketCommand,
 	requestHash string,
 ) (bool, error) {
-	commandTag, err := transaction.Exec(
+	rowsAffected, err := sqlgen.New(transaction).InsertDeclineOperation(
 		ctx,
-		insertDeclineOperationQuery,
-		toPGUUID(operationID),
-		toPGUUID(command.IdempotencyKey),
-		declineOperation,
-		toPGUUID(command.UserID),
-		toPGUUID(command.TicketID),
-		requestHash,
-		declineOperationStateProcessing,
-		command.Now.Add(declineOperationTTL),
-		command.Now,
+		sqlgen.InsertDeclineOperationParams{
+			ID:             toPGUUID(operationID),
+			IdempotencyKey: toPGUUID(command.IdempotencyKey),
+			Operation:      declineOperation,
+			ActorID:        toPGUUID(command.UserID),
+			TicketID:       toPGUUID(command.TicketID),
+			RequestHash:    requestHash,
+			State:          declineOperationStateProcessing,
+			ExpiresAt:      toPGTimestamptz(command.Now.Add(declineOperationTTL)),
+			UpdatedAt:      toPGTimestamptz(command.Now),
+		},
 	)
 	if err != nil {
 		return false, err
 	}
 
-	return commandTag.RowsAffected() == 1, nil
+	return rowsAffected == 1, nil
 }
 
 func resolveDeclineOperation(

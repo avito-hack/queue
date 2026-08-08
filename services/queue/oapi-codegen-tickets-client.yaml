@@ -1,0 +1,7 @@
+package: tickets
+
+output: gen/clients/tickets/client.gen.go
+
+generate:
+  models: true
+  client: true

@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
@@ -33,143 +34,14 @@ const (
 	activationRollbackTimeout          = 5 * time.Second
 )
 
-const findActivationOperationQuery = `SELECT
-    id,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body
-FROM public.idempotency_operations
-WHERE actor_id = $1 AND operation = $2 AND idempotency_key = $3
-FOR UPDATE`
-
-const getActivationOperationQuery = `SELECT
-    id,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body
-FROM public.idempotency_operations
-WHERE actor_id = $1 AND operation = $2 AND idempotency_key = $3`
-
-const lockActivationOperationQuery = `SELECT
-    id,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body
-FROM public.idempotency_operations
-WHERE id = $1 AND operation = $2
-FOR UPDATE`
-
-const lockTicketForActivationQuery = `SELECT
-    listing_id,
-    sku_id,
-    status,
-    activation_deadline
-FROM public.tickets
-WHERE id = $1 AND user_id = $2
-FOR UPDATE`
-
-const findProcessingTicketActivationQuery = `SELECT id
-FROM public.idempotency_operations
-WHERE ticket_id = $1 AND operation = $2 AND state = $3`
-
-const insertActivationOperationQuery = `INSERT INTO public.idempotency_operations (
-    id,
-    idempotency_key,
-    operation,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body,
-    expires_at,
-    updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, $8, $9)
-ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING`
-
-const activateTicketQuery = `UPDATE public.tickets
-SET status = 'redeemed',
-    activated_at = $3,
-    order_id = $4,
-    checkout_url = $5,
-    finished_at = $3,
-    updated_at = $3,
-    version = version + 1
-WHERE id = $1 AND user_id = $2 AND status = 'issued'`
-
-const completeActivationOperationQuery = `UPDATE public.idempotency_operations
-SET state = 'completed',
-    response_status = $2,
-    response_body = $3,
-    updated_at = $4
-WHERE id = $1 AND state = 'processing'`
-
-const failActivationOperationQuery = `UPDATE public.idempotency_operations
-SET state = 'failed', updated_at = $2
-WHERE id = $1 AND operation = 'activate_ticket' AND state = 'processing'`
-
-const retryActivationOperationQuery = `UPDATE public.idempotency_operations
-SET state = 'processing', updated_at = $2
-WHERE id = $1 AND operation = 'activate_ticket' AND state = 'failed'`
-
-const insertActivationOutboxQuery = `INSERT INTO public.outbox_events (
-    id,
-    aggregate_type,
-    aggregate_id,
-    event_type,
-    payload,
-    status,
-    attempts,
-    available_at,
-    published_at
-) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, NULL)`
-
-type activationRow interface {
-	Scan(...any) error
-}
-
 type activationTransaction interface {
-	QueryRow(context.Context, string, ...any) activationRow
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	sqlgen.DBTX
 	Commit(context.Context) error
 	Rollback(context.Context) error
 }
 
 type activationTransactionBeginner interface {
 	Begin(context.Context) (activationTransaction, error)
-}
-
-type pgxActivationTransaction struct {
-	transaction pgx.Tx
-}
-
-func (t pgxActivationTransaction) QueryRow(ctx context.Context, query string, args ...any) activationRow {
-	return t.transaction.QueryRow(ctx, query, args...)
-}
-
-func (t pgxActivationTransaction) Exec(
-	ctx context.Context,
-	query string,
-	args ...any,
-) (pgconn.CommandTag, error) {
-	return t.transaction.Exec(ctx, query, args...)
-}
-
-func (t pgxActivationTransaction) Commit(ctx context.Context) error {
-	return t.transaction.Commit(ctx)
-}
-
-func (t pgxActivationTransaction) Rollback(ctx context.Context) error {
-	return t.transaction.Rollback(ctx)
 }
 
 type pgxActivationTransactionBeginner struct {
@@ -182,7 +54,7 @@ func (b pgxActivationTransactionBeginner) Begin(ctx context.Context) (activation
 		return nil, err
 	}
 
-	return pgxActivationTransaction{transaction: transaction}, nil
+	return transaction, nil
 }
 
 type ActivationRepository struct {
@@ -232,19 +104,20 @@ func (r *ActivationRepository) Fail(ctx context.Context, operationID uuid.UUID, 
 	_, err := inActivationTransaction(ctx, r.transactions, func(
 		transaction activationTransaction,
 	) (struct{}, error) {
-		commandTag, err := transaction.Exec(
+		rowsAffected, err := sqlgen.New(transaction).FailActivationOperation(
 			ctx,
-			failActivationOperationQuery,
-			toPGUUID(operationID),
-			failedAt,
+			sqlgen.FailActivationOperationParams{
+				UpdatedAt: toPGTimestamptz(failedAt),
+				ID:        toPGUUID(operationID),
+			},
 		)
 		if err != nil {
 			return struct{}{}, fmt.Errorf("fail activation operation: %w", err)
 		}
-		if commandTag.RowsAffected() != 1 {
+		if rowsAffected != 1 {
 			return struct{}{}, fmt.Errorf(
 				"fail activation operation: unexpected affected rows %d",
-				commandTag.RowsAffected(),
+				rowsAffected,
 			)
 		}
 
@@ -361,53 +234,48 @@ func (r *ActivationRepository) complete(
 		return usecase.ActivationResult{}, fmt.Errorf("encode activation event: %w", err)
 	}
 
-	commandTag, err := transaction.Exec(
-		ctx,
-		activateTicketQuery,
-		toPGUUID(operation.TicketID),
-		toPGUUID(operation.ActorID),
-		completedAt,
-		toPGUUID(order.ID),
-		order.CheckoutURL,
-	)
+	queries := sqlgen.New(transaction)
+	rowsAffected, err := queries.ActivateTicket(ctx, sqlgen.ActivateTicketParams{
+		CompletedAt: toPGTimestamptz(completedAt),
+		OrderID:     toPGUUID(order.ID),
+		CheckoutUrl: toPGText(order.CheckoutURL),
+		ID:          toPGUUID(operation.TicketID),
+		UserID:      toPGUUID(operation.ActorID),
+	})
 	if err != nil {
 		return usecase.ActivationResult{}, fmt.Errorf("activate ticket: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
+	if rowsAffected != 1 {
 		return usecase.ActivationResult{}, usecase.ErrTicketNotActivatable
 	}
 
-	commandTag, err = transaction.Exec(
-		ctx,
-		completeActivationOperationQuery,
-		toPGUUID(operation.ID),
-		activationResponseStatus,
-		responseBody,
-		completedAt,
-	)
+	rowsAffected, err = queries.CompleteActivationOperation(ctx, sqlgen.CompleteActivationOperationParams{
+		ResponseStatus: toPGInt4(activationResponseStatus),
+		ResponseBody:   responseBody,
+		UpdatedAt:      toPGTimestamptz(completedAt),
+		ID:             toPGUUID(operation.ID),
+	})
 	if err != nil {
 		return usecase.ActivationResult{}, fmt.Errorf("complete activation operation: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
-		return usecase.ActivationResult{}, fmt.Errorf("complete activation operation: unexpected affected rows %d", commandTag.RowsAffected())
+	if rowsAffected != 1 {
+		return usecase.ActivationResult{}, fmt.Errorf("complete activation operation: unexpected affected rows %d", rowsAffected)
 	}
 
-	commandTag, err = transaction.Exec(
-		ctx,
-		insertActivationOutboxQuery,
-		toPGUUID(r.newID()),
-		activationOutboxAggregateType,
-		toPGUUID(operation.TicketID),
-		domain.TicketEventRedeemed,
-		outboxPayload,
-		activationOutboxState,
-		completedAt,
-	)
+	rowsAffected, err = queries.InsertActivationOutbox(ctx, sqlgen.InsertActivationOutboxParams{
+		ID:            toPGUUID(r.newID()),
+		AggregateType: activationOutboxAggregateType,
+		AggregateID:   toPGUUID(operation.TicketID),
+		EventType:     domain.TicketEventRedeemed,
+		Payload:       outboxPayload,
+		Status:        activationOutboxState,
+		AvailableAt:   toPGTimestamptz(completedAt),
+	})
 	if err != nil {
 		return usecase.ActivationResult{}, fmt.Errorf("insert activation event: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
-		return usecase.ActivationResult{}, fmt.Errorf("insert activation event: unexpected affected rows %d", commandTag.RowsAffected())
+	if rowsAffected != 1 {
+		return usecase.ActivationResult{}, fmt.Errorf("insert activation event: unexpected affected rows %d", rowsAffected)
 	}
 
 	return result, nil
@@ -452,13 +320,24 @@ func findActivationOperation(
 	userID uuid.UUID,
 	idempotencyKey uuid.UUID,
 ) (activationOperationRecord, error) {
-	return scanActivationOperation(transaction.QueryRow(
-		ctx,
-		findActivationOperationQuery,
-		toPGUUID(userID),
-		activationOperation,
-		toPGUUID(idempotencyKey),
-	))
+	row, err := sqlgen.New(transaction).FindActivationOperation(ctx, sqlgen.FindActivationOperationParams{
+		ActorID:        toPGUUID(userID),
+		Operation:      activationOperation,
+		IdempotencyKey: toPGUUID(idempotencyKey),
+	})
+	if err != nil {
+		return activationOperationRecord{}, err
+	}
+
+	return activationOperationFromFields(
+		row.ID,
+		row.ActorID,
+		row.TicketID,
+		row.RequestHash,
+		row.State,
+		row.ResponseStatus,
+		row.ResponseBody,
+	)
 }
 
 func getActivationOperation(
@@ -467,13 +346,24 @@ func getActivationOperation(
 	userID uuid.UUID,
 	idempotencyKey uuid.UUID,
 ) (activationOperationRecord, error) {
-	return scanActivationOperation(transaction.QueryRow(
-		ctx,
-		getActivationOperationQuery,
-		toPGUUID(userID),
-		activationOperation,
-		toPGUUID(idempotencyKey),
-	))
+	row, err := sqlgen.New(transaction).GetActivationOperation(ctx, sqlgen.GetActivationOperationParams{
+		ActorID:        toPGUUID(userID),
+		Operation:      activationOperation,
+		IdempotencyKey: toPGUUID(idempotencyKey),
+	})
+	if err != nil {
+		return activationOperationRecord{}, err
+	}
+
+	return activationOperationFromFields(
+		row.ID,
+		row.ActorID,
+		row.TicketID,
+		row.RequestHash,
+		row.State,
+		row.ResponseStatus,
+		row.ResponseBody,
+	)
 }
 
 func lockActivationOperation(
@@ -481,40 +371,46 @@ func lockActivationOperation(
 	transaction activationTransaction,
 	operationID uuid.UUID,
 ) (activationOperationRecord, error) {
-	return scanActivationOperation(transaction.QueryRow(
-		ctx,
-		lockActivationOperationQuery,
-		toPGUUID(operationID),
-		activationOperation,
-	))
-}
-
-func scanActivationOperation(row activationRow) (activationOperationRecord, error) {
-	var record activationOperationRecord
-	var id pgtype.UUID
-	var actorID pgtype.UUID
-	var ticketID pgtype.UUID
-	var responseStatus pgtype.Int4
-
-	err := row.Scan(
-		&id,
-		&actorID,
-		&ticketID,
-		&record.RequestHash,
-		&record.State,
-		&responseStatus,
-		&record.ResponseBody,
-	)
+	row, err := sqlgen.New(transaction).LockActivationOperation(ctx, sqlgen.LockActivationOperationParams{
+		ID:        toPGUUID(operationID),
+		Operation: activationOperation,
+	})
 	if err != nil {
 		return activationOperationRecord{}, err
 	}
+
+	return activationOperationFromFields(
+		row.ID,
+		row.ActorID,
+		row.TicketID,
+		row.RequestHash,
+		row.State,
+		row.ResponseStatus,
+		row.ResponseBody,
+	)
+}
+
+func activationOperationFromFields(
+	id pgtype.UUID,
+	actorID pgtype.UUID,
+	ticketID pgtype.UUID,
+	requestHash string,
+	state string,
+	responseStatus pgtype.Int4,
+	responseBody []byte,
+) (activationOperationRecord, error) {
 	if !id.Valid || !actorID.Valid || !ticketID.Valid {
 		return activationOperationRecord{}, fmt.Errorf("activation operation has null required UUID")
 	}
 
-	record.ID = uuid.UUID(id.Bytes)
-	record.ActorID = uuid.UUID(actorID.Bytes)
-	record.TicketID = uuid.UUID(ticketID.Bytes)
+	record := activationOperationRecord{
+		ID:           uuid.UUID(id.Bytes),
+		ActorID:      uuid.UUID(actorID.Bytes),
+		TicketID:     uuid.UUID(ticketID.Bytes),
+		RequestHash:  requestHash,
+		State:        state,
+		ResponseBody: responseBody,
+	}
 	if responseStatus.Valid {
 		value := responseStatus.Int32
 		record.ResponseStatus = &value
@@ -529,29 +425,23 @@ func lockTicketForActivation(
 	userID uuid.UUID,
 	ticketID uuid.UUID,
 ) (activationTicketRecord, error) {
-	var record activationTicketRecord
-	var listingID pgtype.UUID
-	var skuID pgtype.UUID
-	var status string
-
-	err := transaction.QueryRow(
-		ctx,
-		lockTicketForActivationQuery,
-		toPGUUID(ticketID),
-		toPGUUID(userID),
-	).Scan(&listingID, &skuID, &status, &record.ActivationDeadline)
+	row, err := sqlgen.New(transaction).LockTicketForActivation(ctx, sqlgen.LockTicketForActivationParams{
+		ID:     toPGUUID(ticketID),
+		UserID: toPGUUID(userID),
+	})
 	if err != nil {
 		return activationTicketRecord{}, err
 	}
-	if !listingID.Valid || !skuID.Valid {
+	if !row.ListingID.Valid || !row.SkuID.Valid || !row.ActivationDeadline.Valid {
 		return activationTicketRecord{}, fmt.Errorf("ticket has null required UUID")
 	}
 
-	record.ListingID = uuid.UUID(listingID.Bytes)
-	record.SKUID = uuid.UUID(skuID.Bytes)
-	record.Status = domain.TicketStatus(status)
-
-	return record, nil
+	return activationTicketRecord{
+		ListingID:          uuid.UUID(row.ListingID.Bytes),
+		SKUID:              uuid.UUID(row.SkuID.Bytes),
+		Status:             domain.TicketStatus(row.Status),
+		ActivationDeadline: row.ActivationDeadline.Time,
+	}, nil
 }
 
 func insertActivationOperation(
@@ -561,24 +451,25 @@ func insertActivationOperation(
 	command usecase.PrepareActivationCommand,
 	requestHash string,
 ) (bool, error) {
-	commandTag, err := transaction.Exec(
+	rowsAffected, err := sqlgen.New(transaction).InsertActivationOperation(
 		ctx,
-		insertActivationOperationQuery,
-		toPGUUID(operationID),
-		toPGUUID(command.IdempotencyKey),
-		activationOperation,
-		toPGUUID(command.UserID),
-		toPGUUID(command.TicketID),
-		requestHash,
-		activationOperationStateProcessing,
-		command.Now.Add(activationOperationTTL),
-		command.Now,
+		sqlgen.InsertActivationOperationParams{
+			ID:             toPGUUID(operationID),
+			IdempotencyKey: toPGUUID(command.IdempotencyKey),
+			Operation:      activationOperation,
+			ActorID:        toPGUUID(command.UserID),
+			TicketID:       toPGUUID(command.TicketID),
+			RequestHash:    requestHash,
+			State:          activationOperationStateProcessing,
+			ExpiresAt:      toPGTimestamptz(command.Now.Add(activationOperationTTL)),
+			UpdatedAt:      toPGTimestamptz(command.Now),
+		},
 	)
 	if err != nil {
 		return false, err
 	}
 
-	return commandTag.RowsAffected() == 1, nil
+	return rowsAffected == 1, nil
 }
 
 func findProcessingTicketActivation(
@@ -586,14 +477,14 @@ func findProcessingTicketActivation(
 	transaction activationTransaction,
 	ticketID uuid.UUID,
 ) (bool, error) {
-	var operationID pgtype.UUID
-	err := transaction.QueryRow(
+	operationID, err := sqlgen.New(transaction).FindProcessingTicketActivation(
 		ctx,
-		findProcessingTicketActivationQuery,
-		toPGUUID(ticketID),
-		activationOperation,
-		activationOperationStateProcessing,
-	).Scan(&operationID)
+		sqlgen.FindProcessingTicketActivationParams{
+			TicketID:  toPGUUID(ticketID),
+			Operation: activationOperation,
+			State:     activationOperationStateProcessing,
+		},
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -675,19 +566,20 @@ func (r *ActivationRepository) resolvePreparedActivation(
 		if !command.Now.Before(ticket.ActivationDeadline) {
 			return usecase.PreparedActivation{}, usecase.ErrTicketActivationExpired
 		}
-		commandTag, err := transaction.Exec(
+		rowsAffected, err := sqlgen.New(transaction).RetryActivationOperation(
 			ctx,
-			retryActivationOperationQuery,
-			toPGUUID(operation.ID),
-			command.Now,
+			sqlgen.RetryActivationOperationParams{
+				UpdatedAt: toPGTimestamptz(command.Now),
+				ID:        toPGUUID(operation.ID),
+			},
 		)
 		if err != nil {
 			return usecase.PreparedActivation{}, fmt.Errorf("retry activation operation: %w", err)
 		}
-		if commandTag.RowsAffected() != 1 {
+		if rowsAffected != 1 {
 			return usecase.PreparedActivation{}, fmt.Errorf(
 				"retry activation operation: unexpected affected rows %d",
-				commandTag.RowsAffected(),
+				rowsAffected,
 			)
 		}
 

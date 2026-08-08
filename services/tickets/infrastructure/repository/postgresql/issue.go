@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	sqlgen "github.com/avito-hack/queue/services/tickets/gen/sql"
 	"github.com/avito-hack/queue/services/tickets/internal/domain"
 	"github.com/avito-hack/queue/services/tickets/internal/usecase"
 )
@@ -29,74 +29,6 @@ const (
 	issueRollbackTimeout          = 5 * time.Second
 	issueLiveTicketConstraint     = "uq_tickets_live_user_listing"
 )
-
-const findIssueOperationQuery = `SELECT
-    id,
-    actor_id,
-    request_hash,
-    state,
-    response_status,
-    response_body
-FROM public.idempotency_operations
-WHERE actor_id = $1 AND operation = $2 AND idempotency_key = $3`
-
-const insertIssueOperationQuery = `INSERT INTO public.idempotency_operations (
-    id,
-    idempotency_key,
-    operation,
-    actor_id,
-    ticket_id,
-    request_hash,
-    state,
-    response_status,
-    response_body,
-    expires_at,
-    updated_at
-) VALUES ($1, $2, $3, $4, NULL, $5, $6, NULL, NULL, $7, $8)
-ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING`
-
-const insertIssuedTicketQuery = `INSERT INTO public.tickets (
-    id,
-    queue_entry_id,
-    user_id,
-    listing_id,
-    sku_id,
-    status,
-    activation_deadline,
-    activated_at,
-    order_id,
-    checkout_url,
-    close_reason,
-    issued_at,
-    finished_at,
-    updated_at,
-    version
-) VALUES ($1, $2, $3, $4, $5, 'issued', $6, NULL, NULL, NULL, NULL, $7, NULL, $7, 1)
-ON CONFLICT (queue_entry_id) DO NOTHING`
-
-const findTicketByQueueEntryQuery = `SELECT
-    id,
-    queue_entry_id,
-    user_id,
-    listing_id,
-    sku_id,
-    status,
-    issued_at,
-    activation_deadline,
-    activated_at,
-    order_id,
-    checkout_url,
-    finished_at,
-    close_reason
-FROM public.tickets
-WHERE queue_entry_id = $1`
-
-const completeIssueOperationQuery = `UPDATE public.idempotency_operations
-SET state = 'completed',
-    response_status = $2,
-    response_body = $3,
-    updated_at = $4
-WHERE id = $1 AND state = 'processing'`
 
 type IssueRepository struct {
 	transactions activationTransactionBeginner
@@ -197,21 +129,19 @@ func (r *IssueRepository) issue(
 	if result.Created {
 		responseStatus = issueCreatedResponseStatus
 	}
-	commandTag, err := transaction.Exec(
-		ctx,
-		completeIssueOperationQuery,
-		toPGUUID(operationID),
-		responseStatus,
-		responseBody,
-		command.IssuedAt,
-	)
+	rowsAffected, err := sqlgen.New(transaction).CompleteIssueOperation(ctx, sqlgen.CompleteIssueOperationParams{
+		ResponseStatus: toPGInt4(responseStatus),
+		ResponseBody:   responseBody,
+		UpdatedAt:      toPGTimestamptz(command.IssuedAt),
+		ID:             toPGUUID(operationID),
+	})
 	if err != nil {
 		return usecase.IssueTicketResult{}, fmt.Errorf("complete issue operation: %w", err)
 	}
-	if commandTag.RowsAffected() != 1 {
+	if rowsAffected != 1 {
 		return usecase.IssueTicketResult{}, fmt.Errorf(
 			"complete issue operation: unexpected affected rows %d",
-			commandTag.RowsAffected(),
+			rowsAffected,
 		)
 	}
 
@@ -249,40 +179,27 @@ func findIssueOperation(
 	userID uuid.UUID,
 	idempotencyKey uuid.UUID,
 ) (issueOperationRecord, error) {
-	return scanIssueOperation(transaction.QueryRow(
-		ctx,
-		findIssueOperationQuery,
-		toPGUUID(userID),
-		issueOperation,
-		toPGUUID(idempotencyKey),
-	))
-}
-
-func scanIssueOperation(row activationRow) (issueOperationRecord, error) {
-	var record issueOperationRecord
-	var id pgtype.UUID
-	var actorID pgtype.UUID
-	var responseStatus pgtype.Int4
-
-	err := row.Scan(
-		&id,
-		&actorID,
-		&record.RequestHash,
-		&record.State,
-		&responseStatus,
-		&record.ResponseBody,
-	)
+	row, err := sqlgen.New(transaction).FindIssueOperation(ctx, sqlgen.FindIssueOperationParams{
+		ActorID:        toPGUUID(userID),
+		Operation:      issueOperation,
+		IdempotencyKey: toPGUUID(idempotencyKey),
+	})
 	if err != nil {
 		return issueOperationRecord{}, err
 	}
-	if !id.Valid || !actorID.Valid {
+	if !row.ID.Valid || !row.ActorID.Valid {
 		return issueOperationRecord{}, fmt.Errorf("issue operation has null required UUID")
 	}
 
-	record.ID = uuid.UUID(id.Bytes)
-	record.ActorID = uuid.UUID(actorID.Bytes)
-	if responseStatus.Valid {
-		value := responseStatus.Int32
+	record := issueOperationRecord{
+		ID:           uuid.UUID(row.ID.Bytes),
+		ActorID:      uuid.UUID(row.ActorID.Bytes),
+		RequestHash:  row.RequestHash,
+		State:        row.State,
+		ResponseBody: row.ResponseBody,
+	}
+	if row.ResponseStatus.Valid {
+		value := row.ResponseStatus.Int32
 		record.ResponseStatus = &value
 	}
 
@@ -296,23 +213,21 @@ func insertIssueOperation(
 	command usecase.IssueTicketCommand,
 	requestHash string,
 ) (bool, error) {
-	commandTag, err := transaction.Exec(
-		ctx,
-		insertIssueOperationQuery,
-		toPGUUID(operationID),
-		toPGUUID(command.IdempotencyKey),
-		issueOperation,
-		toPGUUID(command.UserID),
-		requestHash,
-		issueOperationStateProcessing,
-		command.IssuedAt.Add(issueOperationTTL),
-		command.IssuedAt,
-	)
+	rowsAffected, err := sqlgen.New(transaction).InsertIssueOperation(ctx, sqlgen.InsertIssueOperationParams{
+		ID:             toPGUUID(operationID),
+		IdempotencyKey: toPGUUID(command.IdempotencyKey),
+		Operation:      issueOperation,
+		ActorID:        toPGUUID(command.UserID),
+		RequestHash:    requestHash,
+		State:          issueOperationStateProcessing,
+		ExpiresAt:      toPGTimestamptz(command.IssuedAt.Add(issueOperationTTL)),
+		UpdatedAt:      toPGTimestamptz(command.IssuedAt),
+	})
 	if err != nil {
 		return false, err
 	}
 
-	return commandTag.RowsAffected() == 1, nil
+	return rowsAffected == 1, nil
 }
 
 func insertIssuedTicket(
@@ -321,22 +236,20 @@ func insertIssuedTicket(
 	ticketID uuid.UUID,
 	command usecase.IssueTicketCommand,
 ) (bool, error) {
-	commandTag, err := transaction.Exec(
-		ctx,
-		insertIssuedTicketQuery,
-		toPGUUID(ticketID),
-		toPGUUID(command.QueueEntryID),
-		toPGUUID(command.UserID),
-		toPGUUID(command.ListingID),
-		toPGUUID(command.SKUID),
-		command.ActivationDeadline,
-		command.IssuedAt,
-	)
+	rowsAffected, err := sqlgen.New(transaction).InsertIssuedTicket(ctx, sqlgen.InsertIssuedTicketParams{
+		ID:                 toPGUUID(ticketID),
+		QueueEntryID:       toPGUUID(command.QueueEntryID),
+		UserID:             toPGUUID(command.UserID),
+		ListingID:          toPGUUID(command.ListingID),
+		SkuID:              toPGUUID(command.SKUID),
+		ActivationDeadline: toPGTimestamptz(command.ActivationDeadline),
+		IssuedAt:           toPGTimestamptz(command.IssuedAt),
+	})
 	if err != nil {
 		return false, err
 	}
 
-	return commandTag.RowsAffected() == 1, nil
+	return rowsAffected == 1, nil
 }
 
 func findTicketByQueueEntry(
@@ -344,78 +257,50 @@ func findTicketByQueueEntry(
 	transaction activationTransaction,
 	queueEntryID uuid.UUID,
 ) (usecase.IssueTicketResult, error) {
-	return scanIssuedTicket(transaction.QueryRow(
-		ctx,
-		findTicketByQueueEntryQuery,
-		toPGUUID(queueEntryID),
-	))
-}
-
-func scanIssuedTicket(row activationRow) (usecase.IssueTicketResult, error) {
-	var result usecase.IssueTicketResult
-	var ticketID pgtype.UUID
-	var queueEntryID pgtype.UUID
-	var userID pgtype.UUID
-	var listingID pgtype.UUID
-	var skuID pgtype.UUID
-	var status string
-	var activatedAt pgtype.Timestamptz
-	var orderID pgtype.UUID
-	var checkoutURL pgtype.Text
-	var finishedAt pgtype.Timestamptz
-	var closeReason pgtype.Text
-
-	err := row.Scan(
-		&ticketID,
-		&queueEntryID,
-		&userID,
-		&listingID,
-		&skuID,
-		&status,
-		&result.Ticket.IssuedAt,
-		&result.Ticket.ActivationDeadline,
-		&activatedAt,
-		&orderID,
-		&checkoutURL,
-		&finishedAt,
-		&closeReason,
-	)
+	row, err := sqlgen.New(transaction).FindTicketByQueueEntry(ctx, toPGUUID(queueEntryID))
 	if err != nil {
 		return usecase.IssueTicketResult{}, err
 	}
-	if !ticketID.Valid || !queueEntryID.Valid || !userID.Valid || !listingID.Valid || !skuID.Valid {
+	if !row.ID.Valid || !row.QueueEntryID.Valid || !row.UserID.Valid || !row.ListingID.Valid || !row.SkuID.Valid ||
+		!row.IssuedAt.Valid || !row.ActivationDeadline.Valid {
 		return usecase.IssueTicketResult{}, fmt.Errorf("issued ticket has null required UUID")
 	}
 
-	result.Ticket.ID = uuid.UUID(ticketID.Bytes)
-	result.QueueEntryID = uuid.UUID(queueEntryID.Bytes)
-	result.UserID = uuid.UUID(userID.Bytes)
-	result.Ticket.ListingID = uuid.UUID(listingID.Bytes)
-	result.Ticket.SKUID = uuid.UUID(skuID.Bytes)
-	result.Ticket.Status = domain.TicketStatus(status)
-	if !result.Ticket.Status.Valid() {
-		return usecase.IssueTicketResult{}, fmt.Errorf("issued ticket has unknown status %q", status)
+	result := usecase.IssueTicketResult{
+		Ticket: domain.Ticket{
+			ID:                 uuid.UUID(row.ID.Bytes),
+			ListingID:          uuid.UUID(row.ListingID.Bytes),
+			SKUID:              uuid.UUID(row.SkuID.Bytes),
+			Status:             domain.TicketStatus(row.Status),
+			IssuedAt:           row.IssuedAt.Time,
+			ActivationDeadline: row.ActivationDeadline.Time,
+		},
+		QueueEntryID: uuid.UUID(row.QueueEntryID.Bytes),
+		UserID:       uuid.UUID(row.UserID.Bytes),
 	}
-	if activatedAt.Valid {
-		value := activatedAt.Time
+	if !result.Ticket.Status.Valid() {
+		return usecase.IssueTicketResult{}, fmt.Errorf("issued ticket has unknown status %q", row.Status)
+	}
+	if row.ActivatedAt.Valid {
+		value := row.ActivatedAt.Time
 		result.Ticket.ActivatedAt = &value
 	}
-	if orderID.Valid {
-		value := uuid.UUID(orderID.Bytes)
+	if row.OrderID.Valid {
+		value := uuid.UUID(row.OrderID.Bytes)
 		result.Ticket.OrderID = &value
 	}
-	if checkoutURL.Valid {
-		value := checkoutURL.String
+	if row.CheckoutUrl.Valid {
+		value := row.CheckoutUrl.String
 		result.Ticket.CheckoutURL = &value
 	}
-	if finishedAt.Valid {
-		value := finishedAt.Time
+	if row.FinishedAt.Valid {
+		value := row.FinishedAt.Time
 		result.Ticket.FinishedAt = &value
 	}
-	if closeReason.Valid {
-		value := domain.TicketCloseReason(closeReason.String)
+	if row.CloseReason.Valid {
+		value := domain.TicketCloseReason(row.CloseReason.String)
 		if !value.Valid() {
-			return usecase.IssueTicketResult{}, fmt.Errorf("issued ticket has unknown close reason %q", closeReason.String)
+			return usecase.IssueTicketResult{}, fmt.Errorf("issued ticket has unknown close reason %q", row.CloseReason.String)
 		}
 		result.Ticket.CloseReason = &value
 	}

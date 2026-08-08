@@ -5,26 +5,46 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
       QUEUE_POSTGRES_DB: ${QUEUE_POSTGRES_DB}
       QUEUE_POSTGRES_USER: ${QUEUE_POSTGRES_USER}
       QUEUE_POSTGRES_PASSWORD: ${QUEUE_POSTGRES_PASSWORD}
+
       TICKETS_POSTGRES_DB: ${TICKETS_POSTGRES_DB}
       TICKETS_POSTGRES_USER: ${TICKETS_POSTGRES_USER}
       TICKETS_POSTGRES_PASSWORD: ${TICKETS_POSTGRES_PASSWORD}
+
       AVITO_ADAPTER_POSTGRES_DB: ${AVITO_ADAPTER_POSTGRES_DB}
       AVITO_ADAPTER_POSTGRES_USER: ${AVITO_ADAPTER_POSTGRES_USER}
       AVITO_ADAPTER_POSTGRES_PASSWORD: ${AVITO_ADAPTER_POSTGRES_PASSWORD}
+
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
       - ./.docker/postgresql/init.sh:/docker-entrypoint-initdb.d/01-create-service-databases.sh:ro
       - ./.docker/postgresql/healthcheck.sh:/usr/local/bin/postgres-healthcheck:ro
+
     healthcheck:
-      test: ["CMD", "sh", "/usr/local/bin/postgres-healthcheck"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432 || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 10
-      start_period: 5s
-    restart: unless-stopped
+      retries: 20
+      start_period: 10s
+
+  wait-for-postgres:
+    image: postgres:18-alpine
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        until pg_isready -h postgres -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -p 5432 >/dev/null 2>&1; do
+          echo "waiting for postgres..."
+          sleep 1
+        done
+        echo "postgres ready"
+    depends_on:
+      - postgres
+    restart: "no"
 
   goose:
     build:
@@ -33,16 +53,20 @@ services:
         GOOSE_VERSION: v3.27.3
     environment:
       GOOSE_DRIVER: postgres
+
       PGHOST: postgres
       PGPORT: "5432"
       PGSSLMODE: disable
       NO_COLOR: "1"
+
       QUEUE_POSTGRES_DB: ${QUEUE_POSTGRES_DB}
       QUEUE_POSTGRES_USER: ${QUEUE_POSTGRES_USER}
       QUEUE_POSTGRES_PASSWORD: ${QUEUE_POSTGRES_PASSWORD}
+
       TICKETS_POSTGRES_DB: ${TICKETS_POSTGRES_DB}
       TICKETS_POSTGRES_USER: ${TICKETS_POSTGRES_USER}
       TICKETS_POSTGRES_PASSWORD: ${TICKETS_POSTGRES_PASSWORD}
+
       AVITO_ADAPTER_POSTGRES_DB: ${AVITO_ADAPTER_POSTGRES_DB}
       AVITO_ADAPTER_POSTGRES_USER: ${AVITO_ADAPTER_POSTGRES_USER}
       AVITO_ADAPTER_POSTGRES_PASSWORD: ${AVITO_ADAPTER_POSTGRES_PASSWORD}
@@ -51,8 +75,8 @@ services:
       - ./services/tickets/postgresql/migrations:/migrations/tickets:ro
       - ./services/avito-adapter/postgresql/migrations:/migrations/avito-adapter:ro
     depends_on:
-      postgres:
-        condition: service_healthy
+      wait-for-postgres:
+        condition: service_completed_successfully
     restart: "no"
 
   rabbitmq:
@@ -75,31 +99,24 @@ services:
 
   queue:
     build:
-      context: ./services/queue
+      context: .
+      dockerfile: services/queue/build/Dockerfile
     environment:
       DATABASE_URL: postgres://${QUEUE_POSTGRES_USER}:${QUEUE_POSTGRES_PASSWORD}@postgres:5432/${QUEUE_POSTGRES_DB}?sslmode=disable
     expose:
       - "8080"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8080/healthz",
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
+    restart: on-failure
     depends_on:
       postgres:
         condition: service_healthy
       goose:
         condition: service_completed_successfully
-    restart: unless-stopped
 
   tickets:
     build:
@@ -112,19 +129,11 @@ services:
     expose:
       - "8080"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8080/healthz",
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,31 +147,24 @@ services:
 
   avito-adapter:
     build:
-      context: ./services/avito-adapter
+      context: .
+      dockerfile: services/avito-adapter/build/Dockerfile
     environment:
       DATABASE_URL: postgres://${AVITO_ADAPTER_POSTGRES_USER}:${AVITO_ADAPTER_POSTGRES_PASSWORD}@postgres:5432/${AVITO_ADAPTER_POSTGRES_DB}?sslmode=disable
     expose:
       - "8080"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8080/health",
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
     depends_on:
       postgres:
         condition: service_healthy
       goose:
         condition: service_completed_successfully
-    restart: unless-stopped
+    restart: on-failure
 
   frontend:
     build:
@@ -172,20 +174,11 @@ services:
     expose:
       - "80"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://localhost/"
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
-    restart: unless-stopped
+      start_period: 30s
 
   nginx:
     image: nginx:1.27-alpine
@@ -194,8 +187,6 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      frontend:
-        condition: service_healthy
       queue:
         condition: service_healthy
       tickets:
@@ -203,19 +194,11 @@ services:
       avito-adapter:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://localhost/healthz"
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 30s
     restart: unless-stopped
 
 volumes:

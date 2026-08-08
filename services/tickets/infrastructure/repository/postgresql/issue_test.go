@@ -68,8 +68,8 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		toPGUUID(command.UserID),
 		issueRequestHash(command),
 		issueOperationStateProcessing,
-		command.IssuedAt.Add(issueOperationTTL),
-		command.IssuedAt,
+		toPGTimestamptz(command.IssuedAt.Add(issueOperationTTL)),
+		toPGTimestamptz(command.IssuedAt),
 	}, transaction.execCalls[0].args)
 	assert.Contains(t, transaction.execCalls[1].query, "status")
 	assert.Contains(t, transaction.execCalls[1].query, "'issued'")
@@ -82,12 +82,12 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		toPGUUID(command.UserID),
 		toPGUUID(command.ListingID),
 		toPGUUID(command.SKUID),
-		command.ActivationDeadline,
-		command.IssuedAt,
+		toPGTimestamptz(command.ActivationDeadline),
+		toPGTimestamptz(command.IssuedAt),
 	}, transaction.execCalls[1].args)
 	assert.Contains(t, transaction.execCalls[2].query, "state = 'completed'")
-	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[0])
-	assert.Equal(t, issueCreatedResponseStatus, transaction.execCalls[2].args[1])
+	assert.Equal(t, toPGInt4(issueCreatedResponseStatus), transaction.execCalls[2].args[0])
+	assert.Equal(t, toPGUUID(operationID), transaction.execCalls[2].args[3])
 	assert.JSONEq(t, `{
 		"id":"`+ticketID.String()+`",
 		"queue_entry_id":"`+command.QueueEntryID.String()+`",
@@ -102,8 +102,8 @@ func TestIssueRepository_Issue_NewQueueEntry_CreateTicketAndOperation(t *testing
 		"checkout_url":null,
 		"finished_at":null,
 		"finish_reason":null
-	}`, string(transaction.execCalls[2].args[2].([]byte)))
-	assert.Equal(t, command.IssuedAt, transaction.execCalls[2].args[3])
+	}`, string(transaction.execCalls[2].args[1].([]byte)))
+	assert.Equal(t, toPGTimestamptz(command.IssuedAt), transaction.execCalls[2].args[2])
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Zero(t, transaction.rollbackCalls)
 }
@@ -233,7 +233,7 @@ func TestIssueRepository_Issue_ExistingQueueEntry_ReturnExistingAndNoOutbox(t *t
 	require.Len(t, transaction.queryCalls, 2)
 	assert.Equal(t, []any{toPGUUID(command.QueueEntryID)}, transaction.queryCalls[1].args)
 	require.Len(t, transaction.execCalls, 3)
-	assert.Equal(t, issueExistingResponseStatus, transaction.execCalls[2].args[1])
+	assert.Equal(t, toPGInt4(issueExistingResponseStatus), transaction.execCalls[2].args[0])
 	assert.NotContains(t, transaction.execCalls[2].query, "outbox")
 	assert.Equal(t, 1, transaction.commitCalls)
 	assert.Zero(t, transaction.rollbackCalls)
@@ -602,8 +602,8 @@ func TestIssueRepository_Issue_InvalidExistingTicketRow_ReturnError(t *testing.T
 		{
 			name: "invalid deadline",
 			row: issueInvalidTicketRow(func(destinations []any) {
-				issuedAt := *destinations[6].(*time.Time)
-				*destinations[7].(*time.Time) = issuedAt
+				issuedAt := *destinations[6].(*pgtype.Timestamptz)
+				*destinations[7].(*pgtype.Timestamptz) = issuedAt
 			}),
 			expectedError: "find existing issued ticket: issued ticket has invalid snapshot",
 		},
@@ -815,8 +815,8 @@ func setIssuedTicketDestinations(destinations []any, result usecase.IssueTicketR
 	*destinations[3].(*pgtype.UUID) = toPGUUID(result.Ticket.ListingID)
 	*destinations[4].(*pgtype.UUID) = toPGUUID(result.Ticket.SKUID)
 	*destinations[5].(*string) = string(result.Ticket.Status)
-	*destinations[6].(*time.Time) = result.Ticket.IssuedAt
-	*destinations[7].(*time.Time) = result.Ticket.ActivationDeadline
+	*destinations[6].(*pgtype.Timestamptz) = toPGTimestamptz(result.Ticket.IssuedAt)
+	*destinations[7].(*pgtype.Timestamptz) = toPGTimestamptz(result.Ticket.ActivationDeadline)
 	if result.Ticket.ActivatedAt != nil {
 		*destinations[8].(*pgtype.Timestamptz) = pgtype.Timestamptz{Time: *result.Ticket.ActivatedAt, Valid: true}
 	}
