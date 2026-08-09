@@ -11,6 +11,14 @@ import (
 func (s *itemQueueService) GetUserQueues(ctx context.Context, userID uuid.UUID) ([]*domain.UserQueueInfo, error) {
 	members, err := s.memberRepository.GetAllByUserID(ctx, userID)
 	if err != nil {
+		s.logger.Error(
+			"failed to get user queues",
+			"error",
+			err,
+			"user_id",
+			userID,
+		)
+
 		return nil, err
 	}
 

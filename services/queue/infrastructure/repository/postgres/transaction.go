@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -11,48 +12,84 @@ import (
 
 type TransactionManager interface {
 	WithinTransaction(
-		ctx context.Context, 
+		ctx context.Context,
 		fn func(
-			ctx context.Context, 
-			queueRepository domain.ItemQueueRepository, 
+			ctx context.Context,
+			queueRepository domain.ItemQueueRepository,
 			memberRepository domain.ItemQueueMemberRepository,
 		) error,
 	) error
 }
 
 type transactionManager struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
-func NewTransactionManager(pool *pgxpool.Pool) TransactionManager {
+func NewTransactionManager(pool *pgxpool.Pool, logger *slog.Logger) TransactionManager {
 	return &transactionManager{
-		pool: pool,
+		pool:   pool,
+		logger: logger,
 	}
 }
 
 func (tm *transactionManager) WithinTransaction(
-    ctx context.Context,
-    fn func(
-        ctx context.Context,
-        queueRepository domain.ItemQueueRepository,
-        memberRepository domain.ItemQueueMemberRepository,
-    ) error,
+	ctx context.Context,
+	fn func(
+		ctx context.Context,
+		queueRepository domain.ItemQueueRepository,
+		memberRepository domain.ItemQueueMemberRepository,
+	) error,
 ) error {
-    tx, err := tm.pool.Begin(ctx)
-    if err != nil {
-        return err
-    }
+	tm.logger.Debug("starting database transaction")
 
-    queries := sqlc.New(tx)
+	tx, err := tm.pool.Begin(ctx)
+	if err != nil {
+		tm.logger.Error(
+			"failed to start database transaction",
+			"error",
+			err,
+		)
 
-    queueRepository := NewItemQueueRepository(queries)
-    memberRepository := NewItemQueueMemberRepository(queries)
+		return err
+	}
 
-    err = fn(ctx, queueRepository, memberRepository)
-    if err != nil {
-        _ = tx.Rollback(ctx)
-        return err
-    }
+	queries := sqlc.New(tx)
 
-    return tx.Commit(ctx)
+	queueRepository := NewItemQueueRepository(queries, tm.logger)
+	memberRepository := NewItemQueueMemberRepository(queries, tm.logger)
+
+	err = fn(ctx, queueRepository, memberRepository)
+
+	if err != nil {
+		tm.logger.Error(
+			"transaction failed",
+			"error",
+			err,
+		)
+
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+			tm.logger.Error(
+				"transaction rollback failed",
+				"error",
+				rollbackErr,
+			)
+		}
+
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		tm.logger.Error(
+			"transaction commit failed",
+			"error",
+			err,
+		)
+	
+		return err
+	}
+
+	tm.logger.Debug("database transaction committed")
+
+	return nil
 }

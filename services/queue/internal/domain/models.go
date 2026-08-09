@@ -50,3 +50,22 @@ type UserQueueInfo struct {
     Position int
     Status   ItemQueueMemberStatus
 }
+
+type Listing struct {
+	ID            uuid.UUID
+	QueueEnabled  bool
+	Status        string
+	Quantity      int
+}
+
+type TicketStatus string
+
+const (
+	TicketIssued   TicketStatus = "ISSUED"
+	TicketRedeemed TicketStatus = "REDEEMED"
+)
+
+type Ticket struct {
+	ID     string
+	Status TicketStatus
+}
