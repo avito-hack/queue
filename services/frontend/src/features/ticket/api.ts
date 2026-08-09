@@ -15,6 +15,7 @@ export type TicketListItemDto = {
   activation_deadline?: string
   available_actions?: string[]
   checkout_url?: string | null
+  finished_at?: string | null
 }
 
 export type TicketListResponse = {

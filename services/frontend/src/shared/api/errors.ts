@@ -5,6 +5,12 @@ const MESSAGE_BY_CODE: Record<string, string> = {
   unauthorized: 'Нужна авторизация. Обновите страницу и попробуйте снова',
   not_found: 'Не найдено',
   conflict: 'Действие сейчас недоступно',
+  ticket_not_activatable: 'Тикет уже активирован или недоступен',
+  ticket_activation_expired: 'Время на активацию тикета истекло',
+  idempotency_conflict: 'Повторный запрос конфликтует с предыдущим',
+  activation_in_progress: 'Активация тикета уже выполняется',
+  checkout_rejected: 'Не удалось создать оформление заказа',
+  checkout_unavailable: 'Оформление временно недоступно',
   queue_unavailable: 'Очередь сейчас недоступна',
   bad_request: 'Некорректный запрос',
   internal_error: 'Внутренняя ошибка сервера. Попробуйте позже',
@@ -122,7 +128,8 @@ function messageFromResponse(data: unknown): string | null {
   const record = asRecord(data)
   if (!record) return null
 
-  const code = readStringField(record, 'code')
+  const code =
+    readStringField(record, 'code') ?? readStringField(record, 'error')
   if (code && MESSAGE_BY_CODE[code]) {
     const raw = readStringField(record, 'message')
     if (raw) {
@@ -133,8 +140,7 @@ function messageFromResponse(data: unknown): string | null {
     return MESSAGE_BY_CODE[code]
   }
 
-  const raw =
-    readStringField(record, 'message') ?? readStringField(record, 'error')
+  const raw = readStringField(record, 'message')
   if (!raw) return null
 
   const translated = translateServerMessage(raw)

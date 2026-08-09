@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
-import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { useAppDispatch } from '../../app/hooks'
 import { removeQueuedByProductId } from '../queue/queueSlice'
 import { ticketApi } from './api'
+import { mergeTicketLists } from './activatedTickets'
+import { isTicketPaid } from './paidTickets'
 import { setTicketItems } from './ticketSlice'
 import type {
   TicketAvailableAction,
@@ -17,6 +19,15 @@ const ACTIONS = new Set<TicketAvailableAction>([
   'checkout',
 ])
 
+function readCheckoutUrl(dto: {
+  checkout_url?: string | null
+  checkoutUrl?: string | null
+}): string | undefined {
+  const raw = dto.checkout_url ?? dto.checkoutUrl
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  return value || undefined
+}
+
 export function toTicketEntry(dto: {
   id?: string
   listing_id?: string
@@ -24,32 +35,42 @@ export function toTicketEntry(dto: {
   activation_deadline?: string
   available_actions?: string[]
   checkout_url?: string | null
+  checkoutUrl?: string | null
+  finished_at?: string | null
 }): TicketEntry | null {
   if (!dto.id || !dto.listing_id) return null
+  if (isTicketPaid(dto.id)) return null
+  if (dto.finished_at) return null
 
   const status = dto.status as TicketStatus | undefined
-  const checkoutUrl = dto.checkout_url?.trim() || undefined
+  let checkoutUrl = readCheckoutUrl(dto)
 
   if (status === 'issued') {
     // ok
-  } else if (status === 'redeemed' && checkoutUrl) {
-    // активированный тикет — плитка «к оформлению»
+  } else if (status === 'redeemed') {
+    checkoutUrl =
+      checkoutUrl || `/checkout?ticket=${encodeURIComponent(dto.id)}`
   } else {
     return null
   }
 
-  const availableActions = Array.isArray(dto.available_actions)
+  const parsedActions = Array.isArray(dto.available_actions)
     ? dto.available_actions.filter((a): a is TicketAvailableAction =>
         ACTIONS.has(a as TicketAvailableAction),
       )
-    : status === 'redeemed'
-      ? (['checkout'] as TicketAvailableAction[])
-      : undefined
+    : undefined
+
+  const availableActions =
+    parsedActions && parsedActions.length > 0
+      ? parsedActions
+      : status === 'redeemed'
+        ? (['checkout'] as TicketAvailableAction[])
+        : parsedActions
 
   return {
     id: dto.id,
     productId: dto.listing_id,
-    expiresAt: dto.activation_deadline,
+    expiresAt: status === 'redeemed' ? undefined : dto.activation_deadline,
     status,
     checkoutUrl,
     availableActions,
@@ -58,15 +79,9 @@ export function toTicketEntry(dto: {
 
 export function useTicketPolling(enabled = true) {
   const dispatch = useAppDispatch()
-  const hasQueued = useAppSelector((state) =>
-    state.queue.queueItems.some((item) => item.status === 'queued'),
-  )
-  const hasTickets = useAppSelector(
-    (state) => state.tickets.ticketItems.length > 0,
-  )
 
   useEffect(() => {
-    if (!enabled || (!hasQueued && !hasTickets)) return
+    if (!enabled) return
 
     let cancelled = false
 
@@ -76,16 +91,20 @@ export function useTicketPolling(enabled = true) {
         if (cancelled) return
 
         const list = Array.isArray(data?.ticket) ? data.ticket : []
-        const next: TicketEntry[] = []
+        const fromApi: TicketEntry[] = []
         for (const dto of list) {
           const ticket = toTicketEntry(dto)
           if (!ticket) continue
           dispatch(removeQueuedByProductId(ticket.productId))
-          next.push(ticket)
+          fromApi.push(ticket)
         }
-        dispatch(setTicketItems(next))
+        dispatch(setTicketItems(mergeTicketLists(fromApi)))
       } catch {
-        // бэк ещё не готов
+        if (cancelled) return
+        const local = mergeTicketLists([])
+        if (local.length > 0) {
+          dispatch(setTicketItems(local))
+        }
       }
     }
 
@@ -98,5 +117,5 @@ export function useTicketPolling(enabled = true) {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [dispatch, enabled, hasQueued, hasTickets])
+  }, [dispatch, enabled])
 }

@@ -6,7 +6,15 @@ import { TicketPurchaseModal } from '../../components/modals/TicketPurchaseModal
 import { queueApi } from '../../features/queue/api'
 import { isTicketExpired } from '../../features/queue/lib'
 import { leaveQueue } from '../../features/queue/queueSlice'
+import {
+  isActivateConflictError,
+  resolveActivatedTicket,
+} from '../../features/ticket/activateRecovery'
 import { ticketApi } from '../../features/ticket/api'
+import {
+  readActivatedTickets,
+  rememberActivatedTicket,
+} from '../../features/ticket/activatedTickets'
 import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigation'
 import { removeTicket, upsertTicket } from '../../features/ticket/ticketSlice'
 import { ticketAllows } from '../../features/ticket/types'
@@ -42,6 +50,26 @@ export function Queue() {
     navigate(target.path, { state: { productId } })
   }
 
+  const finishActivatedCheckout = (activated: {
+    id: string
+    productId: string
+    checkoutUrl?: string
+  }) => {
+    const entry = {
+      id: activated.id,
+      productId: activated.productId,
+      status: 'redeemed' as const,
+      checkoutUrl:
+        activated.checkoutUrl?.trim() ||
+        `/checkout?ticket=${encodeURIComponent(activated.id)}`,
+      availableActions: ['checkout' as const],
+    }
+    rememberActivatedTicket(entry)
+    dispatch(upsertTicket(entry))
+    setTicketTile(null)
+    goToCheckout(entry.id, entry.productId, entry.checkoutUrl)
+  }
+
   const handleActivateAndBuy = () => {
     if (!ticketTile || buying) return
     if (!ticketAllows(ticketTile, 'activate') && !ticketAllows(ticketTile, 'checkout')) {
@@ -49,13 +77,18 @@ export function Queue() {
     }
     const id = ticketTile.id
     const productId = ticketTile.productId
+    const remembered = readActivatedTickets().find((item) => item.id === id)
 
     if (
+      remembered ||
       ticketTile.ticketStatus === 'redeemed' ||
       (ticketTile.checkoutUrl && !ticketAllows(ticketTile, 'activate'))
     ) {
-      setTicketTile(null)
-      goToCheckout(id, productId, ticketTile.checkoutUrl)
+      finishActivatedCheckout({
+        id,
+        productId,
+        checkoutUrl: remembered?.checkoutUrl || ticketTile.checkoutUrl,
+      })
       return
     }
 
@@ -69,19 +102,17 @@ export function Queue() {
       setBuying(true)
       try {
         const result = await ticketApi.activateTicket(id)
-        const checkoutUrl = result.checkout_url?.trim() || undefined
-        dispatch(
-          upsertTicket({
-            id,
-            productId,
-            status: 'redeemed',
-            checkoutUrl,
-            availableActions: ['checkout'],
-          }),
-        )
-        setTicketTile(null)
-        goToCheckout(id, productId, checkoutUrl)
+        finishActivatedCheckout({
+          id,
+          productId,
+          checkoutUrl: result.checkout_url,
+        })
       } catch (error) {
+        if (isActivateConflictError(error)) {
+          const recovered = await resolveActivatedTicket(id, productId)
+          finishActivatedCheckout(recovered)
+          return
+        }
         reportApiError(error, 'Не удалось активировать тикет')
         setBuying(false)
       }

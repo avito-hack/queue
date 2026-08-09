@@ -63,6 +63,11 @@ export function DemoPanel() {
   const [createdPopup, setCreatedPopup] = useState<DemoUser[] | null>(null)
 
   const pathProductId = productIdFromPath(location.pathname)
+  const [prevPathProductId, setPrevPathProductId] = useState(pathProductId)
+  if (pathProductId !== prevPathProductId) {
+    setPrevPathProductId(pathProductId)
+    if (pathProductId) setListingId(pathProductId)
+  }
 
   useEffect(() => {
     const sync = () => setDemoUsers(readDemoUsers())
@@ -70,20 +75,19 @@ export function DemoPanel() {
     return () => window.removeEventListener(DEMO_USERS_EVENT, sync)
   }, [])
 
-  useEffect(() => {
-    if (pathProductId) setListingId(pathProductId)
-  }, [pathProductId])
-
   const selected = useMemo(
     () => products.find((p) => p.id === listingId) ?? null,
     [listingId, products],
   )
 
-  useEffect(() => {
-    if (selected) {
-      setQuantity(String(selected.availableQuantity))
-    }
-  }, [selected?.id, selected?.availableQuantity])
+  const quantitySourceKey = selected
+    ? `${selected.id}:${selected.availableQuantity}`
+    : ''
+  const [quantitySyncedKey, setQuantitySyncedKey] = useState('')
+  if (selected && quantitySourceKey !== quantitySyncedKey) {
+    setQuantitySyncedKey(quantitySourceKey)
+    setQuantity(String(selected.availableQuantity))
+  }
 
   const refreshProducts = async () => {
     setLoadingProducts(true)

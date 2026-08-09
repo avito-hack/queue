@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { forgetActivatedTicket } from '../../features/ticket/activatedTickets'
+import { markTicketPaid } from '../../features/ticket/paidTickets'
 import { removeTicket } from '../../features/ticket/ticketSlice'
 import { showToast } from '../../shared/toast'
 
@@ -30,6 +32,8 @@ export function Checkout() {
   const handlePay = () => {
     if (!ticketId || paying) return
     setPaying(true)
+    markTicketPaid(ticketId)
+    forgetActivatedTicket(ticketId)
     dispatch(removeTicket(ticketId))
     setPaid(true)
     setPaying(false)

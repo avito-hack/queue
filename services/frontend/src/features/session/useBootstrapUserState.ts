@@ -5,6 +5,7 @@ import { upsertProduct } from '../product/productSlice'
 import { queueApi } from '../queue/api'
 import { queueEntriesFromUserQueues } from '../queue/positionLib'
 import { setQueueItems } from '../queue/queueSlice'
+import { mergeTicketLists } from '../ticket/activatedTickets'
 import { ticketApi } from '../ticket/api'
 import { setTicketItems } from '../ticket/ticketSlice'
 import type { TicketEntry } from '../ticket/types'
@@ -48,10 +49,16 @@ export function useBootstrapUserState() {
       let tickets: TicketEntry[] = []
       if (ticketsResult.status === 'fulfilled') {
         const list = ticketsResult.value.ticket ?? []
-        tickets = list
+        const fromApi = list
           .map(toTicketEntry)
           .filter((item: TicketEntry | null): item is TicketEntry => item !== null)
+        tickets = mergeTicketLists(fromApi)
         dispatch(setTicketItems(tickets))
+      } else {
+        tickets = mergeTicketLists([])
+        if (tickets.length > 0) {
+          dispatch(setTicketItems(tickets))
+        }
       }
 
       let queueProductIds: string[] = []
