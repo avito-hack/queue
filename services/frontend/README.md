@@ -83,8 +83,28 @@ src/
   components/    # layout, модалки, ToastHost
 ```
 
-## Линтер и тесты
+## Линтер
 
-ESLint flat config: `eslint.config.js` (`@eslint/js`, `typescript-eslint`, `react-hooks`, `react-refresh`). CI: `.github/workflows/frontend.yml` → `make lint-frontend`, затем build.
+На фронтенде используется **ESLint 9** (flat config): [`eslint.config.js`](./eslint.config.js).
 
-Тесты: Vitest + Testing Library (`npm test`) — auth bootstrap, API-маппинг, сценарии страниц Catalog / Product / Queue / Checkout.
+Запуск локально: `npm run lint`.  
+В CI тот же шаг выполняется через `make lint-frontend` (workflow [`.github/workflows/frontend.yml`](../../.github/workflows/frontend.yml)); при ошибках линтера сборка не продолжается.
+
+### Политика выбора правил
+
+Цель конфигурации — ловить дефекты, которые реально ломают UI-сценарий очереди/тикетов или усложняют сопровождение, без избыточного набора стилистических правил. Поэтому за основу взяты стабильные recommended-пресеты, а кастомизация минимальна и точечная.
+
+| Правило / набор | Обоснование |
+| --- | --- |
+| `@eslint/js` recommended | Базовый контроль синтаксиса и типичных ошибок JavaScript без изобретения собственного набора с нуля. |
+| `typescript-eslint` recommended | Проект на TypeScript: набор закрывает unsafe-паттерны и ошибки, которые компилятор не всегда делает блокирующими на этапе редактирования. |
+| `eslint-plugin-react-hooks` recommended | Сценарий завязан на effects (auth bootstrap, polling очередей/тикетов). Нарушения Rules of Hooks дают гонки состояния и «мигающие» статусы — это критично для React 19. |
+| `eslint-plugin-react-refresh` (Vite) | Гарантирует корректные границы модулей для Fast Refresh: ускоряет локальную разработку и снижает риск сломать HMR неосторожным export. |
+| `@typescript-eslint/no-unused-vars` (`argsIgnorePattern` / `varsIgnorePattern`: `^_`) | Неиспользуемые переменные — источник мёртвого кода и ложных сигналов при ревью. Префикс `_` оставлен для осознанно игнорируемых аргументов колбэков. |
+| `reportUnusedDisableDirectives: error` | Запрещает копить устаревшие `eslint-disable`: отключения правил должны быть явными и актуальными, иначе линтер перестаёт быть защитой. |
+
+Игнорируются только артефакты сборки и зависимости: `dist`, `coverage`, `node_modules`.
+
+## Тесты
+
+Vitest + Testing Library (`npm test`): auth bootstrap, API-маппинг, сценарии страниц Catalog / Product / Queue / Checkout.
