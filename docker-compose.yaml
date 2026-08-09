@@ -173,7 +173,7 @@ services:
     build:
       context: ./services/frontend
       args:
-        VITE_API_URL: ""
+        VITE_PUBLIC_BASE_URL: ""
     expose:
       - "80"
     healthcheck:
