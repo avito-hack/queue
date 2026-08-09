@@ -152,13 +152,6 @@ export function Product() {
       completeJoin(entry)
     } catch (error) {
       reportApiError(error, 'Не удалось встать в очередь')
-      // demo-fallback, пока бэк нестабилен
-      completeJoin({
-        id: `${targetProductId}-entry`,
-        productId: targetProductId,
-        status: 'queued',
-        position: 8,
-      })
     }
   }
 
@@ -198,55 +191,58 @@ export function Product() {
     : getProductActionLabel(inStock, myQueueEntry, myTicket)
   const priceLabel = `${product.price.toLocaleString('ru-RU')} ₽`
 
+  const handlePrimaryAction = () => {
+    if (myQueueEntry || myTicket) {
+      navigate('/queue')
+      return
+    }
+    if (!inStock) {
+      handleNotify()
+      return
+    }
+    void handleJoinQueue(product.id)
+  }
+
   return (
     <section>
-      <div className="mb-[22px] flex flex-wrap items-center gap-2 text-sm text-avito-muted">
-        <a href="#" className="text-avito-muted no-underline">
+      <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-avito-muted sm:mb-5 sm:text-sm">
+        <button
+          type="button"
+          className="cursor-pointer bg-transparent text-avito-muted"
+          onClick={() => navigate('/catalog')}
+        >
           Главная
-        </a>
+        </button>
         <span>›</span>
-        <a href="#" className="text-avito-muted no-underline">
-          Одежда и обувь
-        </a>
-        <span>›</span>
-        <span>{product.title}</span>
+        <span className="line-clamp-1">{product.title}</span>
       </div>
 
-      <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)]">
-        <div className="product-gallery relative grid min-h-[360px] place-items-center overflow-hidden rounded-3xl sm:min-h-[520px]">
-          <div className="absolute top-5 left-5 z-[2] rounded-full bg-avito-ink px-3 py-2 text-[13px] font-extrabold tracking-wide text-white">
-            Лимитированный выпуск
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)] lg:gap-7">
+        <div className="product-gallery relative grid aspect-[4/3] max-h-[420px] place-items-center overflow-hidden rounded-2xl sm:aspect-auto sm:min-h-[480px] sm:max-h-none sm:rounded-3xl">
+          <div className="absolute top-3 left-3 z-[2] rounded-lg bg-avito-ink px-2.5 py-1.5 text-[11px] font-extrabold tracking-wide text-white uppercase sm:top-5 sm:left-5 sm:rounded-xl sm:px-3 sm:py-2 sm:text-[12px]">
+            Лимит
           </div>
           <div
-            className="product-emoji z-[1] -rotate-8 select-none"
+            className="product-emoji z-[1] -rotate-6 select-none"
             aria-hidden="true"
           >
             {product.image ?? '🛒'}
           </div>
-          <div
-            className="absolute bottom-[18px] left-1/2 z-[2] flex -translate-x-1/2 gap-1.5"
-            aria-hidden="true"
-          >
-            <span className="h-2 w-[22px] rounded-full bg-avito-ink" />
-            <span className="size-2 rounded-full bg-avito-ink/25" />
-            <span className="size-2 rounded-full bg-avito-ink/25" />
-            <span className="size-2 rounded-full bg-avito-ink/25" />
-          </div>
         </div>
 
-        <aside className="rounded-[22px] bg-avito-card p-6 shadow-card lg:sticky lg:top-[92px]">
-          <div className="mb-2.5 text-sm text-avito-muted">
+        <aside className="rounded-2xl bg-avito-card p-4 shadow-card sm:p-6 lg:sticky lg:top-[84px]">
+          <div className="mb-2 text-[13px] text-avito-muted">
             Лимитированный товар
           </div>
-          <h1 className="m-0 text-[26px] leading-[1.14] tracking-tight sm:text-[30px]">
+          <h1 className="m-0 text-[24px] leading-[1.15] font-extrabold tracking-tight sm:text-[28px]">
             {product.title}
           </h1>
-          <div className="mt-3.5 text-[27px] font-extrabold tracking-tight sm:text-[30px]">
+          <div className="mt-3 text-[28px] font-extrabold tracking-tight sm:text-[32px]">
             {priceLabel}
           </div>
 
-          <div className="my-[22px] grid gap-2.5 rounded-[14px] bg-[#f7f7f7] p-4">
-            <div className="flex items-center justify-between gap-3.5 text-sm">
+          <div className="my-5 grid gap-2 rounded-2xl bg-[#f5f5f5] p-3.5 sm:p-4">
+            <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-avito-muted">В наличии</span>
               <strong
                 className={inStock ? 'text-avito-green' : 'text-avito-red'}
@@ -254,14 +250,14 @@ export function Product() {
                 {inStock ? `${product.availableQuantity} шт.` : 'нет в наличии'}
               </strong>
             </div>
-            <div className="flex items-center justify-between gap-3.5 text-sm">
+            <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-avito-muted">Уже в очереди</span>
               <strong>
                 {queueCount} {pluralPeople(queueCount)}
               </strong>
             </div>
             {stateHint && (
-              <div className="flex items-center justify-between gap-3.5 text-sm">
+              <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-avito-muted">Очередь</span>
                 <strong>{stateHint}</strong>
               </div>
@@ -269,9 +265,9 @@ export function Product() {
           </div>
 
           {myQueueEntry && (
-            <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-avito-blue-soft p-3.5 text-sm leading-snug text-[#006ca8]">
+            <div className="mb-4 flex items-start gap-3 rounded-2xl bg-avito-blue-soft p-3.5 text-sm leading-snug text-[#006ca8]">
               <div
-                className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white/70"
+                className="grid size-8 shrink-0 place-items-center rounded-full bg-white/80"
                 aria-hidden="true"
               >
                 <img src={clockIcon} alt="" className="size-4" />
@@ -287,9 +283,9 @@ export function Product() {
           )}
 
           {myTicket && (
-            <div className="mb-[18px] flex items-start gap-3 rounded-[14px] bg-[#f0f9e7] p-3.5 text-sm leading-snug text-[#477b12]">
+            <div className="mb-4 flex items-start gap-3 rounded-2xl bg-[#eafaf1] p-3.5 text-sm leading-snug text-[#0a7a3e]">
               <div
-                className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white/70"
+                className="grid size-8 shrink-0 place-items-center rounded-full bg-white/80"
                 aria-hidden="true"
               >
                 ✓
@@ -304,58 +300,53 @@ export function Product() {
             </div>
           )}
 
-          <div className="grid gap-2.5">
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/6 bg-white/95 px-4 pt-3 backdrop-blur-md safe-pb sm:static sm:z-auto sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
             <button
               type="button"
               disabled={!inStock && !myQueueEntry && !myTicket && notified}
-              className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-70 disabled:hover:translate-y-0"
-              onClick={() => {
-                if (myQueueEntry || myTicket) {
-                  navigate('/queue')
-                  return
-                }
-                if (!inStock) {
-                  handleNotify()
-                  return
-                }
-                void handleJoinQueue(product.id)
-              }}
+              className="min-h-12 w-full cursor-pointer rounded-2xl bg-avito-blue px-4 py-3 font-extrabold text-white transition duration-150 hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-70"
+              onClick={handlePrimaryAction}
             >
               {actionLabel}
             </button>
-          </div>
-
-          <div className="mt-3 text-center text-xs leading-snug text-avito-muted">
-            Деньги не списываются. Место в очереди не гарантирует покупку.
-            Право на покупку временное и действует только для вас.
+            <div className="mt-3 hidden text-center text-xs leading-snug text-avito-muted sm:block">
+              Деньги не списываются. Место в очереди не гарантирует покупку.
+              Право на покупку временное и действует только для вас.
+            </div>
           </div>
         </aside>
       </div>
 
-      <section className="mt-[30px] rounded-[18px] bg-white p-6">
-        <h2 className="mb-[18px] text-2xl tracking-tight">Описание</h2>
-        <p className="m-0 leading-relaxed text-[#4d4d4d]">
+      <section className="mt-5 rounded-2xl bg-white p-4 sm:mt-7 sm:p-6">
+        <h2 className="mb-3 text-xl font-extrabold tracking-tight sm:mb-4 sm:text-2xl">
+          Описание
+        </h2>
+        <p className="m-0 text-[15px] leading-relaxed text-[#4d4d4d]">
           {product.description ?? 'Описание появится позже.'}
         </p>
       </section>
 
-      <section id="similar-products" className="mt-[34px]">
-        <h2 className="mb-[18px] text-2xl tracking-tight">Похожие товары</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section id="similar-products" className="mt-6 sm:mt-8">
+        <h2 className="mb-3 text-xl font-extrabold tracking-tight sm:mb-4 sm:text-2xl">
+          Похожие товары
+        </h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
           {similarProducts.map((item) => (
             <article
               className="overflow-hidden rounded-2xl bg-white"
               key={item.title}
             >
               <div
-                className="grid h-[150px] place-items-center bg-linear-to-br from-[#e8f7ff] to-[#f3e8ff] text-7xl"
+                className="grid aspect-[4/3] place-items-center bg-[#f5f5f5] text-5xl sm:text-6xl"
                 aria-hidden="true"
               >
                 {item.emoji}
               </div>
-              <div className="p-3.5">
-                <div className="font-extrabold">{item.price}</div>
-                <div className="mt-1 text-sm leading-snug text-[#3c3c3c]">
+              <div className="p-3">
+                <div className="text-[15px] font-extrabold sm:text-base">
+                  {item.price}
+                </div>
+                <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-[#3c3c3c]">
                   {item.title}
                 </div>
               </div>
@@ -387,6 +378,7 @@ export function Product() {
             .getElementById('similar-products')
             ?.scrollIntoView({ behavior: 'smooth' })
         }}
-      />    </section>
+      />
+    </section>
   )
 }

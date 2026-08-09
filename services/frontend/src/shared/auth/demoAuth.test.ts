@@ -20,7 +20,7 @@ describe('ensureDemoAuth', () => {
     const result = await ensureDemoAuth(createUser)
 
     expect(createUser).toHaveBeenCalledWith({
-      name: 'Demo Buyer',
+      name: 'Demo Buyer2',
       token: DEFAULT_DEMO_TOKEN,
     })
     expect(result.token).toBe(DEFAULT_DEMO_TOKEN)
@@ -51,13 +51,10 @@ describe('ensureDemoAuth', () => {
     expect(createUser).toHaveBeenCalledTimes(1)
   })
 
-  it('stays ready with seed credentials when createUser fails', async () => {
+  it('fails when createUser rejects', async () => {
     const createUser = vi.fn().mockRejectedValue(new Error('conflict'))
 
-    const result = await ensureDemoAuth(createUser)
-
-    expect(result.token).toBe(DEFAULT_DEMO_TOKEN)
-    expect(result.userId).toBe(DEFAULT_DEMO_USER_ID)
+    await expect(ensureDemoAuth(createUser)).rejects.toThrow('conflict')
   })
 
   it('unblocks waitForAuthToken after ensureDemoAuth', async () => {

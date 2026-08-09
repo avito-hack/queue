@@ -32,7 +32,7 @@ export function ToastHost() {
   return (
     <div
       role="alert"
-      className="pointer-events-none fixed inset-x-0 bottom-5 z-[100] flex justify-center px-4"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-[100] flex justify-center px-4"
     >
       <div
         className={

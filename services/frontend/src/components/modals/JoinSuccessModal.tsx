@@ -17,12 +17,12 @@ export function JoinSuccessModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-[3px]"
+      className="fixed inset-0 z-50 grid place-items-end bg-black/50 p-0 backdrop-blur-[3px] sm:place-items-center sm:p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="w-full max-w-[480px] rounded-[22px] bg-white p-6 shadow-[0_24px_60px_rgba(0,0,0,0.22)]"
+        className="max-h-[92dvh] w-full max-w-[480px] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-[0_24px_60px_rgba(0,0,0,0.22)] sm:rounded-[22px] sm:p-6"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -31,7 +31,7 @@ export function JoinSuccessModal({
         <div className="mb-4 flex items-start justify-between gap-4">
           <h2
             id="join-success-title"
-            className="m-0 text-[25px] leading-tight tracking-tight"
+            className="m-0 text-[22px] leading-tight font-extrabold tracking-tight sm:text-[25px]"
           >
             Вы в очереди
           </h2>

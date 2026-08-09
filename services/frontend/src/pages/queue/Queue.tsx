@@ -32,10 +32,6 @@ export function Queue() {
     setTicketTile(null)
   }
 
-  const goToDemoCheckout = (ticketId: string) => {
-    navigate(`/checkout?ticket=${ticketId}`)
-  }
-
   const handleActivateAndBuy = () => {
     if (!ticketTile || buying) return
     if (!ticketAllows(ticketTile, 'activate') && !ticketAllows(ticketTile, 'checkout')) {
@@ -61,9 +57,6 @@ export function Queue() {
         navigate(target.path)
       } catch (error) {
         reportApiError(error, 'Не удалось активировать тикет')
-        // бэк недоступен — демо-заглушка своего checkout
-        setTicketTile(null)
-        goToDemoCheckout(id)
       } finally {
         setBuying(false)
       }
@@ -79,12 +72,11 @@ export function Queue() {
       setLeaving(true)
       try {
         await queueApi.leaveQueue(productId)
-      } catch (error) {
-        reportApiError(error, 'Не удалось выйти из очереди')
-        // бэк может быть недоступен — убираем из store для демо
-      } finally {
         dispatch(leaveQueue(entryId))
         setLeaveTile(null)
+      } catch (error) {
+        reportApiError(error, 'Не удалось выйти из очереди')
+      } finally {
         setLeaving(false)
       }
     })()
@@ -132,25 +124,25 @@ export function Queue() {
 
   return (
     <section>
-      <div className="mb-[22px] flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
-        <div>
-          <h1 className="m-0 text-2xl tracking-tight sm:text-[30px]">
+      <div className="mb-5 flex flex-col items-start justify-between gap-4 sm:mb-6 sm:flex-row sm:items-end">
+        <div className="min-w-0">
+          <h1 className="m-0 text-[26px] font-extrabold tracking-tight sm:text-[32px]">
             Мои очереди
           </h1>
-          <p className="mt-2 max-w-[620px] leading-normal text-avito-muted">
+          <p className="mt-2 max-w-[620px] text-[14px] leading-normal text-avito-muted sm:text-[15px]">
             Каждая плитка — отдельная очередь. Откройте товар, чтобы посмотреть
             позицию, право на покупку или продолжить оформление.
           </p>
         </div>
         <Link
           to="/catalog"
-          className="inline-flex min-h-10 items-center rounded-xl bg-[#f1f1f1] px-4 py-2 font-extrabold text-avito-ink no-underline"
+          className="inline-flex min-h-10 shrink-0 items-center rounded-2xl bg-[#ebebeb] px-4 py-2 text-sm font-extrabold text-avito-ink no-underline"
         >
           ← В каталог
         </Link>
       </div>
 
-      <div className="mb-[22px] grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+      <div className="mb-5 grid grid-cols-3 gap-2 sm:mb-6 sm:gap-3.5">
         <SummaryTile label="Активных очередей" value={activeCount} />
         <SummaryTile label="Доступно к покупке" value={ticketCount} />
         <SummaryTile label="Завершено" value={doneCount} />
@@ -159,7 +151,7 @@ export function Queue() {
       {queueTiles.length === 0 ? (
         <QueueEmpty />
       ) : (
-        <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 lg:grid-cols-3 lg:gap-4">
           {queueTiles.map((tile) => (
             <QueueCard
               key={`${tile.kind}-${tile.id}`}
@@ -191,11 +183,10 @@ export function Queue() {
           void (async () => {
             try {
               await ticketApi.declineTicket(id)
-            } catch (error) {
-              reportApiError(error, 'Не удалось отказаться от тикета')
-            } finally {
               dispatch(removeTicket(id))
               setTicketTile(null)
+            } catch (error) {
+              reportApiError(error, 'Не удалось отказаться от тикета')
             }
           })()
         }}

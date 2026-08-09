@@ -4,19 +4,19 @@ import clockIcon from '../../assets/clock.svg'
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'rounded-[10px] px-3.5 py-2.5 text-[13px] font-bold no-underline transition-colors sm:text-sm',
+    'inline-flex min-h-10 items-center rounded-xl px-3 py-2 text-sm font-bold no-underline transition-colors',
     isActive
-      ? 'bg-[#f1f1f1] text-avito-ink'
-      : 'bg-transparent text-[#4d4d4d] hover:bg-[#f1f1f1] hover:text-avito-ink',
+      ? 'bg-[#f2f1f0] text-avito-ink'
+      : 'bg-transparent text-[#5a5a5a] hover:bg-[#f2f1f0] hover:text-avito-ink',
   ].join(' ')
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-30 border-b border-black/5 bg-white/95 backdrop-blur-md">
-      <div className="mx-auto flex h-[68px] w-[min(1180px,calc(100%-22px))] items-center gap-2.5 sm:w-[min(1180px,calc(100%-32px))] sm:gap-6">
+    <header className="sticky top-0 z-30 border-b border-black/6 bg-white/95 backdrop-blur-md">
+      <div className="page-shell flex h-14 items-center gap-2 sm:h-[68px] sm:gap-4">
         <Link
           to="/catalog"
-          className="inline-flex items-center gap-2.5 whitespace-nowrap text-[21px] font-extrabold tracking-tight text-avito-ink no-underline sm:text-2xl"
+          className="inline-flex min-w-0 items-center gap-2 text-[20px] font-extrabold tracking-tight text-avito-ink no-underline sm:gap-2.5 sm:text-[22px]"
         >
           <img
             src={avitoLogo}
@@ -24,14 +24,14 @@ export function Header() {
             aria-hidden="true"
             className="size-7 shrink-0 sm:size-8"
           />
-          <span>avito</span>
-          <span className="hidden text-sm font-bold tracking-normal text-[#777] lg:inline">
-            лимитированные товары
+          <span className="leading-none">avito</span>
+          <span className="hidden truncate text-[13px] font-semibold tracking-normal text-avito-muted xl:inline">
+            очередь
           </span>
         </Link>
 
         <nav
-          className="order-3 flex gap-1.5 sm:order-none"
+          className="ml-1 hidden items-center gap-1 md:flex"
           aria-label="Основная навигация"
         >
           <NavLink to="/catalog" className={navClass}>
@@ -43,7 +43,7 @@ export function Header() {
 
         <Link
           to="/queue"
-          className="ml-auto inline-flex items-center gap-2 rounded-full bg-avito-blue-soft px-3 py-2 text-sm font-bold text-[#0078bd] no-underline sm:ml-0"
+          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-2xl bg-avito-blue-soft px-3 py-2 text-sm font-bold text-[#0078bd] no-underline sm:px-3.5"
         >
           <img
             src={clockIcon}
@@ -54,13 +54,6 @@ export function Header() {
           <span className="sm:hidden">Очереди</span>
           <span className="hidden sm:inline">Мои очереди</span>
         </Link>
-
-        <div
-          className="hidden size-9 place-items-center rounded-full bg-avito-purple text-sm font-extrabold text-white sm:grid"
-          aria-hidden="true"
-        >
-          Г
-        </div>
       </div>
     </header>
   )

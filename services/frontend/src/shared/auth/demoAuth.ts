@@ -72,15 +72,11 @@ export async function ensureDemoAuth(
     const token = readStoredAuthToken() ?? DEFAULT_DEMO_TOKEN
     let userId = readStoredUserId()
 
-    try {
-      const user = await createUser({ name: DEMO_USER_NAME, token })
-      if (token !== DEFAULT_DEMO_TOKEN && user.id) {
-        userId = user.id
-      } else {
-        userId = DEFAULT_DEMO_USER_ID
-      }
-    } catch {
-      userId = token === DEFAULT_DEMO_TOKEN ? DEFAULT_DEMO_USER_ID : userId
+    const user = await createUser({ name: DEMO_USER_NAME, token })
+    if (token !== DEFAULT_DEMO_TOKEN && user.id) {
+      userId = user.id
+    } else {
+      userId = DEFAULT_DEMO_USER_ID
     }
 
     localStorage.setItem(DEMO_USER_ID_KEY, userId)

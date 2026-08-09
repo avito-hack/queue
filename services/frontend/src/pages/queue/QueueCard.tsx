@@ -20,39 +20,43 @@ export function QueueCard({
   )
 
   return (
-    <article className="flex min-h-[365px] flex-col overflow-hidden rounded-[20px] border border-transparent bg-white transition duration-150 hover:-translate-y-0.5 hover:border-[#c9c9c9] hover:shadow-card">
-      <div className="grid h-[170px] place-items-center bg-linear-to-br from-[#dff5ff] to-[#e7dcff] text-[92px]">
-        {tile.image}
+    <article className="flex flex-col overflow-hidden rounded-2xl bg-white transition duration-150 hover:shadow-card">
+      <div className="grid aspect-[16/10] place-items-center bg-[#f5f5f5] text-[72px] sm:text-[84px]">
+        <span className="select-none" aria-hidden="true">
+          {tile.image}
+        </span>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
+      <div className="flex flex-1 flex-col gap-3.5 p-4 sm:gap-4 sm:p-5">
         <div
-          className={`self-start rounded-full px-2.5 py-1.5 text-xs font-extrabold ${statusStyles[tile.kind]}`}
+          className={`self-start rounded-lg px-2.5 py-1.5 text-[12px] font-extrabold ${statusStyles[tile.kind]}`}
         >
           {statusLabel(tile, countdown)}
         </div>
 
-        <div className="text-lg font-extrabold leading-snug text-avito-ink">
+        <div className="text-[17px] font-extrabold leading-snug text-avito-ink sm:text-lg">
           {tile.title}
         </div>
 
-        <div className="grid gap-2.5 text-sm text-[#555]">
+        <div className="grid gap-2 text-[13px] text-[#555] sm:text-sm">
           {metaRows(tile, countdown).map((row) => (
             <div key={row.label} className="flex justify-between gap-3">
               <span>{row.label}</span>
-              <strong className="font-mono text-avito-ink">{row.value}</strong>
+              <strong className="font-semibold tabular-nums text-avito-ink">
+                {row.value}
+              </strong>
             </div>
           ))}
         </div>
 
-        <div className="mt-auto flex flex-col gap-3 pt-2">
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
           {tile.kind === 'ticket' &&
             (ticketAllows(tile, 'activate') ||
               ticketAllows(tile, 'checkout') ||
               ticketAllows(tile, 'decline')) && (
             <button
               type="button"
-              className="min-h-10 w-full cursor-pointer rounded-[10px] bg-avito-blue px-3 py-2 text-[13px] font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover"
+              className="min-h-11 w-full cursor-pointer rounded-2xl bg-avito-blue px-3 py-2.5 text-[14px] font-extrabold text-white transition duration-150 hover:bg-avito-blue-hover"
               onClick={onOpenTicket}
             >
               Перейти к покупке
@@ -62,7 +66,7 @@ export function QueueCard({
           {tile.kind === 'queued' && (
             <button
               type="button"
-              className="min-h-10 w-full cursor-pointer rounded-[10px] bg-[#fff0f2] px-3 py-2 text-[13px] font-extrabold text-avito-red"
+              className="min-h-11 w-full cursor-pointer rounded-2xl bg-[#fff0f2] px-3 py-2.5 text-[14px] font-extrabold text-avito-red"
               onClick={onLeaveQueue}
             >
               Выйти из очереди
@@ -71,9 +75,9 @@ export function QueueCard({
 
           <Link
             to={`/product/${tile.productId}`}
-            className="text-center text-sm font-extrabold text-[#008ed8] no-underline"
+            className="py-1 text-center text-[13px] font-extrabold text-avito-blue no-underline sm:text-sm"
           >
-            Перейти на страницу товара →
+            Страница товара
           </Link>
         </div>
       </div>

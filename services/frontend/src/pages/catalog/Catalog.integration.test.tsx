@@ -39,14 +39,14 @@ describe('Catalog integration', () => {
     })
   })
 
-  it('falls back to mock products when API fails', async () => {
+  it('shows empty state when API fails', async () => {
     vi.mocked(productApi.getProducts).mockRejectedValue(new Error('offline'))
 
     renderWithProviders(<Catalog />, { route: '/catalog' })
 
     await waitFor(() => {
       expect(
-        screen.getByText('Кроссовки Northline Drop 01'),
+        screen.getByText('Пока нет активных объявлений.'),
       ).toBeInTheDocument()
     })
   })

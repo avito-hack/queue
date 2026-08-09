@@ -6,9 +6,13 @@ export function SummaryTile({
   value: number
 }) {
   return (
-    <div className="rounded-2xl bg-white p-[18px]">
-      <div className="text-sm text-avito-muted">{label}</div>
-      <div className="mt-2 text-[28px] font-extrabold">{value}</div>
+    <div className="rounded-2xl bg-white px-3 py-3.5 sm:p-[18px]">
+      <div className="text-[11px] leading-tight text-avito-muted sm:text-sm line-clamp-2">
+        {label}
+      </div>
+      <div className="mt-1.5 text-[22px] font-extrabold tabular-nums sm:mt-2 sm:text-[28px]">
+        {value}
+      </div>
     </div>
   )
 }

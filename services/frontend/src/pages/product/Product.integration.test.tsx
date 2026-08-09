@@ -16,6 +16,13 @@ vi.mock('../../features/queue/api', () => ({
   },
 }))
 
+vi.mock('../../features/product/api', () => ({
+  productApi: {
+    getProducts: vi.fn(),
+    getListing: vi.fn().mockRejectedValue(new Error('not found')),
+  },
+}))
+
 import { queueApi } from '../../features/queue/api'
 
 const product = makeProduct({ id: 'p-1' })
@@ -39,7 +46,7 @@ describe('Product integration', () => {
     vi.mocked(queueApi.joinQueue).mockReset()
   })
 
-  it('shows not found when product is missing from store', () => {
+  it('shows not found when product is missing from store', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/product/:id" element={<Product />} />
@@ -47,7 +54,7 @@ describe('Product integration', () => {
       { route: '/product/missing' },
     )
 
-    expect(screen.getByText(/Товар не найден/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Товар не найден/i)).toBeInTheDocument()
   })
 
   it('joins queue via API and opens success modal', async () => {
@@ -79,7 +86,7 @@ describe('Product integration', () => {
     ).toBeInTheDocument()
   })
 
-  it('uses local fallback entry when join API fails', async () => {
+  it('does not join queue when API fails', async () => {
     const user = userEvent.setup()
     vi.mocked(queueApi.joinQueue).mockRejectedValue(new Error('offline'))
 
@@ -88,16 +95,10 @@ describe('Product integration', () => {
     await user.click(screen.getByRole('button', { name: 'Встать в очередь' }))
 
     await waitFor(() => {
-      expect(store.getState().queue.queueItems).toEqual([
-        {
-          id: 'p-1-entry',
-          productId: 'p-1',
-          status: 'queued',
-          position: 8,
-        },
-      ])
+      expect(queueApi.joinQueue).toHaveBeenCalledWith('p-1')
     })
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(store.getState().queue.queueItems).toEqual([])
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('notifies about restock when product is sold out', async () => {

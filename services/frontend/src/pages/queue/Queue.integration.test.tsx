@@ -179,7 +179,7 @@ describe('Queue integration', () => {
     expect(screen.getByText(/Тикет: e-ticket/)).toBeInTheDocument()
   })
 
-  it('opens demo checkout when activate fails', async () => {
+  it('keeps ticket modal open when activate fails', async () => {
     const user = userEvent.setup()
     vi.mocked(ticketApi.activateTicket).mockRejectedValue(new Error('offline'))
 
@@ -214,7 +214,10 @@ describe('Queue integration', () => {
     await waitFor(() => {
       expect(ticketApi.activateTicket).toHaveBeenCalledWith('e-ticket')
     })
-    expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
+    expect(
+      screen.getByRole('dialog', { name: 'Товар доступен для вас' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Оформление заказа')).not.toBeInTheDocument()
   })
 
   it('declines ticket via API and removes it from store', async () => {

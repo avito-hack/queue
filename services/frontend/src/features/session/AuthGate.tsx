@@ -28,7 +28,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status === 'loading') {
     return (
-      <div className="grid min-h-screen place-items-center text-avito-muted">
+      <div className="grid min-h-dvh place-items-center px-4 text-avito-muted">
         Авторизация…
       </div>
     )
@@ -36,13 +36,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status === 'error') {
     return (
-      <div className="grid min-h-screen place-items-center gap-3 p-6 text-center">
-        <p className="text-avito-muted">
+      <div className="grid min-h-dvh place-items-center gap-3 p-6 text-center">
+        <p className="max-w-sm text-avito-muted">
           Не удалось получить demo-токен / зарегистрировать пользователя.
         </p>
         <button
           type="button"
-          className="cursor-pointer rounded-xl bg-avito-blue px-4 py-2 font-extrabold text-white"
+          className="min-h-11 cursor-pointer rounded-2xl bg-avito-blue px-5 py-2.5 font-extrabold text-white"
           onClick={() => window.location.reload()}
         >
           Повторить

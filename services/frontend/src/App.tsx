@@ -18,9 +18,9 @@ function AppReady() {
   useExpiredTickets()
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-dvh">
       <Header />
-      <main className="mx-auto w-[min(1180px,calc(100%-22px))] px-0 pt-[18px] pb-20 sm:w-[min(1180px,calc(100%-32px))] sm:pt-7">
+      <main className="page-shell pt-4 pb-24 sm:pt-7 safe-pb">
         <Routes>
           <Route path="/" element={<Navigate to="/catalog" replace />} />
           <Route path="/catalog" element={<Catalog />} />

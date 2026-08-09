@@ -1,33 +1,31 @@
-/* Сложный фон галереи — неудобно выразить классами Tailwind */
 .product-gallery {
   background:
-    radial-gradient(circle at 80% 15%, rgba(255, 255, 255, 0.86), transparent 25%),
-    radial-gradient(circle at 15% 80%, rgba(255, 255, 255, 0.58), transparent 30%),
-    linear-gradient(145deg, #dff5ff, #d9d5ff 45%, #ffd9e4);
+    radial-gradient(circle at 80% 15%, rgba(255, 255, 255, 0.9), transparent 28%),
+    linear-gradient(160deg, #f5f5f5 0%, #ebebeb 55%, #e4f4ff 100%);
 }
 
 .product-gallery::before,
 .product-gallery::after {
   content: '';
   position: absolute;
-  width: 180px;
-  height: 180px;
-  border: 34px solid rgba(255, 255, 255, 0.35);
+  width: min(160px, 40vw);
+  height: min(160px, 40vw);
+  border: 28px solid rgba(255, 255, 255, 0.4);
   border-radius: 50%;
   pointer-events: none;
 }
 
 .product-gallery::before {
-  top: -84px;
-  right: -50px;
+  top: -72px;
+  right: -40px;
 }
 
 .product-gallery::after {
-  bottom: -106px;
-  left: -30px;
+  bottom: -90px;
+  left: -24px;
 }
 
 .product-emoji {
-  font-size: clamp(150px, 22vw, 260px);
-  filter: drop-shadow(0 28px 28px rgba(30, 30, 60, 0.18));
+  font-size: clamp(120px, 34vw, 240px);
+  filter: drop-shadow(0 20px 24px rgba(0, 0, 0, 0.12));
 }
