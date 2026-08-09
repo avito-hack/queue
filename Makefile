@@ -30,10 +30,10 @@ lint: $(addprefix lint-,$(GO_SERVICES)) lint-frontend
 lint-tickets: generate-tickets
 	cd services/tickets && $(LINTER) run
 
-lint-avito-adapter:
+lint-avito-adapter: generate-avito-adapter
 	cd services/avito-adapter && $(LINTER) run
 
-lint-queue:
+lint-queue: generate-queue
 	$(NPX) --yes @redocly/cli@1.34.5 lint \
 		--skip-rule struct \
 		--skip-rule no-empty-servers \
