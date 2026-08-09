@@ -199,7 +199,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: opaque
       description: Пользовательский авторизационный токен
 
   parameters:
