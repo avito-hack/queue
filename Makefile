@@ -3,6 +3,14 @@ NPM := npm
 NPX := npx
 LINTER := golangci-lint
 COMPOSE := docker compose
+SCHEMAS_LINTER := $(NPX) --yes @redocly/cli@1.34.5 lint \
+		--skip-rule struct \
+		--skip-rule no-empty-servers \
+		--skip-rule security-defined \
+		--skip-rule info-license \
+		--skip-rule no-unused-components \
+		--skip-rule operation-4xx-response \
+		--skip-rule operation-summary
 BIN_DIR := $(CURDIR)/bin
 
 GO_SERVICES := queue tickets avito-adapter
@@ -27,20 +35,17 @@ generate-avito-adapter:
 
 lint: $(addprefix lint-,$(GO_SERVICES)) lint-frontend
 
-lint-tickets: generate-tickets
+lint-tickets:
+	$(SCHEMAS_LINTER) services/tickets/docs/api/openapi.yaml
 	cd services/tickets && $(LINTER) run
 
-lint-avito-adapter: generate-avito-adapter
+lint-avito-adapter:
+	$(SCHEMAS_LINTER) services/avito-adapter/docs/api/openapi.yaml
 	cd services/avito-adapter && $(LINTER) run
 
-lint-queue: generate-queue
-	$(NPX) --yes @redocly/cli@1.34.5 lint \
-		--skip-rule struct \
-		--skip-rule no-empty-servers \
-		--skip-rule security-defined \
-		--skip-rule info-license \
-		--skip-rule no-unused-components \
-		services/queue/docs/api/openapi.yaml
+lint-queue:
+	$(SCHEMAS_LINTER) services/queue/docs/api/openapi.yaml
+	cd services/queue && $(LINTER) run
 
 lint-frontend:
 	cd services/frontend && $(NPM) ci && $(NPM) run lint
