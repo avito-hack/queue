@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 const DEMO_USER_ID_KEY = 'userId'
 const AUTH_TOKEN_KEY = 'authToken'
 const DEMO_USER_NAME = 'Demo Buyer2'
@@ -62,29 +64,59 @@ export function resetAuthWaitState(): void {
   authWaiters = []
 }
 
+export function isUserAlreadyRegisteredError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  const status = error.response?.status
+  if (status !== 400 && status !== 409) return false
+  const data = error.response?.data
+  if (!data || typeof data !== 'object') return false
+  const message = (data as { message?: unknown }).message
+  return (
+    typeof message === 'string' &&
+    message.toLowerCase().includes('conflicts with current state')
+  )
+}
+
+function finishAuth(token: string, userId: string): { userId: string; token: string } {
+  localStorage.setItem(DEMO_USER_ID_KEY, userId)
+  markAuthReady(token)
+  return { userId, token }
+}
+
 export async function ensureDemoAuth(
   createUser: (input: {
     name: string
     token: string
   }) => Promise<{ id: string }>,
+  validateToken?: (token: string) => Promise<{ user_id: string }>,
 ): Promise<{ userId: string; token: string }> {
-  try {
-    const token = readStoredAuthToken() ?? DEFAULT_DEMO_TOKEN
-    let userId = readStoredUserId()
+  const token = readStoredAuthToken() ?? DEFAULT_DEMO_TOKEN
 
+  try {
     const user = await createUser({ name: DEMO_USER_NAME, token })
-    if (token !== DEFAULT_DEMO_TOKEN && user.id) {
-      userId = user.id
-    } else {
-      userId = DEFAULT_DEMO_USER_ID
+    const userId =
+      token !== DEFAULT_DEMO_TOKEN && user.id
+        ? user.id
+        : DEFAULT_DEMO_USER_ID
+    return finishAuth(token, userId)
+  } catch (error) {
+    if (!isUserAlreadyRegisteredError(error)) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      markAuthFailed(err)
+      throw err
     }
 
-    localStorage.setItem(DEMO_USER_ID_KEY, userId)
-    markAuthReady(token)
-    return { userId, token }
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error))
-    markAuthFailed(err)
-    throw err
+    if (validateToken) {
+      try {
+        const validated = await validateToken(token)
+        if (validated.user_id) {
+          return finishAuth(token, validated.user_id)
+        }
+      } catch {
+        // fallback ниже
+      }
+    }
+
+    return finishAuth(token, readStoredUserId())
   }
 }

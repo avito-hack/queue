@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { AxiosError } from 'axios'
 import { getApiErrorMessage } from './errors'
 
-function axiosError(status: number, data?: unknown) {
-  return new AxiosError(
+function axiosError(status: number, data?: unknown, code?: string) {
+  const error = new AxiosError(
     'fail',
-    String(status),
+    code,
     undefined,
     undefined,
     {
@@ -16,16 +16,44 @@ function axiosError(status: number, data?: unknown) {
       config: {} as never,
     },
   )
+  return error
 }
 
 describe('getApiErrorMessage', () => {
-  it('maps 409/410/422 with fallbacks', () => {
-    expect(getApiErrorMessage(axiosError(409), 'x')).toMatch(/Конфликт/)
-    expect(getApiErrorMessage(axiosError(410), 'x')).toMatch(/недоступно/)
-    expect(getApiErrorMessage(axiosError(422), 'x')).toMatch(/недоступ/)
+  it('maps known queue conflict messages to russian', () => {
+    expect(
+      getApiErrorMessage(
+        axiosError(409, {
+          code: 'conflict',
+          message: 'user already in queue',
+        }),
+        'x',
+      ),
+    ).toBe('Вы уже стоите в очереди на этот товар')
   })
 
-  it('prefers server message', () => {
+  it('maps auth jwt gibberish to clear russian', () => {
+    expect(
+      getApiErrorMessage(
+        axiosError(401, {
+          code: 'unauthorized',
+          message:
+            'validate token: token is malformed: token contains an invalid number of segments',
+        }),
+        'Не удалось встать в очередь',
+      ),
+    ).toBe('Сессия недействительна. Обновите страницу')
+  })
+
+  it('maps status fallbacks when body is empty', () => {
+    expect(getApiErrorMessage(axiosError(409), 'x')).toBe(
+      'Действие сейчас недоступно',
+    )
+    expect(getApiErrorMessage(axiosError(410), 'x')).toMatch(/недоступно/)
+    expect(getApiErrorMessage(axiosError(422), 'x')).toMatch(/Нельзя/)
+  })
+
+  it('keeps human russian server message', () => {
     expect(
       getApiErrorMessage(
         axiosError(409, { message: 'Уже в очереди' }),
@@ -34,9 +62,25 @@ describe('getApiErrorMessage', () => {
     ).toBe('Уже в очереди')
   })
 
-  it('uses fallback for unknown errors', () => {
+  it('uses network message without response', () => {
+    const error = new AxiosError('Network Error', 'ERR_NETWORK')
+    expect(getApiErrorMessage(error, 'Не удалось')).toMatch(/связи/)
+  })
+
+  it('uses fallback for unknown non-axios errors', () => {
     expect(getApiErrorMessage(new Error('nope'), 'Не удалось')).toBe(
       'Не удалось',
     )
+  })
+
+  it('maps avito conflict english text', () => {
+    expect(
+      getApiErrorMessage(
+        axiosError(400, {
+          message: 'operation conflicts with current state',
+        }),
+        'Не удалось авторизоваться',
+      ),
+    ).toBe('Действие конфликтует с текущим состоянием')
   })
 })

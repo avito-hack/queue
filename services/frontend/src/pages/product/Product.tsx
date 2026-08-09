@@ -151,7 +151,10 @@ export function Product() {
       const entry = await queueApi.joinQueue(targetProductId)
       completeJoin(entry)
     } catch (error) {
-      reportApiError(error, 'Не удалось встать в очередь')
+      reportApiError(
+        error,
+        'Не удалось встать в очередь. Попробуйте ещё раз',
+      )
     }
   }
 

@@ -6,6 +6,10 @@ export type CreateUserResponse = {
   createdAt: string
 }
 
+export type ValidateUserResponse = {
+  user_id: string
+}
+
 const createUser = async (input: {
   name: string
   token: string
@@ -16,6 +20,16 @@ const createUser = async (input: {
   return response.data
 }
 
+const validateToken = async (token: string): Promise<ValidateUserResponse> => {
+  const response = await api.post<ValidateUserResponse>(
+    '/v1/avito/users/validate',
+    { token },
+    { skipAuth: true },
+  )
+  return response.data
+}
+
 export const authApi = {
   createUser,
+  validateToken,
 }

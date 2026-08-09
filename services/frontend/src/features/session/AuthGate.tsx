@@ -13,10 +13,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        await ensureDemoAuth(authApi.createUser)
+        await ensureDemoAuth(authApi.createUser, authApi.validateToken)
         if (!cancelled) setStatus('ready')
       } catch (error) {
-        reportApiError(error, 'Не удалось авторизоваться')
+        reportApiError(
+          error,
+          'Не удалось войти. Проверьте доступность сервисов',
+        )
         if (!cancelled) setStatus('error')
       }
     })()
@@ -38,7 +41,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="grid min-h-dvh place-items-center gap-3 p-6 text-center">
         <p className="max-w-sm text-avito-muted">
-          Не удалось получить demo-токен / зарегистрировать пользователя.
+          Не удалось войти. Нажмите «Повторить» или обновите страницу.
         </p>
         <button
           type="button"
