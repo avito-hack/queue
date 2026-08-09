@@ -16,15 +16,15 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: services/avito-adapter/go.mod
           cache-dependency-path: services/avito-adapter/go.sum
       - name: Generate
         run: make generate-avito-adapter
       - name: Lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.4.0
           working-directory: services/avito-adapter
@@ -33,8 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: services/avito-adapter/go.mod
           cache-dependency-path: services/avito-adapter/go.sum
@@ -47,8 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: services/avito-adapter/go.mod
           cache-dependency-path: services/avito-adapter/go.sum
