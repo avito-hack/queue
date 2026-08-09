@@ -78,7 +78,7 @@ export function Checkout() {
           Оформление заказа
         </div>
         <h1 className="mt-2 text-[24px] font-extrabold tracking-tight sm:text-2xl">
-          {product?.title ?? `Товар ${ticket.productId}`}
+          {product?.title ?? 'Загрузка товара…'}
         </h1>
         <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#f5f5f5] p-3.5 sm:gap-4 sm:p-4">
           <div className="text-5xl" aria-hidden="true">

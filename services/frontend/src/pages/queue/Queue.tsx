@@ -93,7 +93,7 @@ export function Queue() {
     const product = productItems.find((p) => p.id === entry.productId)
     return {
       ...entry,
-      title: product?.title ?? `Товар ${entry.productId}`,
+      title: product?.title ?? 'Загрузка товара…',
       image: product?.image ?? '🛒',
     }
   }

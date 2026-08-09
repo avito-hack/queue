@@ -17,6 +17,13 @@ vi.mock('../ticket/api', () => ({
   },
 }))
 
+vi.mock('../product/api', () => ({
+  productApi: {
+    getListing: vi.fn(),
+  },
+}))
+
+import { productApi } from '../product/api'
 import { queueApi } from '../queue/api'
 import { ticketApi } from '../ticket/api'
 
@@ -25,9 +32,10 @@ describe('useBootstrapUserState', () => {
     localStorage.clear()
     vi.mocked(queueApi.listUserQueues).mockReset()
     vi.mocked(ticketApi.listTickets).mockReset()
+    vi.mocked(productApi.getListing).mockReset()
   })
 
-  it('hydrates queues and tickets into the store on mount', async () => {
+  it('hydrates queues, tickets and related products into the store on mount', async () => {
     vi.mocked(queueApi.listUserQueues).mockResolvedValue([
       {
         item_id: 'listing-a',
@@ -46,6 +54,20 @@ describe('useBootstrapUserState', () => {
         },
       ],
     })
+    vi.mocked(productApi.getListing).mockImplementation(async (id) => ({
+      id,
+      title: id === 'listing-a' ? 'Кепка Drop 01' : 'Худи Soft',
+      price: 1000,
+      quantity: 1,
+      availableQuantity: 1,
+      reservedQuantity: 0,
+      sellerId: 'seller',
+      queueEnabled: true,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      image: '🧢',
+    }))
 
     const store = createTestStore()
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -57,9 +79,15 @@ describe('useBootstrapUserState', () => {
     await waitFor(() => {
       expect(store.getState().queue.queueItems).toHaveLength(1)
       expect(store.getState().tickets.ticketItems).toHaveLength(1)
+      expect(store.getState().products.productItems).toHaveLength(2)
     })
 
     expect(store.getState().queue.queueItems[0]?.productId).toBe('listing-a')
     expect(store.getState().tickets.ticketItems[0]?.id).toBe('t-1')
+    expect(store.getState().products.productItems.map((p) => p.title)).toEqual(
+      expect.arrayContaining(['Кепка Drop 01', 'Худи Soft']),
+    )
+    expect(productApi.getListing).toHaveBeenCalledWith('listing-a')
+    expect(productApi.getListing).toHaveBeenCalledWith('listing-b')
   })
 })

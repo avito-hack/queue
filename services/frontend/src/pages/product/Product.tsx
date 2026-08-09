@@ -16,13 +16,6 @@ import {
 import type { ItemQueueState, QueueEntry } from '../../features/queue/types'
 import { reportApiError } from '../../shared/api/errors'
 
-const similarProducts = [
-  { emoji: '👟', price: '14 500 ₽', title: 'Кроссовки Northline Base' },
-  { emoji: '🧢', price: '3 900 ₽', title: 'Кепка из коллекции Drop 01' },
-  { emoji: '🧥', price: '12 800 ₽', title: 'Куртка Northline Shell' },
-  { emoji: '🎒', price: '6 700 ₽', title: 'Рюкзак Northline City' },
-]
-
 function pluralPeople(count: number): string {
   const mod10 = count % 10
   const mod100 = count % 100
@@ -329,35 +322,6 @@ export function Product() {
         </p>
       </section>
 
-      <section id="similar-products" className="mt-6 sm:mt-8">
-        <h2 className="mb-3 text-xl font-extrabold tracking-tight sm:mb-4 sm:text-2xl">
-          Похожие товары
-        </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-          {similarProducts.map((item) => (
-            <article
-              className="overflow-hidden rounded-2xl bg-white"
-              key={item.title}
-            >
-              <div
-                className="grid aspect-[4/3] place-items-center bg-[#f5f5f5] text-5xl sm:text-6xl"
-                aria-hidden="true"
-              >
-                {item.emoji}
-              </div>
-              <div className="p-3">
-                <div className="text-[15px] font-extrabold sm:text-base">
-                  {item.price}
-                </div>
-                <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-[#3c3c3c]">
-                  {item.title}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <JoinSuccessModal
         open={joinedEntry !== null}
         position={joinedEntry?.position}
@@ -375,11 +339,9 @@ export function Product() {
         notified={notified}
         onClose={() => setSoldOutDismissed(true)}
         onNotify={handleNotify}
-        onSimilar={() => {
+        onCatalog={() => {
           setSoldOutDismissed(true)
-          document
-            .getElementById('similar-products')
-            ?.scrollIntoView({ behavior: 'smooth' })
+          navigate('/catalog')
         }}
       />
     </section>

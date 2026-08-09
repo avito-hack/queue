@@ -4,7 +4,7 @@ type SoldOutModalProps = {
   notified?: boolean
   onClose: () => void
   onNotify: () => void
-  onSimilar?: () => void
+  onCatalog?: () => void
 }
 
 export function SoldOutModal({
@@ -13,7 +13,7 @@ export function SoldOutModal({
   notified = false,
   onClose,
   onNotify,
-  onSimilar,
+  onCatalog,
 }: SoldOutModalProps) {
   if (!open) return null
 
@@ -50,7 +50,7 @@ export function SoldOutModal({
         <p className="mb-5 leading-relaxed text-[#555]">
           «{productTitle}» больше нет в наличии. Очередь по этому товару
           завершена. Можно подписаться на уведомление о поступлении или
-          посмотреть похожие товары ниже на странице.
+          вернуться в каталог.
         </p>
 
         <div className="grid gap-2.5">
@@ -62,13 +62,13 @@ export function SoldOutModal({
           >
             {notified ? 'Подписка оформлена' : 'Уведомить о поступлении'}
           </button>
-          {onSimilar && (
+          {onCatalog && (
             <button
               type="button"
               className="min-h-12 w-full cursor-pointer rounded-xl bg-[#f1f1f1] px-[18px] py-3 font-extrabold text-avito-ink"
-              onClick={onSimilar}
+              onClick={onCatalog}
             >
-              Посмотреть похожие товары
+              В каталог
             </button>
           )}
         </div>
