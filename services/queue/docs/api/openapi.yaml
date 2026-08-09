@@ -203,7 +203,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-
   /v1/queue/{itemID}/state:
     get:
       operationId: GetItemQueueState
@@ -271,14 +270,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-
 components:
 
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: opaque
 
   schemas:
 
