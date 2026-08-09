@@ -30,7 +30,7 @@ func (r *SessionResolver) ResolveUserID(ctx context.Context, token string) (uuid
 			err,
 		)
 
-		return uuid.Nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+		return uuid.Nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
 
 	id, err := uuid.Parse(userIDStr)
@@ -44,7 +44,7 @@ func (r *SessionResolver) ResolveUserID(ctx context.Context, token string) (uuid
 			userIDStr,
 		)
 
-		return uuid.Nil, fmt.Errorf("%w: parse user id: %v", ErrInvalidToken, err)
+		return uuid.Nil, fmt.Errorf("%w: parse user id: %w", ErrInvalidToken, err)
 	}
 
 	r.logger.Info(

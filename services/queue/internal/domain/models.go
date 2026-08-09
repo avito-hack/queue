@@ -43,24 +43,24 @@ type ItemQueueStateInfo struct {
 }
 
 type ItemQueueMember struct {
-	ItemID  uuid.UUID	
+	ItemID    uuid.UUID
 	UserID    uuid.UUID
-	Position  uint	
+	Position  uint
 	Status    ItemQueueMemberStatus
 	CreatedAt time.Time
 }
 
 type UserQueueInfo struct {
-    ItemID   uuid.UUID
-    Position int
-    Status   ItemQueueMemberStatus
+	ItemID   uuid.UUID
+	Position int
+	Status   ItemQueueMemberStatus
 }
 
 type Listing struct {
-	ID            uuid.UUID
-	QueueEnabled  bool
-	Status        string
-	Quantity      int
+	ID           uuid.UUID
+	QueueEnabled bool
+	Status       string
+	Quantity     int
 }
 
 type TicketStatus string

@@ -3,10 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,8 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	avitoclient "github.com/avito-hack/queue/services/queue/gen/clients/avito"
-	ticketsclient "github.com/avito-hack/queue/services/queue/gen/clients/tickets"
 	"github.com/avito-hack/queue/services/queue/infrastructure/auth"
 	"github.com/avito-hack/queue/services/queue/internal/domain"
 )
@@ -146,39 +141,29 @@ func (r *memberRepositoryStub) ShiftPositionsAfterDelete(_ context.Context, item
 }
 
 type avitoClientStub struct {
-	statusCode int
-	body       string
-	err        error
+	listing *domain.Listing
+	err     error
 }
 
-func (s *avitoClientStub) GetListing(context.Context, avitoclient.ListingId, ...avitoclient.RequestEditorFn) (*http.Response, error) {
+func (s *avitoClientStub) GetListing(context.Context, uuid.UUID) (*domain.Listing, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 
-	return &http.Response{
-		StatusCode: s.statusCode,
-		Body:       io.NopCloser(strings.NewReader(s.body)),
-		Header:     make(http.Header),
-	}, nil
+	return s.listing, nil
 }
 
 type ticketsClientStub struct {
-	statusCode int
-	body       string
-	err        error
+	tickets []*domain.Ticket
+	err     error
 }
 
-func (s *ticketsClientStub) ListTickets(_ context.Context, _ *ticketsclient.ListTicketsParams, _ ...ticketsclient.RequestEditorFn) (*http.Response, error) {
+func (s *ticketsClientStub) GetTickets(context.Context, uuid.UUID) ([]*domain.Ticket, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 
-	return &http.Response{
-		StatusCode: s.statusCode,
-		Body:       io.NopCloser(strings.NewReader(s.body)),
-		Header:     make(http.Header),
-	}, nil
+	return s.tickets, nil
 }
 
 func Test_ItemQueueService_Enqueue_ReturnQueueUnavailableWhenNoAvailableQuantity(t *testing.T) {
@@ -190,8 +175,9 @@ func Test_ItemQueueService_Enqueue_ReturnQueueUnavailableWhenNoAvailableQuantity
 		queueRepository,
 		memberRepository,
 		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
-		&avitoClientStub{statusCode: http.StatusOK, body: `{"id":"11111111-1111-1111-1111-111111111111","title":"item","price":1000,"quantity":1,"reservedQuantity":1,"availableQuantity":0,"status":"active","queueEnabled":true,"sellerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","createdAt":"2026-08-07T10:00:00Z","updatedAt":"2026-08-07T10:00:00Z"}`},
-		&ticketsClientStub{statusCode: http.StatusOK, body: `{"ticket":[]}`},
+		&avitoClientStub{listing: &domain.Listing{QueueEnabled: true, Status: "active", Quantity: 0}},
+		&ticketsClientStub{},
+		slog.Default(),
 	)
 
 	ctx := context.WithValue(context.Background(), auth.AuthorizationHeaderKey, "Bearer test-token")
@@ -213,8 +199,9 @@ func Test_ItemQueueService_Enqueue_ReturnConflictWhenUserHasActiveTicket(t *test
 		queueRepository,
 		memberRepository,
 		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
-		&avitoClientStub{statusCode: http.StatusOK, body: `{"id":"11111111-1111-1111-1111-111111111111","title":"item","price":1000,"quantity":10,"reservedQuantity":1,"availableQuantity":9,"status":"active","queueEnabled":true,"sellerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","createdAt":"2026-08-07T10:00:00Z","updatedAt":"2026-08-07T10:00:00Z"}`},
-		&ticketsClientStub{statusCode: http.StatusOK, body: `{"ticket":[{"id":"22222222-2222-2222-2222-222222222222","listing_id":"11111111-1111-1111-1111-111111111111","sku_id":"33333333-3333-3333-3333-333333333333","status":"active","issued_at":"2026-08-07T10:00:00Z","activation_deadline":"2026-08-07T11:00:00Z","available_actions":["activate"],"activated_at":null,"checkout_url":null,"order_id":null,"finished_at":null,"finish_reason":null}]}`},
+		&avitoClientStub{listing: &domain.Listing{QueueEnabled: true, Status: "active", Quantity: 10}},
+		&ticketsClientStub{tickets: []*domain.Ticket{{ID: "ticket-id", Status: domain.TicketIssued}}},
+		slog.Default(),
 	)
 
 	ctx := context.WithValue(context.Background(), auth.AuthorizationHeaderKey, "Bearer test-token")
@@ -227,7 +214,7 @@ func Test_ItemQueueService_Enqueue_ReturnConflictWhenUserHasActiveTicket(t *test
 	assert.ErrorIs(t, err, ErrUserHasActiveTicket)
 }
 
-func Test_ItemQueueService_Enqueue_ReturnQueueNotFound(t *testing.T) {
+func Test_ItemQueueService_Enqueue_CreateQueueWhenNotFound(t *testing.T) {
 	// given
 	queueRepository := &queueRepositoryStub{exists: false}
 	memberRepository := &memberRepositoryStub{}
@@ -235,8 +222,9 @@ func Test_ItemQueueService_Enqueue_ReturnQueueNotFound(t *testing.T) {
 		queueRepository,
 		memberRepository,
 		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
-		&avitoClientStub{statusCode: http.StatusOK, body: `{"id":"11111111-1111-1111-1111-111111111111","title":"item","price":1000,"quantity":10,"reservedQuantity":1,"availableQuantity":9,"status":"active","queueEnabled":true,"sellerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","createdAt":"2026-08-07T10:00:00Z","updatedAt":"2026-08-07T10:00:00Z"}`},
-		&ticketsClientStub{statusCode: http.StatusOK, body: `{"ticket":[]}`},
+		&avitoClientStub{listing: &domain.Listing{QueueEnabled: true, Status: "active", Quantity: 10}},
+		&ticketsClientStub{},
+		slog.Default(),
 	)
 	ctx := context.WithValue(context.Background(), auth.AuthorizationHeaderKey, "Bearer test-token")
 
@@ -244,8 +232,7 @@ func Test_ItemQueueService_Enqueue_ReturnQueueNotFound(t *testing.T) {
 	err := service.Enqueue(ctx, uuid.New(), uuid.New())
 
 	// then
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrQueueNotFound)
+	require.NoError(t, err)
 }
 
 func Test_ItemQueueService_Enqueue_ReturnUserAlreadyInQueue(t *testing.T) {
@@ -256,8 +243,9 @@ func Test_ItemQueueService_Enqueue_ReturnUserAlreadyInQueue(t *testing.T) {
 		queueRepository,
 		memberRepository,
 		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
-		&avitoClientStub{statusCode: http.StatusOK, body: `{"id":"11111111-1111-1111-1111-111111111111","title":"item","price":1000,"quantity":10,"reservedQuantity":1,"availableQuantity":9,"status":"active","queueEnabled":true,"sellerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","createdAt":"2026-08-07T10:00:00Z","updatedAt":"2026-08-07T10:00:00Z"}`},
-		&ticketsClientStub{statusCode: http.StatusOK, body: `{"ticket":[]}`},
+		&avitoClientStub{listing: &domain.Listing{QueueEnabled: true, Status: "active", Quantity: 10}},
+		&ticketsClientStub{},
+		slog.Default(),
 	)
 	ctx := context.WithValue(context.Background(), auth.AuthorizationHeaderKey, "Bearer test-token")
 
@@ -280,8 +268,9 @@ func Test_ItemQueueService_Enqueue_CreateMemberWithNextPosition(t *testing.T) {
 		queueRepository,
 		memberRepository,
 		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
-		&avitoClientStub{statusCode: http.StatusOK, body: `{"id":"11111111-1111-1111-1111-111111111111","title":"item","price":1000,"quantity":10,"reservedQuantity":1,"availableQuantity":9,"status":"active","queueEnabled":true,"sellerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","createdAt":"2026-08-07T10:00:00Z","updatedAt":"2026-08-07T10:00:00Z"}`},
-		&ticketsClientStub{statusCode: http.StatusOK, body: `{"ticket":[]}`},
+		&avitoClientStub{listing: &domain.Listing{QueueEnabled: true, Status: "active", Quantity: 10}},
+		&ticketsClientStub{},
+		slog.Default(),
 	)
 	ctx := context.WithValue(context.Background(), auth.AuthorizationHeaderKey, "Bearer test-token")
 
@@ -302,7 +291,7 @@ func Test_ItemQueueService_Dequeue_ReturnUserNotInQueue(t *testing.T) {
 	// given
 	queueRepository := &queueRepositoryStub{}
 	memberRepository := &memberRepositoryStub{getByUserErr: errors.New("not found")}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil, slog.Default())
 
 	// when
 	err := service.Dequeue(context.Background(), uuid.New(), uuid.New())
@@ -319,7 +308,7 @@ func Test_ItemQueueService_Dequeue_DeleteMemberAndShiftPositions(t *testing.T) {
 
 	queueRepository := &queueRepositoryStub{}
 	memberRepository := &memberRepositoryStub{getByUser: &domain.ItemQueueMember{Position: 2}}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil, slog.Default())
 
 	// when
 	err := service.Dequeue(context.Background(), itemID, userID)
@@ -336,7 +325,7 @@ func Test_ItemQueueService_ClearItemQueue_ReturnQueueNotFound(t *testing.T) {
 	// given
 	queueRepository := &queueRepositoryStub{exists: false}
 	memberRepository := &memberRepositoryStub{}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil, slog.Default())
 
 	// when
 	err := service.ClearItemQueue(context.Background(), uuid.New())
@@ -351,7 +340,7 @@ func Test_ItemQueueService_ClearItemQueue_DeleteAllMembersByItemID(t *testing.T)
 	itemID := uuid.New()
 	queueRepository := &queueRepositoryStub{exists: true}
 	memberRepository := &memberRepositoryStub{}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil, slog.Default())
 
 	// when
 	err := service.ClearItemQueue(context.Background(), itemID)
@@ -365,7 +354,7 @@ func Test_ItemQueueService_GetUserPosition_ReturnUserNotInQueue(t *testing.T) {
 	// given
 	queueRepository := &queueRepositoryStub{}
 	memberRepository := &memberRepositoryStub{getByUserErr: errors.New("not found")}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil, slog.Default())
 
 	// when
 	_, err := service.GetUserPosition(context.Background(), uuid.New(), uuid.New())
@@ -434,7 +423,7 @@ func Test_ItemQueueService_GetUserQueues_ReturnMappedQueues(t *testing.T) {
 			Status:   domain.UserWaitingInLine,
 		}},
 	}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil, slog.Default())
 
 	// when
 	result, err := service.GetUserQueues(context.Background(), userID)

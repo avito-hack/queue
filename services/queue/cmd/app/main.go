@@ -47,9 +47,7 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-
 	ctx := context.Background()
-
 
 	pool, err := postgres.NewPool(
 		ctx,
@@ -63,9 +61,7 @@ func run(logger *slog.Logger) error {
 
 	defer pool.Close()
 
-
 	queries := sqlc.New(pool)
-
 
 	queueRepository := postgres.NewItemQueueRepository(
 		queries,
@@ -82,7 +78,6 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
-
 	avitoAPI, err := avitogen.NewClient(
 		cfg.Services.AvitoBaseURL,
 	)
@@ -95,7 +90,6 @@ func run(logger *slog.Logger) error {
 		avitoAPI,
 		logger,
 	)
-
 
 	ticketsAPI, err := ticketsgen.NewClient(
 		cfg.Services.TicketsBaseURL,
@@ -110,7 +104,6 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
-
 	service := usecase.NewItemQueueService(
 		queueRepository,
 		memberRepository,
@@ -119,7 +112,6 @@ func run(logger *slog.Logger) error {
 		tickets,
 		logger,
 	)
-
 
 	introspectionURL := cfg.Auth.IntrospectionURL
 	if introspectionURL == "" {
@@ -137,7 +129,6 @@ func run(logger *slog.Logger) error {
 		sessionService,
 		logger,
 	)
-
 
 	health := usecase.NewHealth()
 

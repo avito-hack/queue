@@ -85,7 +85,7 @@ func (tm *transactionManager) WithinTransaction(
 			"error",
 			err,
 		)
-	
+
 		return err
 	}
 

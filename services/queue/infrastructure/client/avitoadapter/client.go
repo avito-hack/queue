@@ -54,7 +54,9 @@ func (c *client) GetListing(
 		)
 	}
 
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	switch response.StatusCode {
 

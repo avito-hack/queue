@@ -119,7 +119,9 @@ func (s *SessionService) Validate(ctx context.Context, token string) (string, er
 		return "", fmt.Errorf("introspection request failed: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("unexpected introspection status: %d", resp.StatusCode)
@@ -146,11 +148,11 @@ func (s *SessionService) Validate(ctx context.Context, token string) (string, er
 	}
 	if parsed.UserID == "" {
 		err := errors.New("empty user id")
-	
+
 		s.logger.Warn(
 			"token validation returned empty user id",
 		)
-	
+
 		return "", err
 	}
 

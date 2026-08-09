@@ -46,6 +46,7 @@ func (s *itemQueueService) Enqueue(ctx context.Context, itemID, userID uuid.UUID
 				"error",
 				err,
 				"item_id",
+				itemID,
 			)
 
 			return err

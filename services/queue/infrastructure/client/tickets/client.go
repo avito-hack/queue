@@ -92,7 +92,9 @@ func (c *client) GetTickets(
 		)
 	}
 
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	if response.StatusCode != http.StatusOK {
 

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+
 	"github.com/google/uuid"
 
 	"github.com/avito-hack/queue/services/queue/internal/domain"

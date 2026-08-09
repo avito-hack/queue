@@ -10,10 +10,11 @@ import (
 
 	"github.com/avito-hack/queue/services/queue/config"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	pgxstdlib "github.com/jackc/pgx/v5/stdlib"
 )
 
 func ApplyMigrations(ctx context.Context, cfg config.PostgresConfig, logger *slog.Logger) error {
+	_ = pgxstdlib.GetDefaultDriver()
 	dsn := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s",
 		cfg.User,
@@ -42,7 +43,9 @@ func ApplyMigrations(ctx context.Context, cfg config.PostgresConfig, logger *slo
 		return fmt.Errorf("open postgres connection for migrations: %w", err)
 	}
 
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	if err := goose.SetDialect("postgres"); err != nil {
 		logger.Error(

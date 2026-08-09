@@ -7,10 +7,11 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	pgxstdlib "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
+	_ = pgxstdlib.GetDefaultDriver()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	dsn := os.Getenv("DATABASE_URL")
@@ -38,7 +39,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	if err := goose.SetDialect("postgres"); err != nil {
 		logger.Error(

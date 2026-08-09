@@ -9,7 +9,7 @@ import (
 )
 
 func (s *itemQueueService) Dequeue(ctx context.Context, itemID, userID uuid.UUID) error {
-	return s.txManager.WithinTransaction(ctx, func(ctx context.Context, queueRepository domain.ItemQueueRepository, memberRepository domain.ItemQueueMemberRepository) error {
+	return s.txManager.WithinTransaction(ctx, func(ctx context.Context, _ domain.ItemQueueRepository, memberRepository domain.ItemQueueMemberRepository) error {
 		member, err := memberRepository.GetByUserID(ctx, itemID, userID)
 		if err != nil {
 			s.logger.Warn(
