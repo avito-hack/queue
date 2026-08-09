@@ -177,6 +177,7 @@ describe('Queue integration', () => {
     })
     expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
     expect(screen.getByText(/Тикет: e-ticket/)).toBeInTheDocument()
+    expect(screen.queryByText('Перейти к покупке')).not.toBeInTheDocument()
   })
 
   it('keeps ticket modal open when activate fails', async () => {

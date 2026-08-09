@@ -64,6 +64,12 @@ export function resetAuthWaitState(): void {
   authWaiters = []
 }
 
+export function switchActiveUser(user: { id: string; token: string }): void {
+  localStorage.setItem(DEMO_USER_ID_KEY, user.id)
+  markAuthReady(user.token)
+  window.location.reload()
+}
+
 export function isUserAlreadyRegisteredError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return false
   const status = error.response?.status
@@ -89,16 +95,51 @@ export async function ensureDemoAuth(
     token: string
   }) => Promise<{ id: string }>,
   validateToken?: (token: string) => Promise<{ user_id: string }>,
+  onInvalidToken?: (token: string) => void,
+  isKnownToken?: (token: string) => boolean,
 ): Promise<{ userId: string; token: string }> {
-  const token = readStoredAuthToken() ?? DEFAULT_DEMO_TOKEN
+  let storedToken = readStoredAuthToken()
+
+  if (
+    storedToken &&
+    storedToken !== DEFAULT_DEMO_TOKEN &&
+    isKnownToken &&
+    !isKnownToken(storedToken)
+  ) {
+    onInvalidToken?.(storedToken)
+    localStorage.setItem(DEMO_USER_ID_KEY, DEFAULT_DEMO_USER_ID)
+    localStorage.setItem(AUTH_TOKEN_KEY, DEFAULT_DEMO_TOKEN)
+    storedToken = DEFAULT_DEMO_TOKEN
+  }
+
+  const candidates =
+    storedToken && storedToken !== DEFAULT_DEMO_TOKEN
+      ? [storedToken, DEFAULT_DEMO_TOKEN]
+      : [storedToken ?? DEFAULT_DEMO_TOKEN]
+
+  if (validateToken) {
+    for (const token of candidates) {
+      try {
+        const validated = await validateToken(token)
+        if (validated.user_id) {
+          return finishAuth(token, validated.user_id)
+        }
+      } catch {
+        if (token !== DEFAULT_DEMO_TOKEN) {
+          onInvalidToken?.(token)
+        }
+      }
+    }
+  } else if (storedToken) {
+    return finishAuth(storedToken, readStoredUserId())
+  }
+
+  const token = DEFAULT_DEMO_TOKEN
 
   try {
     const user = await createUser({ name: DEMO_USER_NAME, token })
-    const userId =
-      token !== DEFAULT_DEMO_TOKEN && user.id
-        ? user.id
-        : DEFAULT_DEMO_USER_ID
-    return finishAuth(token, userId)
+    const userId = user.id || DEFAULT_DEMO_USER_ID
+    return finishAuth(token, token === DEFAULT_DEMO_TOKEN ? DEFAULT_DEMO_USER_ID : userId)
   } catch (error) {
     if (!isUserAlreadyRegisteredError(error)) {
       const err = error instanceof Error ? error : new Error(String(error))
@@ -117,6 +158,6 @@ export async function ensureDemoAuth(
       }
     }
 
-    return finishAuth(token, readStoredUserId())
+    return finishAuth(token, DEFAULT_DEMO_USER_ID)
   }
 }

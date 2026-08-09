@@ -47,4 +47,14 @@ describe('toTicketEntry', () => {
       }),
     ).toBeNull()
   })
+
+  it('ignores redeemed tickets after activate', () => {
+    expect(
+      toTicketEntry({
+        id: 't1',
+        listing_id: 'p1',
+        status: 'redeemed',
+      }),
+    ).toBeNull()
+  })
 })

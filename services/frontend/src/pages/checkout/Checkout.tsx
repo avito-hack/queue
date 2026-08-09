@@ -1,31 +1,39 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { removeTicket } from '../../features/ticket/ticketSlice'
+import { showToast } from '../../shared/toast'
+
+type CheckoutLocationState = {
+  productId?: string
+}
 
 export function Checkout() {
   const [params] = useSearchParams()
+  const location = useLocation()
   const ticketId = params.get('ticket')
   const dispatch = useAppDispatch()
   const [paying, setPaying] = useState(false)
   const [paid, setPaid] = useState(false)
 
+  const locationProductId =
+    (location.state as CheckoutLocationState | null)?.productId?.trim() || ''
+
   const ticket = useAppSelector((state) =>
     state.tickets.ticketItems.find((item) => item.id === ticketId),
   )
+  const productId = ticket?.productId || locationProductId
   const product = useAppSelector((state) =>
-    state.products.productItems.find((p) => p.id === ticket?.productId),
+    state.products.productItems.find((p) => p.id === productId),
   )
 
   const handlePay = () => {
     if (!ticketId || paying) return
-
-    // В OpenAPI tickets нет /pay — оплата через activate → checkout_url / avito orders.
-    // Этот экран — демо-заглушка, если activate упал или url локальный.
     setPaying(true)
     dispatch(removeTicket(ticketId))
     setPaid(true)
     setPaying(false)
+    showToast('Демо-оплата прошла, тикет убран', 'info')
   }
 
   if (paid) {
@@ -33,8 +41,8 @@ export function Checkout() {
       <section className="rounded-2xl bg-white p-8 text-center">
         <h1 className="m-0 text-2xl tracking-tight">Заказ оформлен</h1>
         <p className="mt-3 text-avito-muted">
-          Демо-чекаут: тикет убран локально. В бою погашение приходит с бэка
-          после оплаты по checkout_url.
+          Демо-оплата: тикет убран из приложения. Когда появится pay/redeem на
+          бэке — повесим его на кнопку «Оплатить».
         </p>
         <Link
           to="/catalog"
@@ -46,7 +54,7 @@ export function Checkout() {
     )
   }
 
-  if (!ticketId || !ticket) {
+  if (!ticketId) {
     return (
       <section className="rounded-2xl bg-white p-8 text-center">
         <h1 className="m-0 text-2xl tracking-tight">Нет права на покупку</h1>
@@ -78,7 +86,7 @@ export function Checkout() {
           Оформление заказа
         </div>
         <h1 className="mt-2 text-[24px] font-extrabold tracking-tight sm:text-2xl">
-          {product?.title ?? 'Загрузка товара…'}
+          {product?.title ?? 'Товар'}
         </h1>
         <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#f5f5f5] p-3.5 sm:gap-4 sm:p-4">
           <div className="text-5xl" aria-hidden="true">
@@ -89,13 +97,13 @@ export function Checkout() {
               {product ? `${product.price.toLocaleString('ru-RU')} ₽` : '—'}
             </div>
             <div className="mt-1 truncate text-sm text-avito-muted">
-              Тикет: {ticket.id}
+              Тикет: {ticketId}
             </div>
           </div>
         </div>
         <p className="mt-4 text-sm leading-relaxed text-[#555]">
-          Упрощённый чекаут для демо (нет endpoint оплаты в tickets API). Кнопка
-          только гасит тикет в store.
+          Тикет уже активирован. «Оплатить» — демо-оплата: убираем тикет локально
+          и показываем успех.
         </p>
         <button
           type="button"

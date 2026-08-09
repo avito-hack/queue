@@ -44,7 +44,7 @@ func Test_CreateOrder_ReturnsExistingOrderForSameIdempotencyKey(t *testing.T) {
 	// then
 	require.NoError(t, err)
 	assert.Equal(t, first.ID, second.ID)
-	assert.Contains(t, first.CheckoutURL, skuID)
+	assert.Equal(t, "/checkout?ticket="+ticketID, first.CheckoutURL)
 }
 
 func Test_CreateOrder_ReturnsConflictWhenStockIsReserved(t *testing.T) {

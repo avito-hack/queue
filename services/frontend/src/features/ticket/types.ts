@@ -1,4 +1,4 @@
-export type TicketStatus = 'issued' | 'active' | 'redeemed' | 'closed'
+export type TicketStatus = 'issued' | 'redeemed' | 'closed'
 
 export type TicketAvailableAction = 'activate' | 'decline' | 'checkout'
 

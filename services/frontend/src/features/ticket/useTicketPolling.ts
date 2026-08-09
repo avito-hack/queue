@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { removeQueuedByProductId } from '../queue/queueSlice'
 import { ticketApi } from './api'
-import { upsertTicket } from './ticketSlice'
+import { setTicketItems } from './ticketSlice'
 import type {
   TicketAvailableAction,
   TicketEntry,
@@ -10,7 +10,7 @@ import type {
 } from './types'
 
 const POLL_MS = 5000
-const ACTIVE_STATUSES = new Set<TicketStatus>(['issued', 'active'])
+const ACTIVE_STATUSES = new Set<TicketStatus>(['issued'])
 
 const ACTIONS = new Set<TicketAvailableAction>([
   'activate',
@@ -64,12 +64,14 @@ export function useTicketPolling(enabled = true) {
         if (cancelled) return
 
         const list = Array.isArray(data?.ticket) ? data.ticket : []
+        const next: TicketEntry[] = []
         for (const dto of list) {
           const ticket = toTicketEntry(dto)
           if (!ticket) continue
           dispatch(removeQueuedByProductId(ticket.productId))
-          dispatch(upsertTicket(ticket))
+          next.push(ticket)
         }
+        dispatch(setTicketItems(next))
       } catch {
         // бэк ещё не готов
       }

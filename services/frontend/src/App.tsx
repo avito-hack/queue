@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { DemoPanel } from './components/demo/DemoPanel'
 import { Header } from './components/layout/Header'
 import { ToastHost } from './components/ToastHost'
 import { useQueuePolling } from './features/queue/useQueuePolling'
@@ -29,6 +30,7 @@ function AppReady() {
           <Route path="/checkout" element={<Checkout />} />
         </Routes>
       </main>
+      <DemoPanel />
       <ToastHost />
     </div>
   )

@@ -15,6 +15,7 @@ import {
 } from '../../features/queue/queueSlice'
 import type { ItemQueueState, QueueEntry } from '../../features/queue/types'
 import { reportApiError } from '../../shared/api/errors'
+import { showToast } from '../../shared/toast'
 
 function pluralPeople(count: number): string {
   const mod10 = count % 10
@@ -154,6 +155,7 @@ export function Product() {
   const handleNotify = () => {
     localStorage.setItem(notifyStorageKey(productId), '1')
     setNotified(true)
+    showToast('Подписка оформлена. Сообщим, когда товар появится', 'info')
   }
 
   if (!product) {

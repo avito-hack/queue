@@ -11,6 +11,7 @@ import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigat
 import { removeTicket } from '../../features/ticket/ticketSlice'
 import { ticketAllows } from '../../features/ticket/types'
 import { reportApiError } from '../../shared/api/errors'
+import { showToast } from '../../shared/toast'
 import { QueueCard } from './QueueCard'
 import { QueueEmpty } from './QueueEmpty'
 import { SummaryTile } from './SummaryTile'
@@ -44,20 +45,21 @@ export function Queue() {
       return
     }
 
+    const productId = ticketTile.productId
+
     void (async () => {
       setBuying(true)
       try {
         const result = await ticketApi.activateTicket(id)
-        setTicketTile(null)
+        dispatch(removeTicket(id))
         const target = resolveCheckoutNavigation(id, result.checkout_url)
         if (target.kind === 'external') {
           window.location.assign(target.url)
           return
         }
-        navigate(target.path)
+        navigate(target.path, { state: { productId } })
       } catch (error) {
         reportApiError(error, 'Не удалось активировать тикет')
-      } finally {
         setBuying(false)
       }
     })()
@@ -74,6 +76,7 @@ export function Queue() {
         await queueApi.leaveQueue(productId)
         dispatch(leaveQueue(entryId))
         setLeaveTile(null)
+        showToast('Вы вышли из очереди', 'info')
       } catch (error) {
         reportApiError(error, 'Не удалось выйти из очереди')
       } finally {
@@ -185,6 +188,7 @@ export function Queue() {
               await ticketApi.declineTicket(id)
               dispatch(removeTicket(id))
               setTicketTile(null)
+              showToast('Вы отказались от тикета', 'info')
             } catch (error) {
               reportApiError(error, 'Не удалось отказаться от тикета')
             }

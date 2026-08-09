@@ -18,7 +18,7 @@ func (s *Service) CreateOrder(ctx context.Context, ticketID, listingID, skuID, u
 	orderID := uuid.NewString()
 	order := Order{
 		ID: orderID, TicketID: ticketID, ListingID: listingID, SkuID: skuID, UserID: userID, IdempotencyKey: idempotencyKey,
-		CheckoutURL: fmt.Sprintf("https://checkout.local/orders/%s?sku_id=%s", orderID, skuID),
+		CheckoutURL: fmt.Sprintf("/checkout?ticket=%s", ticketID),
 		Status:      OrderCreated, CreatedAt: time.Now().UTC(),
 	}
 	if s.writer != nil {
