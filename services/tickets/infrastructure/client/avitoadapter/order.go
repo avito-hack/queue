@@ -80,10 +80,10 @@ func createdOrderFromResponse(order *generated.Order, request usecase.CreateOrde
 	if order.Status != generated.Created {
 		return usecase.CreatedOrder{}, fmt.Errorf("decode create order response: unexpected order status %q", order.Status)
 	}
-	checkoutURL, err := domain.NormalizeCheckoutURL(order.CheckoutUrl)
+	_, err := domain.NormalizeCheckoutURL(order.CheckoutUrl)
 	if err != nil {
 		return usecase.CreatedOrder{}, fmt.Errorf("decode create order response: %w", err)
 	}
 
-	return usecase.CreatedOrder{ID: order.Id, CheckoutURL: checkoutURL}, nil
+	return usecase.CreatedOrder{ID: order.Id, CheckoutURL: "/checkout?ticket=" + request.TicketID.String()}, nil
 }
