@@ -46,19 +46,20 @@ export function useBootstrapUserState() {
 
       if (cancelled) return
 
-      let tickets: TicketEntry[] = []
-      if (ticketsResult.status === 'fulfilled') {
-        const list = ticketsResult.value.ticket ?? []
-        const fromApi = list
-          .map(toTicketEntry)
-          .filter((item: TicketEntry | null): item is TicketEntry => item !== null)
-        tickets = mergeTicketLists(fromApi)
+      const tickets: TicketEntry[] =
+        ticketsResult.status === 'fulfilled'
+          ? mergeTicketLists(
+              (ticketsResult.value.ticket ?? [])
+                .map(toTicketEntry)
+                .filter(
+                  (item: TicketEntry | null): item is TicketEntry =>
+                    item !== null,
+                ),
+            )
+          : mergeTicketLists([])
+
+      if (ticketsResult.status === 'fulfilled' || tickets.length > 0) {
         dispatch(setTicketItems(tickets))
-      } else {
-        tickets = mergeTicketLists([])
-        if (tickets.length > 0) {
-          dispatch(setTicketItems(tickets))
-        }
       }
 
       let queueProductIds: string[] = []
