@@ -2,11 +2,10 @@ package tickets
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
-
+	"encoding/json"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -31,63 +30,96 @@ func NewClient(
 	}
 }
 
-func (c *client) GetTickets(
+func (c *client) authEditor(ctx context.Context) func(context.Context, *http.Request) error {
+	return func(_ context.Context, req *http.Request) error {
+		header, ok := ctx.Value(auth.AuthorizationHeaderKey).(string)
+
+		if !ok || header == "" {
+			return fmt.Errorf("authorization header missing")
+		}
+
+		req.Header.Set("Authorization", header)
+
+		return nil
+	}
+}
+
+func (c *client) IssueTicket(
 	ctx context.Context,
-	itemID uuid.UUID,
-) ([]*domain.Ticket, error) {
+	listingID uuid.UUID,
+	queueEntryID uuid.UUID,
+	skuID uuid.UUID,
+	userID uuid.UUID,
+) (*domain.Ticket, error) {
 
-	listingID := openapi_types.UUID(itemID)
-
-	response, err := c.api.ListTickets(
+	response, err := c.api.IssueTicket(
 		ctx,
-		&ticketsgen.ListTicketsParams{
-			ListingId: &listingID,
+		&ticketsgen.IssueTicketParams{
+			IdempotencyKey: ticketsgen.IdempotencyKey(
+				openapi_types.UUID(queueEntryID),
+			),
 		},
-		func(
-			_ context.Context,
-			req *http.Request,
-		) error {
-
-			header, ok := ctx.Value(
-				auth.AuthorizationHeaderKey,
-			).(string)
-
-			if !ok || header == "" {
-				err := fmt.Errorf(
-					"authorization header missing",
-				)
-
-				c.logger.Error(
-					"failed to authorize tickets request",
-					"error",
-					err,
-					"item_id",
-					itemID,
-				)
-
-				return err
-			}
-
-			req.Header.Set(
-				"Authorization",
-				header,
-			)
-
-			return nil
+		ticketsgen.IssueTicketJSONRequestBody{
+			ListingId:    openapi_types.UUID(listingID),
+			QueueEntryId: openapi_types.UUID(queueEntryID),
+			SkuId:        openapi_types.UUID(skuID),
+			UserId:       openapi_types.UUID(userID),
 		},
+		c.authEditor(ctx),
 	)
 
 	if err != nil {
-		c.logger.Error(
-			"tickets request failed",
-			"error",
-			err,
-			"item_id",
-			itemID,
-		)
+		return nil, fmt.Errorf("issue ticket request: %w", err)
+	}
 
+	defer response.Body.Close()
+
+	switch response.StatusCode {
+	case http.StatusCreated, http.StatusOK:
+
+	default:
 		return nil, fmt.Errorf(
-			"list tickets request: %w",
+			"issue ticket failed with status %d",
+			response.StatusCode,
+		)
+	}
+
+	var ticket ticketsgen.V1Ticket
+
+	if err := json.NewDecoder(response.Body).Decode(&ticket); err != nil {
+		return nil, fmt.Errorf(
+			"decode ticket response: %w",
+			err,
+		)
+	}
+
+	return &domain.Ticket{
+		ID: ticket.Id.String(),
+		Status: domain.TicketStatus(
+			ticket.Status,
+		),
+	}, nil
+}
+
+func (c *client) DeclineTicket(
+	ctx context.Context,
+	ticketID uuid.UUID,
+) error {
+
+	response, err := c.api.DeclineTicket(
+		ctx,
+		openapi_types.UUID(ticketID),
+		&ticketsgen.DeclineTicketParams{
+			IdempotencyKey: ticketsgen.IdempotencyKey(
+				openapi_types.UUID(uuid.New()),
+			),
+		},
+		c.authEditor(ctx),
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"decline ticket request: %w",
 			err,
 		)
 	}
@@ -95,71 +127,11 @@ func (c *client) GetTickets(
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-
-		err := fmt.Errorf(
-			"unexpected tickets status: %d",
+		return fmt.Errorf(
+			"decline ticket failed: %d",
 			response.StatusCode,
 		)
-
-		c.logger.Error(
-			"tickets service returned error",
-			"error",
-			err,
-			"item_id",
-			itemID,
-			"status_code",
-			response.StatusCode,
-		)
-
-		return nil, err
 	}
 
-	var responseBody ticketsgen.V1TicketListResponse
-
-	if err := json.NewDecoder(
-		response.Body,
-	).Decode(&responseBody); err != nil {
-
-		c.logger.Error(
-			"failed to decode tickets response",
-			"error",
-			err,
-			"item_id",
-			itemID,
-		)
-
-		return nil, fmt.Errorf(
-			"decode tickets response: %w",
-			err,
-		)
-	}
-
-	result := make(
-		[]*domain.Ticket,
-		0,
-		len(responseBody.Ticket),
-	)
-
-	for _, ticket := range responseBody.Ticket {
-
-		result = append(
-			result,
-			&domain.Ticket{
-				ID: ticket.Id.String(),
-				Status: domain.TicketStatus(
-					ticket.Status,
-				),
-			},
-		)
-	}
-
-	c.logger.Info(
-		"tickets fetched successfully",
-		"item_id",
-		itemID,
-		"tickets_count",
-		len(result),
-	)
-
-	return result, nil
+	return nil
 }

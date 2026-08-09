@@ -76,6 +76,15 @@ func (q *Queries) GetItemQueueByID(ctx context.Context, itemID pgtype.UUID) (Ite
 	return i, err
 }
 
+const lockItemQueue = `-- name: LockItemQueue :exec
+SELECT pg_advisory_xact_lock(hashtext($1))
+`
+
+func (q *Queries) LockItemQueue(ctx context.Context, hashtext string) error {
+	_, err := q.db.Exec(ctx, lockItemQueue, hashtext)
+	return err
+}
+
 const updateItemQueue = `-- name: UpdateItemQueue :exec
 UPDATE item_queues
 SET state = $2, updated_at = $3

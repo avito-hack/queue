@@ -24,28 +24,55 @@ func (q *Queries) CountItemQueueMembers(ctx context.Context, itemID pgtype.UUID)
 	return count, err
 }
 
-const createItemQueueMember = `-- name: CreateItemQueueMember :exec
-INSERT INTO item_queue_members (item_id, user_id, position, status, created_at)
-VALUES ($1, $2, $3, $4, $5)
+const createItemQueueMember = `-- name: CreateItemQueueMember :one
+INSERT INTO item_queue_members (
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 `
 
 type CreateItemQueueMemberParams struct {
 	ItemID    pgtype.UUID      `json:"item_id"`
 	UserID    pgtype.UUID      `json:"user_id"`
+	TicketID  pgtype.UUID      `json:"ticket_id"`
 	Position  int32            `json:"position"`
 	Status    string           `json:"status"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
 }
 
-func (q *Queries) CreateItemQueueMember(ctx context.Context, arg CreateItemQueueMemberParams) error {
-	_, err := q.db.Exec(ctx, createItemQueueMember,
+func (q *Queries) CreateItemQueueMember(ctx context.Context, arg CreateItemQueueMemberParams) (ItemQueueMember, error) {
+	row := q.db.QueryRow(ctx, createItemQueueMember,
 		arg.ItemID,
 		arg.UserID,
+		arg.TicketID,
 		arg.Position,
 		arg.Status,
 		arg.CreatedAt,
 	)
-	return err
+	var i ItemQueueMember
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.UserID,
+		&i.TicketID,
+		&i.Position,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const deleteAllItemQueueMembersByItemID = `-- name: DeleteAllItemQueueMembersByItemID :exec
@@ -60,7 +87,8 @@ func (q *Queries) DeleteAllItemQueueMembersByItemID(ctx context.Context, itemID 
 
 const deleteItemQueueMember = `-- name: DeleteItemQueueMember :exec
 DELETE FROM item_queue_members
-WHERE item_id = $1 AND user_id = $2
+WHERE item_id = $1 
+AND user_id = $2
 `
 
 type DeleteItemQueueMemberParams struct {
@@ -77,7 +105,8 @@ const existsItemQueueMember = `-- name: ExistsItemQueueMember :one
 SELECT EXISTS(
     SELECT 1
     FROM item_queue_members
-    WHERE item_id = $1 AND user_id = $2
+    WHERE item_id = $1 
+    AND user_id = $2
 )
 `
 
@@ -94,7 +123,14 @@ func (q *Queries) ExistsItemQueueMember(ctx context.Context, arg ExistsItemQueue
 }
 
 const getAllItemQueueMembersByItemID = `-- name: GetAllItemQueueMembersByItemID :many
-SELECT item_id, user_id, position, status, created_at
+SELECT 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 FROM item_queue_members
 WHERE item_id = $1
 ORDER BY position
@@ -110,8 +146,10 @@ func (q *Queries) GetAllItemQueueMembersByItemID(ctx context.Context, itemID pgt
 	for rows.Next() {
 		var i ItemQueueMember
 		if err := rows.Scan(
+			&i.ID,
 			&i.ItemID,
 			&i.UserID,
+			&i.TicketID,
 			&i.Position,
 			&i.Status,
 			&i.CreatedAt,
@@ -127,7 +165,14 @@ func (q *Queries) GetAllItemQueueMembersByItemID(ctx context.Context, itemID pgt
 }
 
 const getAllItemQueueMembersByUserID = `-- name: GetAllItemQueueMembersByUserID :many
-SELECT item_id, user_id, position, status, created_at
+SELECT 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 FROM item_queue_members
 WHERE user_id = $1
 ORDER BY created_at
@@ -143,8 +188,10 @@ func (q *Queries) GetAllItemQueueMembersByUserID(ctx context.Context, userID pgt
 	for rows.Next() {
 		var i ItemQueueMember
 		if err := rows.Scan(
+			&i.ID,
 			&i.ItemID,
 			&i.UserID,
+			&i.TicketID,
 			&i.Position,
 			&i.Status,
 			&i.CreatedAt,
@@ -160,9 +207,17 @@ func (q *Queries) GetAllItemQueueMembersByUserID(ctx context.Context, userID pgt
 }
 
 const getItemQueueMemberByUserID = `-- name: GetItemQueueMemberByUserID :one
-SELECT item_id, user_id, position, status, created_at
+SELECT 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 FROM item_queue_members
-WHERE item_id = $1 AND user_id = $2
+WHERE item_id = $1 
+AND user_id = $2
 `
 
 type GetItemQueueMemberByUserIDParams struct {
@@ -174,8 +229,10 @@ func (q *Queries) GetItemQueueMemberByUserID(ctx context.Context, arg GetItemQue
 	row := q.db.QueryRow(ctx, getItemQueueMemberByUserID, arg.ItemID, arg.UserID)
 	var i ItemQueueMember
 	err := row.Scan(
+		&i.ID,
 		&i.ItemID,
 		&i.UserID,
+		&i.TicketID,
 		&i.Position,
 		&i.Status,
 		&i.CreatedAt,
@@ -221,13 +278,18 @@ func (q *Queries) ShiftItemQueueMembersPositions(ctx context.Context, arg ShiftI
 
 const updateItemQueueMember = `-- name: UpdateItemQueueMember :exec
 UPDATE item_queue_members
-SET position = $3, status = $4
-WHERE item_id = $1 AND user_id = $2
+SET 
+    ticket_id = $3,
+    position = $4,
+    status = $5
+WHERE item_id = $1 
+AND user_id = $2
 `
 
 type UpdateItemQueueMemberParams struct {
 	ItemID   pgtype.UUID `json:"item_id"`
 	UserID   pgtype.UUID `json:"user_id"`
+	TicketID pgtype.UUID `json:"ticket_id"`
 	Position int32       `json:"position"`
 	Status   string      `json:"status"`
 }
@@ -236,6 +298,7 @@ func (q *Queries) UpdateItemQueueMember(ctx context.Context, arg UpdateItemQueue
 	_, err := q.db.Exec(ctx, updateItemQueueMember,
 		arg.ItemID,
 		arg.UserID,
+		arg.TicketID,
 		arg.Position,
 		arg.Status,
 	)

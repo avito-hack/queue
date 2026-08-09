@@ -16,8 +16,16 @@ type AvitoClient interface {
 }
 
 type TicketsClient interface {
-	GetTickets(
+	IssueTicket(
 		ctx context.Context,
-		itemID uuid.UUID,
-	) ([]*domain.Ticket, error)
+		listingID uuid.UUID,
+		queueEntryID uuid.UUID,
+		skuID uuid.UUID,
+		userID uuid.UUID,
+	) (*domain.Ticket, error)
+
+	DeclineTicket(
+		ctx context.Context,
+		ticketID uuid.UUID,
+	) error	
 }

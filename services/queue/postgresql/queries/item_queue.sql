@@ -22,3 +22,6 @@ SELECT EXISTS(
     FROM item_queues
     WHERE item_id = $1
 );
+
+-- name: LockItemQueue :exec
+SELECT pg_advisory_xact_lock(hashtext($1));

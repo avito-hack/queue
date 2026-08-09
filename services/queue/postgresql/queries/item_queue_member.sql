@@ -1,23 +1,60 @@
--- name: CreateItemQueueMember :exec
-INSERT INTO item_queue_members (item_id, user_id, position, status, created_at)
-VALUES ($1, $2, $3, $4, $5);
+-- name: CreateItemQueueMember :one
+INSERT INTO item_queue_members (
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at;
 
 
 -- name: GetItemQueueMemberByUserID :one
-SELECT item_id, user_id, position, status, created_at
+SELECT 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 FROM item_queue_members
-WHERE item_id = $1 AND user_id = $2;
+WHERE item_id = $1 
+AND user_id = $2;
 
 
 -- name: GetAllItemQueueMembersByItemID :many
-SELECT item_id, user_id, position, status, created_at
+SELECT 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 FROM item_queue_members
 WHERE item_id = $1
 ORDER BY position;
 
 
 -- name: GetAllItemQueueMembersByUserID :many
-SELECT item_id, user_id, position, status, created_at
+SELECT 
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
 FROM item_queue_members
 WHERE user_id = $1
 ORDER BY created_at;
@@ -25,13 +62,18 @@ ORDER BY created_at;
 
 -- name: UpdateItemQueueMember :exec
 UPDATE item_queue_members
-SET position = $3, status = $4
-WHERE item_id = $1 AND user_id = $2;
+SET 
+    ticket_id = $3,
+    position = $4,
+    status = $5
+WHERE item_id = $1 
+AND user_id = $2;
 
 
 -- name: DeleteItemQueueMember :exec
 DELETE FROM item_queue_members
-WHERE item_id = $1 AND user_id = $2;
+WHERE item_id = $1 
+AND user_id = $2;
 
 
 -- name: DeleteAllItemQueueMembersByItemID :exec
@@ -43,7 +85,8 @@ WHERE item_id = $1;
 SELECT EXISTS(
     SELECT 1
     FROM item_queue_members
-    WHERE item_id = $1 AND user_id = $2
+    WHERE item_id = $1 
+    AND user_id = $2
 );
 
 
@@ -51,6 +94,7 @@ SELECT EXISTS(
 SELECT COUNT(*)
 FROM item_queue_members
 WHERE item_id = $1;
+
 
 -- name: GetItemQueueMemberPosition :one
 SELECT position

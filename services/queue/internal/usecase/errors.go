@@ -16,4 +16,5 @@ var (
 	ErrInvalidQueueState    = errors.New("invalid queue state")
 	ErrInvalidMemberStatus  = errors.New("invalid member status")
 	ErrInternal             = errors.New("internal error")
+	ErrTicketsUnavailable   = errors.New("tickets unavailable")
 )

@@ -136,3 +136,27 @@ func timeToPg(t time.Time) pgtype.Timestamp {
 		Valid: true,
 	}
 }
+func (r *ItemQueueRepository) Lock(
+	ctx context.Context,
+	itemID uuid.UUID,
+) error {
+
+	err := r.queries.LockItemQueue(
+		ctx,
+		itemID.String(),
+	)
+
+	if err != nil {
+		r.logger.Error(
+			"failed to lock queue",
+			"error",
+			err,
+			"item_id",
+			itemID,
+		)
+
+		return err
+	}
+
+	return nil
+}

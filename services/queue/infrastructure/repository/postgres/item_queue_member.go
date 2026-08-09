@@ -22,16 +22,20 @@ func NewItemQueueMemberRepository(queries *sqlc.Queries, logger *slog.Logger) *I
 	}
 }
 
+
+
 func (r *ItemQueueMemberRepository) Create(
 	ctx context.Context,
 	itemID uuid.UUID,
 	member *domain.ItemQueueMember,
-) error {
-	err := r.queries.CreateItemQueueMember(
+) (*domain.ItemQueueMember, error) {
+
+	row, err := r.queries.CreateItemQueueMember(
 		ctx,
 		sqlc.CreateItemQueueMemberParams{
 			ItemID:    uuidToPg(itemID),
 			UserID:    uuidToPg(member.UserID),
+			TicketID:  uuidToPg(member.TicketID),
 			Position:  int32(member.Position),
 			Status:    string(member.Status),
 			CreatedAt: timeToPg(member.CreatedAt),
@@ -39,18 +43,10 @@ func (r *ItemQueueMemberRepository) Create(
 	)
 
 	if err != nil {
-		r.logger.Error(
-			"failed to create queue member",
-			"error",
-			err,
-			"item_id",
-			itemID,
-			"user_id",
-			member.UserID,
-		)
+		return nil, err
 	}
 
-	return err
+	return toDomainMember(row), nil
 }
 
 func (r *ItemQueueMemberRepository) GetByUserID(
@@ -323,8 +319,10 @@ func (r *ItemQueueMemberRepository) ShiftPositionsAfterDelete(
 
 func toDomainMember(row sqlc.ItemQueueMember) *domain.ItemQueueMember {
 	return &domain.ItemQueueMember{
+		ID:        pgToUUID(row.ID),
 		ItemID:    pgToUUID(row.ItemID),
 		UserID:    pgToUUID(row.UserID),
+		TicketID:  pgToUUID(row.TicketID),
 		Position:  uint(row.Position),
 		Status:    domain.ItemQueueMemberStatus(row.Status),
 		CreatedAt: row.CreatedAt.Time,

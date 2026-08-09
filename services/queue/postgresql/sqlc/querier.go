@@ -13,7 +13,7 @@ import (
 type Querier interface {
 	CountItemQueueMembers(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	CreateItemQueue(ctx context.Context, arg CreateItemQueueParams) error
-	CreateItemQueueMember(ctx context.Context, arg CreateItemQueueMemberParams) error
+	CreateItemQueueMember(ctx context.Context, arg CreateItemQueueMemberParams) (ItemQueueMember, error)
 	DeleteAllItemQueueMembersByItemID(ctx context.Context, itemID pgtype.UUID) error
 	DeleteItemQueue(ctx context.Context, itemID pgtype.UUID) error
 	DeleteItemQueueMember(ctx context.Context, arg DeleteItemQueueMemberParams) error
@@ -24,6 +24,7 @@ type Querier interface {
 	GetItemQueueByID(ctx context.Context, itemID pgtype.UUID) (ItemQueue, error)
 	GetItemQueueMemberByUserID(ctx context.Context, arg GetItemQueueMemberByUserIDParams) (ItemQueueMember, error)
 	GetItemQueueMemberPosition(ctx context.Context, arg GetItemQueueMemberPositionParams) (int32, error)
+	LockItemQueue(ctx context.Context, hashtext string) error
 	ShiftItemQueueMembersPositions(ctx context.Context, arg ShiftItemQueueMembersPositionsParams) error
 	UpdateItemQueue(ctx context.Context, arg UpdateItemQueueParams) error
 	UpdateItemQueueMember(ctx context.Context, arg UpdateItemQueueMemberParams) error

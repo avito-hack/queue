@@ -8,6 +8,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessToken struct {
+	ID        int64              `json:"id"`
+	TokenHash string             `json:"token_hash"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	ClientID  pgtype.Text        `json:"client_id"`
+	Scopes    pgtype.Text        `json:"scopes"`
+	IssuedAt  pgtype.Timestamptz `json:"issued_at"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	Revoked   bool               `json:"revoked"`
+}
+
 type ItemQueue struct {
 	ItemID    pgtype.UUID      `json:"item_id"`
 	State     string           `json:"state"`
@@ -16,8 +27,10 @@ type ItemQueue struct {
 }
 
 type ItemQueueMember struct {
+	ID        pgtype.UUID      `json:"id"`
 	ItemID    pgtype.UUID      `json:"item_id"`
 	UserID    pgtype.UUID      `json:"user_id"`
+	TicketID  pgtype.UUID      `json:"ticket_id"`
 	Position  int32            `json:"position"`
 	Status    string           `json:"status"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`

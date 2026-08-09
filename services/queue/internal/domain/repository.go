@@ -12,10 +12,11 @@ type ItemQueueRepository interface {
 	Update(ctx context.Context, queue *ItemQueue) error
 	Delete(ctx context.Context, itemID uuid.UUID) error
 	Exists(ctx context.Context, itemID uuid.UUID) (bool, error)
+	Lock(ctx context.Context, itemID uuid.UUID) error
 }
 
 type ItemQueueMemberRepository interface {
-	Create(ctx context.Context, itemID uuid.UUID, member *ItemQueueMember) error
+	Create(ctx context.Context, itemID uuid.UUID, member *ItemQueueMember) (*ItemQueueMember, error)
 	GetByUserID(ctx context.Context, itemID, userID uuid.UUID) (*ItemQueueMember, error)
 	GetAllByItemID(ctx context.Context, itemID uuid.UUID) ([]*ItemQueueMember, error)
 	GetAllByUserID(ctx context.Context, userID uuid.UUID) ([]*ItemQueueMember, error)
