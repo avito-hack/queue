@@ -9,6 +9,7 @@ on:
       - services/queue/**
       - Makefile
       - .github/workflows/queue.yml
+  workflow_dispatch:
 
 jobs:
   lint:

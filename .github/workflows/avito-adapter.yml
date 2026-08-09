@@ -10,6 +10,7 @@ on:
       - Makefile
       - .golangci.yaml
       - .github/workflows/avito-adapter.yml
+  workflow_dispatch:
 
 jobs:
   test:

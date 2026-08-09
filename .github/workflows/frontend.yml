@@ -9,6 +9,7 @@ on:
       - services/frontend/**
       - Makefile
       - .github/workflows/frontend.yml
+  workflow_dispatch:
 
 jobs:
   lint:

@@ -10,6 +10,7 @@ on:
       - Makefile
       - .golangci.yaml
       - .github/workflows/tickets.yml
+  workflow_dispatch:
 
 jobs:
   test:
