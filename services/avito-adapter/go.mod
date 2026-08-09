@@ -1,6 +1,6 @@
 module github.com/avito-hack/queue/services/avito-adapter
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/bdragon300/go-asyncapi/run v0.0.0-20260111064117-e9ede27542aa

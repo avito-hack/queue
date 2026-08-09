@@ -1,6 +1,6 @@
 module github.com/avito-hack/queue/services/queue
 
-go 1.25.7
+go 1.26.0
 
 require (
 	github.com/getkin/kin-openapi v0.146.0
