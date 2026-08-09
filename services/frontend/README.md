@@ -1,177 +1,90 @@
-# Frontend — Авито Очередь
+# Frontend
 
-Клиентская часть MVP: каталог лимитированных товаров, постановка в очередь, экран «Мои очереди», тикет (право на покупку) и переход к демо-чекауту.
+`frontend` — веб-клиент сценария очереди к лимитированным товарам.
 
-Стек: **React 19**, **TypeScript**, **Vite**, **Redux Toolkit**, **React Router**, **Axios**, **Tailwind CSS 4**, **Vitest**, **ESLint**.
+Приложение на React + TypeScript (Vite), стейт в Redux Toolkit, HTTP через Axios. В Docker собирается в статику и отдаётся nginx-контейнером сервиса; в полном стеке снаружи доступен через корневой `nginx` на порту `80`.
+
+Полноценный логин Avito вне скоупа кейса. При старте `AuthGate` поднимает demo opaque Bearer (seed Demo Buyer), регистрирует его через `POST /v1/avito/users` и кладёт токен в `localStorage`. Axios interceptor добавляет `Authorization: Bearer <token>` ко всем запросам, кроме создания пользователя.
+
+Клиент не валидирует токен сам: `user_id` и права проверяют backend-сервисы.
+
+После авторизации клиент гидратирует состояние из `GET /v1/user/queues` и `GET /v1/ticket/list`, далее синхронизирует позиции и тикеты polling’ом. Покупка лимитированного товара в UI всегда идёт через enqueue → тикет → `activate`; страница `/checkout` — демо-stub после активации (оплата и стоки остаются в моке Avito).
 
 ## Запуск
 
-### Вместе со стеком (рекомендуется для проверки сценария)
-
-Из корня репозитория:
+Локальная разработка (при поднятом docker compose):
 
 ```bash
-docker compose up -d --build
+npm ci
+npm run dev
 ```
 
-UI: [http://localhost](http://localhost) (через nginx; API на том же origin).
-
-Пересборка только фронта после изменений:
+Контейнерная сборка из корня (предпочтительный вариант):
 
 ```bash
 docker compose up -d --build frontend
 ```
 
-### Локальная разработка
-
-Нужен поднятый бэкенд/прокси (обычно тот же `docker compose up`), иначе запросы к `/v1/...` не дойдут.
+Либо:
 
 ```bash
-npm ci
-npm run dev      # Vite, обычно http://localhost:5173
+docker build -f services/frontend/Dockerfile \
+  --build-arg VITE_API_URL="" \
+  -t frontend \
+  services/frontend
+docker run --rm -p 8088:80 frontend
 ```
 
-Переменная `VITE_API_URL` — baseURL для Axios. В Docker для frontend она задаётся пустой строкой (same-origin через nginx). Для `npm run dev` укажите origin API, например `http://localhost`.
+В полном стеке UI: `http://localhost` (через корневой nginx).
 
-```bash
-npm run build    # tsc -b && vite build
-npm run preview  # превью production-сборки
-npm run lint
-npm run test
-```
+## Конфигурация
 
-Из корня репозитория:
+| Переменная | Значение по умолчанию | Назначение |
+| --- | --- | --- |
+| `VITE_PUBLIC_BASE_URL` | `http://localhost:8080` (в коде Axios) | baseURL для API; вшивается на этапе `vite build` |
+| `VITE_PUBLIC_BASE_URL` (compose) | `""` | same-origin запросы через корневой nginx |
 
-```bash
-make lint-frontend
-make build-frontend
-```
-
-## Сценарий проверки UI
-
-Демо-пользователь поднимается автоматически (`AuthGate` + opaque seed-токен Demo Buyer).
-
-1. `/catalog` — список объявлений с avito-adapter.
-2. `/product/:id` — остаток, кнопка встать в очередь / sold-out.
-3. После постановки — модалка и переход в `/queue` («Мои очереди»).
-4. На плитке: позиция, выход из очереди, при тикете — активация или отказ.
-5. Активация ведёт на `/checkout?ticket=<uuid>` (демо-stub оформления; оплата вне MVP).
-
-## Экраны и состояния
+## Экраны
 
 | Маршрут | Назначение |
 | --- | --- |
-| `/catalog` | Каталог лимитированных товаров |
-| `/product/:id` | Карточка товара, enqueue, sold-out |
-| `/queue` | Плитки очередей и тикетов |
-| `/checkout` | Демо-чекаут после активации тикета |
+| `/catalog` | список объявлений (`GET /v1/avito/listings`) |
+| `/product/:id` | карточка товара |
+| `/queue` | «Мои очереди»: плитки очередей и тикетов |
+| `/checkout` | демо-чекаут после `POST /v1/ticket/{id}/activate` |
 
-| Состояние | UI | Следующий шаг |
+## API
+
+Клиент ходит в backend через префиксы корневого nginx (или `VITE_API_BASE_URL`):
+
+| Метод | Путь | Назначение |
 | --- | --- | --- |
-| Не в очереди | Кнопка забронировать | Встать в очередь |
-| В очереди | Позиция на плитке | Ждать тикет / выйти |
-| Есть тикет | Таймер, купить / отказаться | Активировать или decline |
-| Sold out | Модалка + «уведомить» | Каталог / подписка (localStorage) |
+| `POST` | `/v1/avito/users` | регистрация demo-токена |
+| `GET` | `/v1/avito/listings` | каталог |
+| `GET` | `/v1/avito/listings/{id}` | карточка |
+| `POST` | `/v1/queue/{itemID}/enqueue` | встать в очередь |
+| `DELETE` | `/v1/queue/{itemID}/dequeue` | выйти из очереди |
+| `GET` | `/v1/user/queues` | очереди текущего пользователя |
+| `GET` | `/v1/ticket/list` | тикеты текущего пользователя |
+| `GET` | `/v1/ticket/{ticket_id}` | тикет по id |
+| `POST` | `/v1/ticket/{ticket_id}/activate` | активировать право на покупку |
+| `POST` | `/v1/ticket/{ticket_id}/decline` | отказаться от тикета |
 
-## Продуктовая логика на клиенте
+Контракты: `../../schemas/services/*/openapi.yaml`.
 
-- Покупка лимитированного товара всегда идёт через очередь/тикет: кнопка на карточке не открывает «голый» чекаут.
-- «Мои очереди» — единый экран ожидания: статус, следующий шаг, действия (выйти / активировать / отказаться).
-- Тикет персональный: в запросы уходит Bearer; активация с чужим пользователем отклоняется бэкендом.
-- После постановки в очередь показываем понятный следующий шаг (модалка → экран очередей), без «серой зоны».
-- Sold-out и «уведомить о поступлении» удерживают пользователя в сценарии (уведомление в MVP — localStorage).
-
-## Архитектура фронта
-
-Разделение по зонам ответственности (feature-oriented):
+## Структура
 
 ```
 src/
-  app/                 # store, hooks
-  pages/               # экраны (catalog, product, queue, checkout)
-  features/
-    auth/              # createUser API
-    session/           # AuthGate, bootstrap состояния
-    product/           # каталог / карточка API + slice
-    queue/             # enqueue/dequeue, polling, slice
-    ticket/            # list/activate/decline, polling, slice
-  shared/
-    api/               # axios client, ошибки
-    auth/              # demo opaque token
-    toast/             # уведомления
-  components/          # layout, модалки, ToastHost
+  app/           # store, typed hooks
+  pages/         # экраны
+  features/      # auth, session, product, queue, ticket
+  shared/        # api client, demo auth, toast, errors
+  components/    # layout, модалки, ToastHost
 ```
 
-Состояние: Redux Toolkit. Сеть: Axios + interceptor с Bearer. Синхронизация: polling очередей и тикетов после логина.
+## Линтер и тесты
 
-## API, которые дергает UI
+ESLint flat config: `eslint.config.js` (`@eslint/js`, `typescript-eslint`, `react-hooks`, `react-refresh`). CI: `.github/workflows/frontend.yml` → `make lint-frontend`, затем build.
 
-Через nginx (same-origin) или `VITE_API_URL`:
-
-| Метод | Путь | Зачем |
-| --- | --- | --- |
-| `POST` | `/v1/avito/users` | демо-регистрация токена |
-| `GET` | `/v1/avito/listings` | каталог |
-| `GET` | `/v1/avito/listings/{id}` | карточка |
-| `POST` | `/v1/queue/{id}/enqueue` | встать в очередь |
-| `DELETE` | `/v1/queue/{id}/dequeue` | выйти |
-| `GET` | `/v1/user/queues` | мои очереди / позиции |
-| `GET` | `/v1/ticket/list` | мои тикеты |
-| `POST` | `/v1/ticket/{id}/activate` | право → чекаут |
-| `POST` | `/v1/ticket/{id}/decline` | отказаться от тикета |
-
-Контракты бэкенда: `schemas/services/*/openapi.yaml` в корне репозитория.
-
-## Авторизация (демо)
-
-Полноценный логин Avito вне скоупа кейса. Клиент:
-
-1. Берёт opaque seed-токен Demo Buyer (`shared/auth/demoAuth.ts`).
-2. Регистрирует его через `POST /v1/avito/users`.
-3. Кладёт `authToken` / `userId` в `localStorage` и подставляет `Authorization: Bearer …` во все запросы (кроме `createUser`).
-
-Seed совпадает с миграцией avito-adapter: `00000000-0000-4000-8000-000000000001`.
-
-## ESLint
-
-Конфиг: [`eslint.config.js`](./eslint.config.js) (flat config).
-
-Включено и зачем:
-
-- `@eslint/js` + `typescript-eslint` recommended — базовая гигиена TS/JS;
-- `eslint-plugin-react-hooks` — корректность hooks (в т.ч. React 19);
-- `eslint-plugin-react-refresh` — совместимость с Vite HMR;
-- `@typescript-eslint/no-unused-vars` с игнором `_prefix` — меньше мёртвого кода без шума на намеренно неиспользуемых аргументах.
-
-CI: [`.github/workflows/frontend.yml`](../../.github/workflows/frontend.yml) на `push` в `dev`/`main` гоняет `make lint-frontend`, затем build.
-
-Перед пушем:
-
-```bash
-npm run lint && npm run test && npm run build
-```
-
-## Тесты
-
-Vitest + Testing Library. Важные зоны:
-
-- demo auth / bootstrap;
-- маппинг queue & ticket API;
-- интеграционные сценарии страниц Catalog / Product / Queue / Checkout;
-- slices и обработка ошибок API.
-
-```bash
-npm test
-npm run test:watch
-```
-
-## Ограничения MVP (фронт)
-
-- `/checkout` — демонстрационный stub после активации тикета (оплата и списание стоков — зона мока Avito / вне UI).
-- «Уведомить о поступлении» — только `localStorage`, без push-сервиса.
-- Демо-авторизация упрощённая (opaque seed), не полноценный SSO Avito.
-- Картинки товаров в каталоге — демо-заглушки, не поля API.
-
-## Использование ИИ
-
-ИИ использовался как помощник: черновики компонентов и тестов, разбор ошибок TypeScript/ESLint, формулировки документации. Продуктовые состояния экранов и привязка к OpenAPI-контрактам согласованы с командой; финальные решения по UX сценария очереди/тикета принимались разработчиками.
+Тесты: Vitest + Testing Library (`npm test`) — auth bootstrap, API-маппинг, сценарии страниц Catalog / Product / Queue / Checkout.

@@ -9,8 +9,8 @@ RUN npm ci
 COPY . .
 
 # URL бэка прокидывается на этапе сборки (Vite вшивает VITE_* в бандл)
-ARG VITE_API_URL=http://localhost:8080
-ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_PUBLIC_BASE_URL=http://localhost:8080
+ENV VITE_PUBLIC_BASE_URL=$VITE_PUBLIC_BASE_URL
 
 RUN npm run build
 
