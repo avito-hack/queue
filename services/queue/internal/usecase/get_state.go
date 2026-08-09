@@ -8,7 +8,7 @@ import (
 	"github.com/avito-hack/queue/services/queue/internal/domain"
 )
 
-func (s *itemQueueService) GetItemQueueState(ctx context.Context, itemID uuid.UUID) (domain.ItemQueueState, error) {
+func (s *itemQueueService) GetItemQueueState(ctx context.Context, itemID uuid.UUID) (domain.ItemQueueStateInfo, error) {
 	queue, err := s.queueRepository.GetByItemID(ctx, itemID)
 	if err != nil {
 		s.logger.Warn(
@@ -19,8 +19,24 @@ func (s *itemQueueService) GetItemQueueState(ctx context.Context, itemID uuid.UU
 			itemID,
 		)
 
-		return "", ErrQueueNotFound
+		return domain.ItemQueueStateInfo{}, ErrQueueNotFound
 	}
 
-	return queue.State, nil
+	count, err := s.memberRepository.Count(ctx, itemID)
+	if err != nil {
+		s.logger.Error(
+			"failed to count queue members",
+			"error",
+			err,
+			"item_id",
+			itemID,
+		)
+
+		return domain.ItemQueueStateInfo{}, err
+	}
+
+	return domain.ItemQueueStateInfo{
+		State:        queue.State,
+		WaitingCount: count,
+	}, nil
 }

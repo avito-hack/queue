@@ -37,6 +37,11 @@ type ItemQueue struct {
 	Members   []*ItemQueueMember
 }
 
+type ItemQueueStateInfo struct {
+	State        ItemQueueState
+	WaitingCount int
+}
+
 type ItemQueueMember struct {
 	ItemID  uuid.UUID	
 	UserID    uuid.UUID

@@ -6,7 +6,10 @@ import clockIcon from '../../assets/clock.svg'
 import { JoinSuccessModal } from '../../components/modals/JoinSuccessModal'
 import { SoldOutModal } from '../../components/modals/SoldOutModal'
 import { productApi } from '../../features/product/api'
-import { upsertProduct } from '../../features/product/productSlice'
+import {
+  patchProductQueueCount,
+  upsertProduct,
+} from '../../features/product/productSlice'
 import { queueApi } from '../../features/queue/api'
 import { getProductActionLabel } from '../../features/queue/lib'
 import {
@@ -47,6 +50,7 @@ export function Product() {
   const [soldOutDismissed, setSoldOutDismissed] = useState(false)
   const [prevProductId, setPrevProductId] = useState(productId)
   const [queueState, setQueueState] = useState<ItemQueueState | null>(null)
+  const [waitingCount, setWaitingCount] = useState<number | null>(null)
   const [listingLoadError, setListingLoadError] = useState(false)
   const [notified, setNotified] = useState(
     () => localStorage.getItem(notifyStorageKey(productId)) === '1',
@@ -78,6 +82,7 @@ export function Product() {
     setSoldOutDismissed(false)
     setJoinedEntry(null)
     setQueueState(null)
+    setWaitingCount(null)
     setListingLoadError(false)
   }
 
@@ -103,18 +108,35 @@ export function Product() {
   useEffect(() => {
     if (!productId) return
     let cancelled = false
-    void (async () => {
+
+    const syncQueueState = async () => {
       try {
         const data = await queueApi.getItemQueueState(productId)
-        if (!cancelled) setQueueState(data.state)
+        if (cancelled) return
+        setQueueState(data.state)
+        const count =
+          typeof data.waiting_count === 'number' && data.waiting_count >= 0
+            ? data.waiting_count
+            : 0
+        setWaitingCount(count)
+        dispatch(patchProductQueueCount({ id: productId, queueCount: count }))
       } catch {
-        if (!cancelled) setQueueState(null)
+        if (cancelled) return
+        setQueueState(null)
+        setWaitingCount(0)
       }
-    })()
+    }
+
+    void syncQueueState()
+    const id = window.setInterval(() => {
+      void syncQueueState()
+    }, 5000)
+
     return () => {
       cancelled = true
+      window.clearInterval(id)
     }
-  }, [productId])
+  }, [dispatch, productId])
 
   useEffect(() => {
     if (!product || product.availableQuantity > 0 || !myQueueEntry) return
@@ -144,6 +166,27 @@ export function Product() {
     try {
       const entry = await queueApi.joinQueue(targetProductId)
       completeJoin(entry)
+      try {
+        const data = await queueApi.getItemQueueState(targetProductId)
+        const count =
+          typeof data.waiting_count === 'number' && data.waiting_count >= 0
+            ? data.waiting_count
+            : (entry.position ?? waitingCount ?? 0)
+        setQueueState(data.state)
+        setWaitingCount(count)
+        dispatch(
+          patchProductQueueCount({ id: targetProductId, queueCount: count }),
+        )
+      } catch {
+        const fallback = entry.position ?? (waitingCount ?? 0) + 1
+        setWaitingCount(fallback)
+        dispatch(
+          patchProductQueueCount({
+            id: targetProductId,
+            queueCount: fallback,
+          }),
+        )
+      }
     } catch (error) {
       reportApiError(
         error,
@@ -182,7 +225,7 @@ export function Product() {
   }
 
   const inStock = product.availableQuantity > 0
-  const queueCount = product.queueCount ?? 0
+  const queueCount = waitingCount ?? product.queueCount ?? 0
   const stateHint = queueStateHint(queueState)
   const actionLabel = notified
     ? 'Подписка оформлена'

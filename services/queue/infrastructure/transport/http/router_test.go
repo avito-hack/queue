@@ -43,8 +43,11 @@ func (s *queueServiceStub) GetUserPosition(context.Context, uuid.UUID, uuid.UUID
 	return 0, nil
 }
 
-func (s *queueServiceStub) GetItemQueueState(context.Context, uuid.UUID) (domain.ItemQueueState, error) {
-	return domain.QueueTicketsAvailable, nil
+func (s *queueServiceStub) GetItemQueueState(context.Context, uuid.UUID) (domain.ItemQueueStateInfo, error) {
+	return domain.ItemQueueStateInfo{
+		State:        domain.QueueTicketsAvailable,
+		WaitingCount: 0,
+	}, nil
 }
 
 func (s *queueServiceStub) GetUserQueues(context.Context, uuid.UUID) ([]*domain.UserQueueInfo, error) {

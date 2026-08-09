@@ -48,7 +48,7 @@ describe('toTicketEntry', () => {
     ).toBeNull()
   })
 
-  it('ignores redeemed tickets after activate', () => {
+  it('ignores redeemed tickets without checkout_url', () => {
     expect(
       toTicketEntry({
         id: 't1',
@@ -56,5 +56,23 @@ describe('toTicketEntry', () => {
         status: 'redeemed',
       }),
     ).toBeNull()
+  })
+
+  it('keeps redeemed tickets with checkout_url for purchase tile', () => {
+    expect(
+      toTicketEntry({
+        id: 't1',
+        listing_id: 'p1',
+        status: 'redeemed',
+        checkout_url: '/checkout?ticket=t1',
+      }),
+    ).toEqual({
+      id: 't1',
+      productId: 'p1',
+      status: 'redeemed',
+      checkoutUrl: '/checkout?ticket=t1',
+      availableActions: ['checkout'],
+      expiresAt: undefined,
+    })
   })
 })

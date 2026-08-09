@@ -10,7 +10,6 @@ import type {
 } from './types'
 
 const POLL_MS = 5000
-const ACTIVE_STATUSES = new Set<TicketStatus>(['issued'])
 
 const ACTIONS = new Set<TicketAvailableAction>([
   'activate',
@@ -24,8 +23,18 @@ export function toTicketEntry(dto: {
   status?: string
   activation_deadline?: string
   available_actions?: string[]
+  checkout_url?: string | null
 }): TicketEntry | null {
-  if (!dto.id || !dto.listing_id || !ACTIVE_STATUSES.has(dto.status as TicketStatus)) {
+  if (!dto.id || !dto.listing_id) return null
+
+  const status = dto.status as TicketStatus | undefined
+  const checkoutUrl = dto.checkout_url?.trim() || undefined
+
+  if (status === 'issued') {
+    // ok
+  } else if (status === 'redeemed' && checkoutUrl) {
+    // активированный тикет — плитка «к оформлению»
+  } else {
     return null
   }
 
@@ -33,13 +42,16 @@ export function toTicketEntry(dto: {
     ? dto.available_actions.filter((a): a is TicketAvailableAction =>
         ACTIONS.has(a as TicketAvailableAction),
       )
-    : undefined
+    : status === 'redeemed'
+      ? (['checkout'] as TicketAvailableAction[])
+      : undefined
 
   return {
     id: dto.id,
     productId: dto.listing_id,
     expiresAt: dto.activation_deadline,
-    status: dto.status as TicketStatus,
+    status,
+    checkoutUrl,
     availableActions,
   }
 }

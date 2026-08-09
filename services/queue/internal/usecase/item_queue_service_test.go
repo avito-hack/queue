@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -378,7 +379,14 @@ func Test_ItemQueueService_GetItemQueueState_ReturnQueueNotFound(t *testing.T) {
 	// given
 	queueRepository := &queueRepositoryStub{getErr: errors.New("not found")}
 	memberRepository := &memberRepositoryStub{}
-	service := NewItemQueueService(queueRepository, memberRepository, &txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository}, nil, nil)
+	service := NewItemQueueService(
+		queueRepository,
+		memberRepository,
+		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
+		nil,
+		nil,
+		slog.Default(),
+	)
 
 	// when
 	_, err := service.GetItemQueueState(context.Background(), uuid.New())
@@ -386,6 +394,31 @@ func Test_ItemQueueService_GetItemQueueState_ReturnQueueNotFound(t *testing.T) {
 	// then
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrQueueNotFound)
+}
+
+func Test_ItemQueueService_GetItemQueueState_ReturnStateAndWaitingCount(t *testing.T) {
+	// given
+	itemID := uuid.New()
+	queueRepository := &queueRepositoryStub{
+		queue: &domain.ItemQueue{ItemID: itemID, State: domain.QueueTicketsAvailable},
+	}
+	memberRepository := &memberRepositoryStub{count: 2}
+	service := NewItemQueueService(
+		queueRepository,
+		memberRepository,
+		&txManagerStub{queueRepository: queueRepository, memberRepository: memberRepository},
+		nil,
+		nil,
+		slog.Default(),
+	)
+
+	// when
+	info, err := service.GetItemQueueState(context.Background(), itemID)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, domain.QueueTicketsAvailable, info.State)
+	assert.Equal(t, 2, info.WaitingCount)
 }
 
 func Test_ItemQueueService_GetUserQueues_ReturnMappedQueues(t *testing.T) {

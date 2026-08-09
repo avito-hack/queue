@@ -11,9 +11,10 @@ export type UserPositionResponse = {
   position: number
 }
 
-/** GET /v1/queue/{itemID}/state — в OpenAPI нет длины очереди, только state. */
+/** GET /v1/queue/{itemID}/state */
 export type ItemQueueStateResponse = {
   state: ItemQueueState
+  waiting_count?: number
 }
 
 /** Элемент GET /v1/user/queues (schema ItemQueueInfo). */

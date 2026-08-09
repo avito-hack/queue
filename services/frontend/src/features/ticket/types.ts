@@ -7,6 +7,7 @@ export type TicketEntry = {
   productId: string
   expiresAt?: string
   status?: TicketStatus
+  checkoutUrl?: string
   availableActions?: TicketAvailableAction[]
 }
 

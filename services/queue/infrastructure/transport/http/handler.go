@@ -235,7 +235,7 @@ func (h *Handler) GetItemQueueState(ctx context.Context, request server.GetItemQ
 
 	h.logger.Info("get queue state started", "item_id", request.ItemID)
 
-	state, err := h.queueService.GetItemQueueState(rc, request.ItemID)
+	info, err := h.queueService.GetItemQueueState(rc, request.ItemID)
 
 	switch {
 	case errors.Is(err, usecase.ErrQueueNotFound):
@@ -247,10 +247,19 @@ func (h *Handler) GetItemQueueState(ctx context.Context, request server.GetItemQ
 		return server.GetItemQueueState500JSONResponse(internalError(err)), nil
 	}
 
-	h.logger.Info("get queue state completed", "item_id", request.ItemID, "state", state)
+	h.logger.Info(
+		"get queue state completed",
+		"item_id",
+		request.ItemID,
+		"state",
+		info.State,
+		"waiting_count",
+		info.WaitingCount,
+	)
 
 	return server.GetItemQueueState200JSONResponse{
-		State: server.ItemQueueState(state),
+		State:        server.ItemQueueState(info.State),
+		WaitingCount: info.WaitingCount,
 	}, nil
 }
 

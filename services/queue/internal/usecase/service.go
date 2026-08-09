@@ -12,6 +12,6 @@ type ItemQueueService interface {
 	ClearItemQueue(ctx context.Context, itemID uuid.UUID) error
 
 	GetUserPosition(ctx context.Context, itemID, userID uuid.UUID) (uint, error)
-	GetItemQueueState(ctx context.Context, itemID uuid.UUID) (domain.ItemQueueState, error)
+	GetItemQueueState(ctx context.Context, itemID uuid.UUID) (domain.ItemQueueStateInfo, error)
 	GetUserQueues(ctx context.Context, userID uuid.UUID) ([]*domain.UserQueueInfo, error)
 }

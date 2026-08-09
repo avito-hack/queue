@@ -43,10 +43,7 @@ const getPosition = async (itemId: string): Promise<UserPositionResponse> => {
   return response.data
 }
 
-/**
- * GET /v1/queue/{itemID}/state
- * В контракте только enum state (нет length) — для UI «тикеты доступны/закончились».
- */
+/** GET /v1/queue/{itemID}/state — state + waiting_count. */
 const getItemQueueState = async (
   itemId: string,
 ): Promise<ItemQueueStateResponse> => {

@@ -30,9 +30,10 @@ function activeToken(): string {
 }
 
 export function Header() {
-  const queueCount = useAppSelector((state) => state.queue.queueItems.length)
-  const ticketCount = useAppSelector((state) => state.tickets.ticketItems.length)
-  const myQueuesCount = queueCount + ticketCount
+  const myQueuesCount = useAppSelector(
+    (state) =>
+      state.queue.queueItems.filter((item) => item.status === 'queued').length,
+  )
   const [demoUsers, setDemoUsers] = useState<DemoUser[]>(() => readDemoUsers())
   const [selectedToken, setSelectedToken] = useState(activeToken)
 

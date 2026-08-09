@@ -1,4 +1,7 @@
-import type { TicketAvailableAction } from '../../features/ticket/types'
+import type {
+  TicketAvailableAction,
+  TicketStatus,
+} from '../../features/ticket/types'
 
 export type TileKind = 'queued' | 'ticket' | 'soldout'
 
@@ -10,5 +13,7 @@ export type QueueTileView = {
   expiresAt?: string
   title: string
   image: string
+  ticketStatus?: TicketStatus
+  checkoutUrl?: string
   availableActions?: TicketAvailableAction[]
 }

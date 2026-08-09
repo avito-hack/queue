@@ -24,8 +24,18 @@ const ProductItemsSlice = createSlice({
       }
       state.productItems.push(next)
     },
+    patchProductQueueCount(
+      state,
+      action: PayloadAction<{ id: string; queueCount: number }>,
+    ) {
+      const item = state.productItems.find((p) => p.id === action.payload.id)
+      if (item) {
+        item.queueCount = action.payload.queueCount
+      }
+    },
   },
 })
 
-export const { setProductItems, upsertProduct } = ProductItemsSlice.actions
+export const { setProductItems, upsertProduct, patchProductQueueCount } =
+  ProductItemsSlice.actions
 export default ProductItemsSlice.reducer

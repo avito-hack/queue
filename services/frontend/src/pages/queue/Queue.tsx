@@ -8,7 +8,7 @@ import { isTicketExpired } from '../../features/queue/lib'
 import { leaveQueue } from '../../features/queue/queueSlice'
 import { ticketApi } from '../../features/ticket/api'
 import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigation'
-import { removeTicket } from '../../features/ticket/ticketSlice'
+import { removeTicket, upsertTicket } from '../../features/ticket/ticketSlice'
 import { ticketAllows } from '../../features/ticket/types'
 import { reportApiError } from '../../shared/api/errors'
 import { showToast } from '../../shared/toast'
@@ -33,31 +33,54 @@ export function Queue() {
     setTicketTile(null)
   }
 
+  const goToCheckout = (ticketId: string, productId: string, checkoutUrl?: string) => {
+    const target = resolveCheckoutNavigation(ticketId, checkoutUrl)
+    if (target.kind === 'external') {
+      window.location.assign(target.url)
+      return
+    }
+    navigate(target.path, { state: { productId } })
+  }
+
   const handleActivateAndBuy = () => {
     if (!ticketTile || buying) return
     if (!ticketAllows(ticketTile, 'activate') && !ticketAllows(ticketTile, 'checkout')) {
       return
     }
     const id = ticketTile.id
+    const productId = ticketTile.productId
+
+    if (
+      ticketTile.ticketStatus === 'redeemed' ||
+      (ticketTile.checkoutUrl && !ticketAllows(ticketTile, 'activate'))
+    ) {
+      setTicketTile(null)
+      goToCheckout(id, productId, ticketTile.checkoutUrl)
+      return
+    }
+
     if (isTicketExpired(ticketTile.expiresAt)) {
       dispatch(removeTicket(id))
       setTicketTile(null)
       return
     }
 
-    const productId = ticketTile.productId
-
     void (async () => {
       setBuying(true)
       try {
         const result = await ticketApi.activateTicket(id)
-        dispatch(removeTicket(id))
-        const target = resolveCheckoutNavigation(id, result.checkout_url)
-        if (target.kind === 'external') {
-          window.location.assign(target.url)
-          return
-        }
-        navigate(target.path, { state: { productId } })
+        const checkoutUrl = result.checkout_url?.trim() || undefined
+        dispatch(
+          upsertTicket({
+            id,
+            productId,
+            status: 'redeemed',
+            checkoutUrl,
+            availableActions: ['checkout'],
+          }),
+        )
+        setTicketTile(null)
+        goToCheckout(id, productId, checkoutUrl)
       } catch (error) {
         reportApiError(error, 'Не удалось активировать тикет')
         setBuying(false)
@@ -91,6 +114,8 @@ export function Queue() {
     kind: TileKind
     position?: number
     expiresAt?: string
+    ticketStatus?: QueueTileView['ticketStatus']
+    checkoutUrl?: string
     availableActions?: QueueTileView['availableActions']
   }): QueueTileView => {
     const product = productItems.find((p) => p.id === entry.productId)
@@ -116,6 +141,8 @@ export function Queue() {
         productId: ticket.productId,
         kind: 'ticket',
         expiresAt: ticket.expiresAt,
+        ticketStatus: ticket.status,
+        checkoutUrl: ticket.checkoutUrl,
         availableActions: ticket.availableActions,
       }),
     ),
@@ -159,7 +186,13 @@ export function Queue() {
             <QueueCard
               key={`${tile.kind}-${tile.id}`}
               tile={tile}
-              onOpenTicket={() => setTicketTile(tile)}
+              onOpenTicket={() => {
+                if (tile.ticketStatus === 'redeemed' || tile.checkoutUrl) {
+                  goToCheckout(tile.id, tile.productId, tile.checkoutUrl)
+                  return
+                }
+                setTicketTile(tile)
+              }}
               onLeaveQueue={() => setLeaveTile(tile)}
             />
           ))}
@@ -172,10 +205,7 @@ export function Queue() {
         productImage={ticketTile?.image ?? '🛒'}
         expiresAt={ticketTile?.expiresAt}
         buying={buying}
-        canActivate={
-          ticketAllows(ticketTile, 'activate') ||
-          ticketAllows(ticketTile, 'checkout')
-        }
+        canActivate={ticketAllows(ticketTile, 'activate')}
         canDecline={ticketAllows(ticketTile, 'decline')}
         onClose={closeTicketModal}
         onBuy={handleActivateAndBuy}
