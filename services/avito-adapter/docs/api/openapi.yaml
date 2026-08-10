@@ -1,0 +1,408 @@
+openapi: 3.0.3
+info:
+  title: Avito Adapter API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /v1/users:
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /v1/users/validate:
+    post:
+      operationId: validateUserToken
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateUserTokenRequest'
+      responses:
+        '200':
+          description: User authenticated by bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateUserTokenResult'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v1/users/{userId}:
+    get:
+      operationId: getUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings:
+    get:
+      operationId: listListings
+      parameters:
+        - name: sellerId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ListingStatus'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Listings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingListResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+    post:
+      operationId: createListing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListingRequest'
+      responses:
+        '201':
+          description: Listing created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}:
+    get:
+      operationId: getListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateListingRequest'
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: removeListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '204': { description: Listing removed }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/quantity:
+    put:
+      operationId: changeListingQuantity
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeQuantityRequest'
+      responses:
+        '200':
+          description: Quantity changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/queue:
+    put:
+      operationId: setListingQueueEnabled
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueueSettingsRequest'
+      responses:
+        '200':
+          description: Queue setting updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/pause:
+    post:
+      operationId: pauseListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/listings/{listingId}/activate:
+    post:
+      operationId: activateListing
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/orders/create:
+    post:
+      operationId: createOrder
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v1/orders/{orderId}:
+    get:
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  parameters:
+    UserId: { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    ListingId: { name: listingId, in: path, required: true, schema: { type: string, format: uuid } }
+    OrderId: { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Operation conflicts with current state
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Invalid bearer token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    TooManyRequests:
+      description: Temporarily rate limited
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    InternalServerError:
+      description: Temporary adapter error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BadGateway:
+      description: Temporary upstream error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ServiceUnavailable:
+      description: Adapter temporarily unavailable
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties: { status: { type: string, example: ok } }
+    Error:
+      type: object
+      required: [message]
+      properties: { message: { type: string } }
+    User:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateUserRequest:
+      type: object
+      required: [name, token]
+      properties:
+        name: { type: string, minLength: 1 }
+        token: { type: string, minLength: 1 }
+    ValidateUserTokenRequest:
+      type: object
+      properties: { token: { type: string, minLength: 1 } }
+    ValidateUserTokenResult:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string, format: uuid }
+    ListingStatus:
+      type: string
+      enum: [active, paused, removed]
+    Listing:
+      type: object
+      required: [id, sellerId, title, price, quantity, queueEnabled, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        sellerId: { type: string, format: uuid }
+        title: { type: string }
+        price: { type: integer, format: int64, minimum: 0 }
+        quantity: { type: integer, minimum: 0 }
+        queueEnabled: { type: boolean }
+        status: { $ref: '#/components/schemas/ListingStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ListingListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Listing'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+    CreateListingRequest:
+      type: object
+      required: [sellerId, title, price, quantity]
+      properties:
+        sellerId: { type: string, format: uuid }
+        title: { type: string, minLength: 1 }
+        price: { type: integer, format: int64, minimum: 0 }
+        quantity: { type: integer, minimum: 0 }
+        queueEnabled: { type: boolean, default: false }
+    UpdateListingRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        price: { type: integer, format: int64, minimum: 0 }
+    ChangeQuantityRequest:
+      type: object
+      required: [quantity]
+      properties: { quantity: { type: integer, minimum: 0 } }
+    QueueSettingsRequest:
+      type: object
+      required: [enabled]
+      properties: { enabled: { type: boolean } }
+    OrderStatus:
+      type: string
+      enum: [created]
+    Order:
+      type: object
+      required: [id, ticketId, listingId, skuId, userId, checkoutUrl, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        checkoutUrl:
+          type: string
+          pattern: '^(https?://[^/@?#]+(?::[0-9]+)?(?:[/?#].*)?|/(?!/).*)$'
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        createdAt: { type: string, format: date-time }
+    CreateOrderRequest:
+      type: object
+      required: [ticketId, listingId, skuId, userId]
+      properties:
+        ticketId: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        skuId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }

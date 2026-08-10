@@ -1,0 +1,7 @@
+package: avitoadapter
+output: gen/clients/avitoadapter/client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  response-type-suffix: HTTPResponse
