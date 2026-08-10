@@ -7,13 +7,15 @@ import (
 
 	"github.com/avito-hack/queue/services/queue/internal/domain"
 )
-
 func (s *itemQueueService) Dequeue(
 	ctx context.Context,
 	itemID uuid.UUID,
 	userID uuid.UUID,
 ) error {
-	return s.txManager.WithinTransaction(
+
+	var ticketID *uuid.UUID
+
+	err := s.txManager.WithinTransaction(
 		ctx,
 		func(
 			ctx context.Context,
@@ -48,18 +50,15 @@ func (s *itemQueueService) Dequeue(
 				return ErrUserNotInQueue
 			}
 
-			if !domain.IsActiveMemberStatus(member.Status) {
-				s.logger.Warn(
-					"user cannot leave queue",
-					"item_id",
-					itemID,
-					"user_id",
-					userID,
-					"status",
-					member.Status,
-				)
-
+			if !domain.IsActiveMemberStatus(
+				member.Status,
+			) {
 				return ErrUserCannotLeaveQueue
+			}
+
+			if member.TicketID != nil {
+				id := *member.TicketID
+				ticketID = &id
 			}
 
 			position := member.Position
@@ -72,16 +71,6 @@ func (s *itemQueueService) Dequeue(
 			)
 
 			if err != nil {
-				s.logger.Error(
-					"failed to leave queue",
-					"error",
-					err,
-					"item_id",
-					itemID,
-					"user_id",
-					userID,
-				)
-
 				return err
 			}
 
@@ -107,17 +96,42 @@ func (s *itemQueueService) Dequeue(
 				}
 			}
 
-			s.logger.Info(
-				"user left queue",
-				"item_id",
-				itemID,
-				"user_id",
-				userID,
-				"ticket_id",
-				member.TicketID,
-			)
-
 			return nil
 		},
 	)
+
+	if err != nil {
+		return err
+	}
+
+	if ticketID != nil {
+		err := s.ticketsClient.DeclineTicket(
+			ctx,
+			*ticketID,
+		)
+
+		if err != nil {
+			s.logger.Error(
+				"failed to decline ticket",
+				"error",
+				err,
+				"ticket_id",
+				*ticketID,
+			)
+
+			return err
+		}
+	}
+
+	s.logger.Info(
+		"user left queue",
+		"item_id",
+		itemID,
+		"user_id",
+		userID,
+		"ticket_id",
+		ticketID,
+	)
+
+	return nil
 }

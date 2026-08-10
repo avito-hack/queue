@@ -10,12 +10,15 @@ import (
 	"syscall"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
+
 	"github.com/avito-hack/queue/services/queue/config"
 	avitogen "github.com/avito-hack/queue/services/queue/gen/clients/avito"
 	ticketsgen "github.com/avito-hack/queue/services/queue/gen/clients/tickets"
 	authinfra "github.com/avito-hack/queue/services/queue/infrastructure/auth"
 	avitoclient "github.com/avito-hack/queue/services/queue/infrastructure/client/avitoadapter"
 	ticketsclient "github.com/avito-hack/queue/services/queue/infrastructure/client/tickets"
+	brokerrabbit "github.com/avito-hack/queue/services/queue/infrastructure/messaging/rabbitmq"
 	"github.com/avito-hack/queue/services/queue/infrastructure/repository/postgres"
 	transporthttp "github.com/avito-hack/queue/services/queue/infrastructure/transport/http"
 	"github.com/avito-hack/queue/services/queue/internal/usecase"
@@ -29,7 +32,9 @@ func main() {
 			nil,
 		),
 	)
+
 	slog.SetDefault(logger)
+
 	if err := run(logger); err != nil {
 		logger.Error("application stopped", "error", err)
 		os.Exit(1)
@@ -60,6 +65,7 @@ func run(logger *slog.Logger) error {
 		queries,
 		logger,
 	)
+
 	memberRepository := postgres.NewItemQueueMemberRepository(
 		queries,
 		logger,
@@ -103,7 +109,36 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
+	// RabbitMQ
+
+	rabbitConnection, err := amqp.Dial(
+		cfg.RabbitMQ.URL,
+	)
+	if err != nil {
+		return fmt.Errorf("connect rabbitmq: %w", err)
+	}
+
+	defer rabbitConnection.Close()
+
+	queueEventHandler := usecase.NewQueueEventHandler(
+		service,
+	)
+
+	consumer, err := brokerrabbit.NewConsumer(
+		rabbitConnection,
+		cfg.RabbitMQ.Exchange,
+		cfg.RabbitMQ.Queue,
+		cfg.Workers.BatchSize,
+		queueEventHandler,
+	)
+	if err != nil {
+		return fmt.Errorf("create rabbit consumer: %w", err)
+	}
+
+	defer consumer.Close()
+
 	introspectionURL := cfg.Auth.IntrospectionURL
+
 	if introspectionURL == "" {
 		introspectionURL = "http://avito-adapter:8080/v1/users/validate"
 	}
@@ -128,7 +163,11 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
-	router, err := transporthttp.NewRouter(handler, resolver, logger)
+	router, err := transporthttp.NewRouter(
+		handler,
+		resolver,
+		logger,
+	)
 	if err != nil {
 		return fmt.Errorf("create router: %w", err)
 	}
@@ -141,30 +180,73 @@ func run(logger *slog.Logger) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
+
 	go func() {
-		slog.Info("HTTP server started", "address", httpServer.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("listen error", "error", err)
+		slog.Info(
+			"rabbitmq consumer started",
+		)
+
+		if err := consumer.Run(ctx); err != nil {
+			slog.Error(
+				"rabbitmq consumer stopped",
+				"error",
+				err,
+			)
 		}
 	}()
+
+
+	go func() {
+		slog.Info(
+			"HTTP server started",
+			"address",
+			httpServer.Addr,
+		)
+
+		if err := httpServer.ListenAndServe(); err != nil &&
+			err != http.ErrServerClosed {
+
+			slog.Error(
+				"listen error",
+				"error",
+				err,
+			)
+		}
+	}()
+
 
 	signalContext, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
 		syscall.SIGTERM,
 	)
+
 	defer stop()
 
 	<-signalContext.Done()
 
-	shutdownContext, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
+
+	shutdownContext, cancel := context.WithTimeout(
+		context.Background(),
+		cfg.HTTP.ShutdownTimeout,
+	)
+
 	defer cancel()
 
-	if err := httpServer.Shutdown(shutdownContext); err != nil {
-		return fmt.Errorf("shutdown HTTP server: %w", err)
+
+	if err := httpServer.Shutdown(
+		shutdownContext,
+	); err != nil {
+		return fmt.Errorf(
+			"shutdown HTTP server: %w",
+			err,
+		)
 	}
 
-	slog.Info("HTTP server stopped gracefully")
+
+	slog.Info(
+		"application stopped gracefully",
+	)
 
 	return nil
 }

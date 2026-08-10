@@ -11,10 +11,12 @@ import (
 )
 
 type Config struct {
-	HTTP     HTTPConfig
-	Postgres PostgresConfig
-	Auth     AuthConfig
-	Services ServicesConfig
+	HTTP      HTTPConfig
+	Postgres  PostgresConfig
+	Auth      AuthConfig
+	Services  ServicesConfig
+	RabbitMQ  RabbitMQConfig
+	Workers   WorkersConfig
 }
 
 type HTTPConfig struct {
@@ -45,6 +47,16 @@ type AuthConfig struct {
 type ServicesConfig struct {
 	AvitoBaseURL   string
 	TicketsBaseURL string
+}
+
+type RabbitMQConfig struct {
+	URL      string
+	Exchange string
+	Queue    string
+}
+
+type WorkersConfig struct {
+	BatchSize int
 }
 
 func Load() (Config, error) {
@@ -93,6 +105,7 @@ func Load() (Config, error) {
 	}
 
 	port := 5432
+
 	if portParsed != 0 {
 		port = portParsed
 	}
@@ -105,10 +118,6 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	if authTimeout <= 0 {
-		return Config{}, fmt.Errorf("AUTH_TIMEOUT must be positive")
-	}
-
 	authCacheTTL, err := durationValue(
 		"AUTH_CACHE_TTL",
 		30*time.Second,
@@ -117,8 +126,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	if authCacheTTL < 0 {
-		return Config{}, fmt.Errorf("AUTH_CACHE_TTL must be non-negative")
+	batchSize, err := intValue(
+		"WORKERS_BATCH_SIZE",
+		100,
+	)
+	if err != nil {
+		return Config{}, err
 	}
 
 	return Config{
@@ -162,6 +175,25 @@ func Load() (Config, error) {
 				"TICKETS_BASE_URL",
 				"http://tickets:8080",
 			),
+		},
+
+		RabbitMQ: RabbitMQConfig{
+			URL: value(
+				"RABBITMQ_URL",
+				"amqp://tickets:tickets@rabbitmq:5672/",
+			),
+			Exchange: value(
+				"RABBITMQ_EXCHANGE",
+				"domain.events",
+			),
+			Queue: value(
+				"RABBITMQ_QUEUE",
+				"queue.service.events",
+			),
+		},
+
+		Workers: WorkersConfig{
+			BatchSize: batchSize,
 		},
 	}, nil
 }

@@ -20,9 +20,11 @@ type Querier interface {
 	GetAllItemQueueMembersByItemID(ctx context.Context, itemID pgtype.UUID) ([]ItemQueueMember, error)
 	GetAllItemQueueMembersByUserID(ctx context.Context, userID pgtype.UUID) ([]ItemQueueMember, error)
 	GetItemQueueByID(ctx context.Context, itemID pgtype.UUID) (ItemQueue, error)
+	GetItemQueueMemberByTicketID(ctx context.Context, ticketID pgtype.UUID) (ItemQueueMember, error)
 	GetItemQueueMemberByUserID(ctx context.Context, arg GetItemQueueMemberByUserIDParams) (ItemQueueMember, error)
 	GetItemQueueMemberPosition(ctx context.Context, arg GetItemQueueMemberPositionParams) (pgtype.Int4, error)
-	GetUserQueueRank(ctx context.Context, arg GetUserQueueRankParams) (int64, error)
+	GetRealUserQueuePosition(ctx context.Context, arg GetRealUserQueuePositionParams) (int32, error)
+	GetUserQueueRank(ctx context.Context, arg GetUserQueueRankParams) (int32, error)
 	LeaveItemQueueMember(ctx context.Context, arg LeaveItemQueueMemberParams) error
 	LockItemQueue(ctx context.Context, itemID pgtype.UUID) (ItemQueue, error)
 	ReactivateItemQueueMember(ctx context.Context, arg ReactivateItemQueueMemberParams) error
