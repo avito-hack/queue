@@ -177,6 +177,34 @@ func (q *Queries) GetAllItemQueueMembersByUserID(ctx context.Context, userID pgt
 	return items, nil
 }
 
+const getItemQueueMemberByTicketID = `-- name: GetItemQueueMemberByTicketID :one
+SELECT
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
+FROM item_queue_members
+WHERE ticket_id = $1
+`
+
+func (q *Queries) GetItemQueueMemberByTicketID(ctx context.Context, ticketID pgtype.UUID) (ItemQueueMember, error) {
+	row := q.db.QueryRow(ctx, getItemQueueMemberByTicketID, ticketID)
+	var i ItemQueueMember
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.UserID,
+		&i.TicketID,
+		&i.Position,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getItemQueueMemberByUserID = `-- name: GetItemQueueMemberByUserID :one
 SELECT
     id,
@@ -212,7 +240,8 @@ func (q *Queries) GetItemQueueMemberByUserID(ctx context.Context, arg GetItemQue
 }
 
 const getItemQueueMemberPosition = `-- name: GetItemQueueMemberPosition :one
-SELECT position
+SELECT
+    position
 FROM item_queue_members
 WHERE item_id = $1
 AND user_id = $2
@@ -230,21 +259,45 @@ func (q *Queries) GetItemQueueMemberPosition(ctx context.Context, arg GetItemQue
 	return position, err
 }
 
-const getUserQueueRank = `-- name: GetUserQueueRank :one
-SELECT rank
-FROM (
-    SELECT
-        user_id,
-        ROW_NUMBER() OVER (ORDER BY position) AS rank
+const getRealUserQueuePosition = `-- name: GetRealUserQueuePosition :one
+SELECT COUNT(*) + 1 AS position
+FROM item_queue_members
+WHERE item_queue_members.item_id = $1
+AND item_queue_members.status IN (
+    'waiting_in_line',
+    'acquired_purchase_rights',
+    'placed_an_order'
+)
+AND item_queue_members.position < (
+    SELECT position
     FROM item_queue_members
-    WHERE item_id = $1
-    AND status IN (
-        'waiting_in_line',
-        'acquired_purchase_rights',
-        'placed_an_order'
-    )
-) ranked
-WHERE user_id = $2
+    WHERE item_queue_members.item_id = $1
+    AND item_queue_members.user_id = $2
+)
+`
+
+type GetRealUserQueuePositionParams struct {
+	ItemID pgtype.UUID `json:"item_id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetRealUserQueuePosition(ctx context.Context, arg GetRealUserQueuePositionParams) (int32, error) {
+	row := q.db.QueryRow(ctx, getRealUserQueuePosition, arg.ItemID, arg.UserID)
+	var position int32
+	err := row.Scan(&position)
+	return position, err
+}
+
+const getUserQueueRank = `-- name: GetUserQueueRank :one
+SELECT COUNT(*) + 1 AS rank
+FROM item_queue_members outer_q
+WHERE outer_q.item_id = $1
+AND outer_q.position <= (
+    SELECT inner_q.position 
+    FROM item_queue_members inner_q 
+    WHERE inner_q.item_id = $1 
+    AND inner_q.user_id = $2
+)
 `
 
 type GetUserQueueRankParams struct {
@@ -252,9 +305,9 @@ type GetUserQueueRankParams struct {
 	UserID pgtype.UUID `json:"user_id"`
 }
 
-func (q *Queries) GetUserQueueRank(ctx context.Context, arg GetUserQueueRankParams) (int64, error) {
+func (q *Queries) GetUserQueueRank(ctx context.Context, arg GetUserQueueRankParams) (int32, error) {
 	row := q.db.QueryRow(ctx, getUserQueueRank, arg.ItemID, arg.UserID)
-	var rank int64
+	var rank int32
 	err := row.Scan(&rank)
 	return rank, err
 }
@@ -301,16 +354,10 @@ func (q *Queries) ReactivateItemQueueMember(ctx context.Context, arg ReactivateI
 }
 
 const shiftItemQueueMembersPositions = `-- name: ShiftItemQueueMembersPositions :exec
-WITH negated AS (
-    UPDATE item_queue_members AS source
-    SET position = -source.position
-    WHERE source.item_id = $1
-    AND source.position > $2
-    RETURNING source.id
-)
-UPDATE item_queue_members AS target
-SET position = -target.position - 1
-WHERE target.id IN (SELECT id FROM negated)
+UPDATE item_queue_members
+SET position = position - 1
+WHERE item_id = $1
+AND position > $2
 `
 
 type ShiftItemQueueMembersPositionsParams struct {

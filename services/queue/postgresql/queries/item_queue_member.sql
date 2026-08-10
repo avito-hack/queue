@@ -17,6 +17,7 @@ RETURNING
     status,
     created_at;
 
+
 -- name: GetItemQueueMemberByUserID :one
 SELECT
     id,
@@ -29,6 +30,7 @@ SELECT
 FROM item_queue_members
 WHERE item_id = $1
 AND user_id = $2;
+
 
 -- name: GetAllItemQueueMembersByItemID :many
 SELECT
@@ -43,6 +45,7 @@ FROM item_queue_members
 WHERE item_id = $1
 ORDER BY position NULLS LAST;
 
+
 -- name: GetAllItemQueueMembersByUserID :many
 SELECT
     id,
@@ -56,6 +59,7 @@ FROM item_queue_members
 WHERE user_id = $1
 ORDER BY created_at;
 
+
 -- name: UpdateItemQueueMember :exec
 UPDATE item_queue_members
 SET
@@ -65,6 +69,7 @@ SET
 WHERE item_id = $1
 AND user_id = $2;
 
+
 -- name: LeaveItemQueueMember :exec
 UPDATE item_queue_members
 SET
@@ -72,6 +77,7 @@ SET
     position = NULL
 WHERE item_id = $1
 AND user_id = $2;
+
 
 -- name: ReactivateItemQueueMember :exec
 UPDATE item_queue_members
@@ -82,9 +88,11 @@ SET
 WHERE item_id = $1
 AND user_id = $2;
 
+
 -- name: DeleteAllItemQueueMembersByItemID :exec
 DELETE FROM item_queue_members
 WHERE item_id = $1;
+
 
 -- name: ExistsItemQueueMember :one
 SELECT EXISTS(
@@ -94,36 +102,59 @@ SELECT EXISTS(
     AND user_id = $2
 );
 
+
 -- name: GetItemQueueMemberPosition :one
-SELECT position
+SELECT
+    position
 FROM item_queue_members
 WHERE item_id = $1
 AND user_id = $2;
 
+
 -- name: ShiftItemQueueMembersPositions :exec
-WITH negated AS (
-    UPDATE item_queue_members AS source
-    SET position = -source.position
-    WHERE source.item_id = $1
-    AND source.position > $2
-    RETURNING source.id
-)
-UPDATE item_queue_members AS target
-SET position = -target.position - 1
-WHERE target.id IN (SELECT id FROM negated);
+UPDATE item_queue_members
+SET position = position - 1
+WHERE item_id = $1
+AND position > $2;
+
 
 -- name: GetUserQueueRank :one
-SELECT rank
-FROM (
-    SELECT
-        user_id,
-        ROW_NUMBER() OVER (ORDER BY position) AS rank
+SELECT COUNT(*) + 1 AS rank
+FROM item_queue_members outer_q
+WHERE outer_q.item_id = $1
+AND outer_q.position <= (
+    SELECT inner_q.position 
+    FROM item_queue_members inner_q 
+    WHERE inner_q.item_id = $1 
+    AND inner_q.user_id = $2
+);
+
+
+
+-- name: GetRealUserQueuePosition :one
+SELECT COUNT(*) + 1 AS position
+FROM item_queue_members
+WHERE item_queue_members.item_id = $1
+AND item_queue_members.status IN (
+    'waiting_in_line',
+    'acquired_purchase_rights',
+    'placed_an_order'
+)
+AND item_queue_members.position < (
+    SELECT position
     FROM item_queue_members
-    WHERE item_id = $1
-    AND status IN (
-        'waiting_in_line',
-        'acquired_purchase_rights',
-        'placed_an_order'
-    )
-) ranked
-WHERE user_id = $2;
+    WHERE item_queue_members.item_id = $1
+    AND item_queue_members.user_id = $2
+);
+
+-- name: GetItemQueueMemberByTicketID :one
+SELECT
+    id,
+    item_id,
+    user_id,
+    ticket_id,
+    position,
+    status,
+    created_at
+FROM item_queue_members
+WHERE ticket_id = $1;

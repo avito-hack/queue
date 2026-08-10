@@ -18,6 +18,7 @@ type ItemQueueRepository interface {
 type ItemQueueMemberRepository interface {
 	Create(ctx context.Context, itemID uuid.UUID, member *ItemQueueMember) (*ItemQueueMember, error)
 	GetByUserID(ctx context.Context, itemID, userID uuid.UUID) (*ItemQueueMember, error)
+	GetByTicketID(ctx context.Context, ticketID uuid.UUID) (*ItemQueueMember, error)
 	GetAllByItemID(ctx context.Context, itemID uuid.UUID) ([]*ItemQueueMember, error)
 	GetAllByUserID(ctx context.Context, userID uuid.UUID) ([]*ItemQueueMember, error)
 	Update(ctx context.Context, itemID uuid.UUID, member *ItemQueueMember) error
@@ -27,5 +28,5 @@ type ItemQueueMemberRepository interface {
 	Exists(ctx context.Context, itemID, userID uuid.UUID) (bool, error)
 	GetPosition(ctx context.Context, itemID, userID uuid.UUID) (uint, error)
 	ShiftPositionsAfterDelete(ctx context.Context, itemID uuid.UUID, position uint) error
-	GetRank(ctx context.Context, itemID, userID uuid.UUID) (uint, error)	
+	GetRank(ctx context.Context, itemID, userID uuid.UUID) (uint, error)
 }

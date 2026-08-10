@@ -362,17 +362,20 @@ func (r *ItemQueueMemberRepository) GetPosition(
 
 	return uint(position.Int32), nil
 }
-
 func (r *ItemQueueMemberRepository) ShiftPositionsAfterDelete(
 	ctx context.Context,
 	itemID uuid.UUID,
 	position uint,
 ) error {
+
 	err := r.queries.ShiftItemQueueMembersPositions(
 		ctx,
 		sqlc.ShiftItemQueueMembersPositionsParams{
-			ItemID:   uuidToPg(itemID),
-			Position: pgtype.Int4{Int32: int32(position), Valid: true},
+			ItemID: uuidToPg(itemID),
+			Position: pgtype.Int4{
+				Int32: int32(position),
+				Valid: true,
+			},
 		},
 	)
 
@@ -487,4 +490,33 @@ func uuidToPgPtr(id *uuid.UUID) pgtype.UUID {
 		Bytes: bytes,
 		Valid: true,
 	}
+}
+
+func (r *ItemQueueMemberRepository) GetByTicketID(
+	ctx context.Context,
+	ticketID uuid.UUID,
+) (*domain.ItemQueueMember, error) {
+
+	row, err := r.queries.GetItemQueueMemberByTicketID(
+		ctx,
+		uuidToPg(ticketID),
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrMemberNotFound
+		}
+
+		r.logger.Error(
+			"failed to get queue member by ticket id",
+			"error",
+			err,
+			"ticket_id",
+			ticketID,
+		)
+
+		return nil, err
+	}
+
+	return toDomainMember(row), nil
 }
