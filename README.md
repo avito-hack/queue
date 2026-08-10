@@ -38,16 +38,8 @@ make up          # запустить compose-стек
 make down        # остановить compose-стек
 make generate    # перегенерировать Go-код из контрактов
 make lint        # проверить backend и frontend линтерами
-make test        # запустить тесты backend-сервисов
+make test        # запустить тесты всех сервисов
 make build       # собрать все сервисы
-```
-
-Frontend-тесты запускаются отдельно:
-
-```bash
-cd services/frontend
-npm ci
-npm test
 ```
 
 ## Архитектура
