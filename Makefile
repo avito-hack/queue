@@ -50,7 +50,7 @@ lint-queue:
 lint-frontend:
 	cd services/frontend && $(NPM) ci && $(NPM) run lint
 
-test: $(addprefix test-,$(GO_SERVICES))
+test: $(addprefix test-,$(GO_SERVICES)) test-frontend
 
 test-tickets: generate-tickets lint-tickets
 	cd services/tickets && $(GO) test ./...
