@@ -4,10 +4,20 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
 )
 
-func (s *itemQueueService) GetUserPosition(ctx context.Context, itemID, userID uuid.UUID) (uint, error) {
-	member, err := s.memberRepository.GetByUserID(ctx, itemID, userID)
+func (s *itemQueueService) GetUserPosition(
+	ctx context.Context,
+	itemID uuid.UUID,
+	userID uuid.UUID,
+) (uint, error) {
+	position, err := s.memberRepository.GetRank(
+		ctx,
+		itemID,
+		userID,
+	)
+
 	if err != nil {
 		s.logger.Warn(
 			"failed to get user position",
@@ -22,5 +32,5 @@ func (s *itemQueueService) GetUserPosition(ctx context.Context, itemID, userID u
 		return 0, ErrUserNotInQueue
 	}
 
-	return member.Position, nil
+	return position, nil
 }

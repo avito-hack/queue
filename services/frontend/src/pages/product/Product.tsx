@@ -6,7 +6,10 @@ import clockIcon from '../../assets/clock.svg'
 import { JoinSuccessModal } from '../../components/modals/JoinSuccessModal'
 import { SoldOutModal } from '../../components/modals/SoldOutModal'
 import { productApi } from '../../features/product/api'
-import { upsertProduct } from '../../features/product/productSlice'
+import {
+  patchProductQueueCount,
+  upsertProduct,
+} from '../../features/product/productSlice'
 import { queueApi } from '../../features/queue/api'
 import { getProductActionLabel } from '../../features/queue/lib'
 import {
@@ -15,13 +18,7 @@ import {
 } from '../../features/queue/queueSlice'
 import type { ItemQueueState, QueueEntry } from '../../features/queue/types'
 import { reportApiError } from '../../shared/api/errors'
-
-const similarProducts = [
-  { emoji: '👟', price: '14 500 ₽', title: 'Кроссовки Northline Base' },
-  { emoji: '🧢', price: '3 900 ₽', title: 'Кепка из коллекции Drop 01' },
-  { emoji: '🧥', price: '12 800 ₽', title: 'Куртка Northline Shell' },
-  { emoji: '🎒', price: '6 700 ₽', title: 'Рюкзак Northline City' },
-]
+import { showToast } from '../../shared/toast'
 
 function pluralPeople(count: number): string {
   const mod10 = count % 10
@@ -53,6 +50,7 @@ export function Product() {
   const [soldOutDismissed, setSoldOutDismissed] = useState(false)
   const [prevProductId, setPrevProductId] = useState(productId)
   const [queueState, setQueueState] = useState<ItemQueueState | null>(null)
+  const [waitingCount, setWaitingCount] = useState<number | null>(null)
   const [listingLoadError, setListingLoadError] = useState(false)
   const [notified, setNotified] = useState(
     () => localStorage.getItem(notifyStorageKey(productId)) === '1',
@@ -84,6 +82,7 @@ export function Product() {
     setSoldOutDismissed(false)
     setJoinedEntry(null)
     setQueueState(null)
+    setWaitingCount(null)
     setListingLoadError(false)
   }
 
@@ -109,18 +108,35 @@ export function Product() {
   useEffect(() => {
     if (!productId) return
     let cancelled = false
-    void (async () => {
+
+    const syncQueueState = async () => {
       try {
         const data = await queueApi.getItemQueueState(productId)
-        if (!cancelled) setQueueState(data.state)
+        if (cancelled) return
+        setQueueState(data.state)
+        const count =
+          typeof data.waiting_count === 'number' && data.waiting_count >= 0
+            ? data.waiting_count
+            : 0
+        setWaitingCount(count)
+        dispatch(patchProductQueueCount({ id: productId, queueCount: count }))
       } catch {
-        if (!cancelled) setQueueState(null)
+        if (cancelled) return
+        setQueueState(null)
+        setWaitingCount(0)
       }
-    })()
+    }
+
+    void syncQueueState()
+    const id = window.setInterval(() => {
+      void syncQueueState()
+    }, 5000)
+
     return () => {
       cancelled = true
+      window.clearInterval(id)
     }
-  }, [productId])
+  }, [dispatch, productId])
 
   useEffect(() => {
     if (!product || product.availableQuantity > 0 || !myQueueEntry) return
@@ -150,6 +166,27 @@ export function Product() {
     try {
       const entry = await queueApi.joinQueue(targetProductId)
       completeJoin(entry)
+      try {
+        const data = await queueApi.getItemQueueState(targetProductId)
+        const count =
+          typeof data.waiting_count === 'number' && data.waiting_count >= 0
+            ? data.waiting_count
+            : (entry.position ?? waitingCount ?? 0)
+        setQueueState(data.state)
+        setWaitingCount(count)
+        dispatch(
+          patchProductQueueCount({ id: targetProductId, queueCount: count }),
+        )
+      } catch {
+        const fallback = entry.position ?? (waitingCount ?? 0) + 1
+        setWaitingCount(fallback)
+        dispatch(
+          patchProductQueueCount({
+            id: targetProductId,
+            queueCount: fallback,
+          }),
+        )
+      }
     } catch (error) {
       reportApiError(
         error,
@@ -161,6 +198,7 @@ export function Product() {
   const handleNotify = () => {
     localStorage.setItem(notifyStorageKey(productId), '1')
     setNotified(true)
+    showToast('Подписка оформлена. Сообщим, когда товар появится', 'info')
   }
 
   if (!product) {
@@ -187,7 +225,7 @@ export function Product() {
   }
 
   const inStock = product.availableQuantity > 0
-  const queueCount = product.queueCount ?? 0
+  const queueCount = waitingCount ?? product.queueCount ?? 0
   const stateHint = queueStateHint(queueState)
   const actionLabel = notified
     ? 'Подписка оформлена'
@@ -329,35 +367,6 @@ export function Product() {
         </p>
       </section>
 
-      <section id="similar-products" className="mt-6 sm:mt-8">
-        <h2 className="mb-3 text-xl font-extrabold tracking-tight sm:mb-4 sm:text-2xl">
-          Похожие товары
-        </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-          {similarProducts.map((item) => (
-            <article
-              className="overflow-hidden rounded-2xl bg-white"
-              key={item.title}
-            >
-              <div
-                className="grid aspect-[4/3] place-items-center bg-[#f5f5f5] text-5xl sm:text-6xl"
-                aria-hidden="true"
-              >
-                {item.emoji}
-              </div>
-              <div className="p-3">
-                <div className="text-[15px] font-extrabold sm:text-base">
-                  {item.price}
-                </div>
-                <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-[#3c3c3c]">
-                  {item.title}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <JoinSuccessModal
         open={joinedEntry !== null}
         position={joinedEntry?.position}
@@ -375,11 +384,9 @@ export function Product() {
         notified={notified}
         onClose={() => setSoldOutDismissed(true)}
         onNotify={handleNotify}
-        onSimilar={() => {
+        onCatalog={() => {
           setSoldOutDismissed(true)
-          document
-            .getElementById('similar-products')
-            ?.scrollIntoView({ behavior: 'smooth' })
+          navigate('/catalog')
         }}
       />
     </section>

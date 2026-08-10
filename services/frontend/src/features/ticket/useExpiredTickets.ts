@@ -10,6 +10,7 @@ export function useExpiredTickets(enabled = true) {
 
   const sync = useEffectEvent(() => {
     for (const ticket of ticketItems) {
+      if (ticket.status === 'redeemed' || ticket.checkoutUrl) continue
       if (isTicketExpired(ticket.expiresAt)) {
         dispatch(removeTicket(ticket.id))
       }

@@ -10,6 +10,7 @@ import { Queue } from './Queue'
 vi.mock('../../features/ticket/api', () => ({
   ticketApi: {
     listTickets: vi.fn().mockResolvedValue({ ticket: [] }),
+    getTicket: vi.fn(),
     activateTicket: vi.fn(),
     declineTicket: vi.fn(),
   },
@@ -38,7 +39,9 @@ const product = makeProduct({
 
 describe('Queue integration', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.mocked(ticketApi.activateTicket).mockReset()
+    vi.mocked(ticketApi.getTicket).mockReset()
     vi.mocked(ticketApi.declineTicket).mockReset()
     vi.mocked(queueApi.leaveQueue).mockReset()
   })
@@ -177,6 +180,60 @@ describe('Queue integration', () => {
     })
     expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
     expect(screen.getByText(/Тикет: e-ticket/)).toBeInTheDocument()
+    expect(screen.queryByText('Перейти к покупке')).not.toBeInTheDocument()
+  })
+
+  it('recovers to checkout when activate returns 409 already activated', async () => {
+    const user = userEvent.setup()
+    vi.mocked(ticketApi.activateTicket).mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 409,
+        data: {
+          error: 'ticket_not_activatable',
+          message: 'ticket is not activatable',
+        },
+      },
+    })
+    vi.mocked(ticketApi.getTicket).mockResolvedValue({
+      id: 'e-ticket',
+      listing_id: 'p-1',
+      status: 'redeemed',
+      checkout_url: '/checkout?ticket=e-ticket',
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/queue" element={<Queue />} />
+        <Route path="/checkout" element={<Checkout />} />
+      </Routes>,
+      {
+        route: '/queue',
+        preloadedState: {
+          products: { productItems: [product] },
+          tickets: {
+            ticketItems: [
+              {
+                id: 'e-ticket',
+                productId: 'p-1',
+                expiresAt: '2099-01-01T00:00:00.000Z',
+              },
+            ],
+          },
+        },
+      },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Перейти к покупке' }))
+    const dialog = screen.getByRole('dialog', { name: 'Товар доступен для вас' })
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Перейти к покупке' }),
+    )
+
+    await waitFor(() => {
+      expect(ticketApi.activateTicket).toHaveBeenCalledWith('e-ticket')
+    })
+    expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
   })
 
   it('keeps ticket modal open when activate fails', async () => {

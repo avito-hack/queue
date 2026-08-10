@@ -13,7 +13,6 @@ func (s *itemQueueService) Dequeue(
 	itemID uuid.UUID,
 	userID uuid.UUID,
 ) error {
-
 	return s.txManager.WithinTransaction(
 		ctx,
 		func(
@@ -21,6 +20,13 @@ func (s *itemQueueService) Dequeue(
 			queueRepository domain.ItemQueueRepository,
 			memberRepository domain.ItemQueueMemberRepository,
 		) error {
+
+			if _, err := queueRepository.LockByItemID(
+				ctx,
+				itemID,
+			); err != nil {
+				return err
+			}
 
 			member, err := memberRepository.GetByUserID(
 				ctx,
@@ -42,22 +48,32 @@ func (s *itemQueueService) Dequeue(
 				return ErrUserNotInQueue
 			}
 
-			err = queueRepository.Lock(
-				ctx,
-				itemID,
-			)
+			if !domain.IsActiveMemberStatus(member.Status) {
+				s.logger.Warn(
+					"user cannot leave queue",
+					"item_id",
+					itemID,
+					"user_id",
+					userID,
+					"status",
+					member.Status,
+				)
 
-			if err != nil {
-				return err
+				return ErrUserCannotLeaveQueue
 			}
 
-			if err := memberRepository.Delete(
+			position := member.Position
+
+			err = memberRepository.Leave(
 				ctx,
 				itemID,
 				userID,
-			); err != nil {
+				domain.UserVoluntarilyLeftLine,
+			)
+
+			if err != nil {
 				s.logger.Error(
-					"failed to delete queue member",
+					"failed to leave queue",
 					"error",
 					err,
 					"item_id",
@@ -69,22 +85,26 @@ func (s *itemQueueService) Dequeue(
 				return err
 			}
 
-			if err := memberRepository.ShiftPositionsAfterDelete(
-				ctx,
-				itemID,
-				member.Position,
-			); err != nil {
-				s.logger.Error(
-					"failed to shift queue positions",
-					"error",
-					err,
-					"item_id",
+			if position != nil {
+				err = memberRepository.ShiftPositionsAfterDelete(
+					ctx,
 					itemID,
-					"position",
-					member.Position,
+					*position,
 				)
 
-				return err
+				if err != nil {
+					s.logger.Error(
+						"failed to shift queue positions",
+						"error",
+						err,
+						"item_id",
+						itemID,
+						"position",
+						*position,
+					)
+
+					return err
+				}
 			}
 
 			s.logger.Info(

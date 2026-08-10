@@ -41,8 +41,8 @@ type ItemQueueMember struct {
 	ID        uuid.UUID
 	ItemID    uuid.UUID
 	UserID    uuid.UUID
-	TicketID  uuid.UUID
-	Position  uint
+	TicketID  *uuid.UUID
+	Position  *uint
 	Status    ItemQueueMemberStatus
 	CreatedAt time.Time
 }
@@ -71,4 +71,17 @@ const (
 type Ticket struct {
 	ID     string
 	Status TicketStatus
+}
+
+func IsActiveMemberStatus(status ItemQueueMemberStatus) bool {
+	switch status {
+	case UserWaitingInLine, UserAcquiredPurchaseRights, UserPlacedAnOrder:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsTerminalMemberStatus(status ItemQueueMemberStatus) bool {
+	return !IsActiveMemberStatus(status)
 }

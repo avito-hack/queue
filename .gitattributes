@@ -1,0 +1,2 @@
+*.sh text eol=lf
+.docker/goose/entrypoint.sh text eol=lf

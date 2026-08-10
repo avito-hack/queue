@@ -8,8 +8,15 @@ import (
 	"github.com/avito-hack/queue/services/queue/internal/domain"
 )
 
-func (s *itemQueueService) GetUserQueues(ctx context.Context, userID uuid.UUID) ([]*domain.UserQueueInfo, error) {
-	members, err := s.memberRepository.GetAllByUserID(ctx, userID)
+func (s *itemQueueService) GetUserQueues(
+	ctx context.Context,
+	userID uuid.UUID,
+) ([]*domain.UserQueueInfo, error) {
+	members, err := s.memberRepository.GetAllByUserID(
+		ctx,
+		userID,
+	)
+
 	if err != nil {
 		s.logger.Error(
 			"failed to get user queues",
@@ -22,14 +29,35 @@ func (s *itemQueueService) GetUserQueues(ctx context.Context, userID uuid.UUID) 
 		return nil, err
 	}
 
-	result := make([]*domain.UserQueueInfo, 0, len(members))
+	result := make(
+		[]*domain.UserQueueInfo,
+		0,
+		len(members),
+	)
 
 	for _, member := range members {
-		result = append(result, &domain.UserQueueInfo{
-			ItemID:   member.ItemID,
-			Position: int(member.Position),
-			Status:   member.Status,
-		})
+		position := 0
+
+		if member.Position != nil {
+			rank, err := s.memberRepository.GetRank(
+				ctx,
+				member.ItemID,
+				member.UserID,
+			)
+
+			if err == nil {
+				position = int(rank)
+			}
+		}
+
+		result = append(
+			result,
+			&domain.UserQueueInfo{
+				ItemID:   member.ItemID,
+				Position: position,
+				Status:   member.Status,
+			},
+		)
 	}
 
 	return result, nil

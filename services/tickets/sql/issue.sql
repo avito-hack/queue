@@ -11,6 +11,7 @@ WHERE actor_id = sqlc.arg(actor_id)
   AND operation = sqlc.arg(operation)
   AND idempotency_key = sqlc.arg(idempotency_key);
 
+
 -- name: InsertIssueOperation :execrows
 INSERT INTO public.idempotency_operations (
     id,
@@ -24,7 +25,8 @@ INSERT INTO public.idempotency_operations (
     response_body,
     expires_at,
     updated_at
-) VALUES (
+)
+VALUES (
     sqlc.arg(id),
     sqlc.arg(idempotency_key),
     sqlc.arg(operation),
@@ -39,9 +41,22 @@ INSERT INTO public.idempotency_operations (
 )
 ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING;
 
+
+-- name: LockListingForTicketIssue :exec
+SELECT pg_advisory_xact_lock(
+    hashtextextended(
+        sqlc.arg(listing_id)::uuid::text,
+        0
+    )
+);
+
+
 -- name: InsertIssuedTicket :execrows
-WITH listing_lock AS (
-    SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(listing_id)::uuid::text, 0))
+WITH ticket_count AS (
+    SELECT COUNT(*) AS total
+    FROM public.tickets AS existing_tickets
+    WHERE existing_tickets.listing_id = sqlc.arg(listing_id)::uuid
+      AND existing_tickets.status = 'issued'
 )
 INSERT INTO public.tickets (
     id,
@@ -59,7 +74,8 @@ INSERT INTO public.tickets (
     finished_at,
     updated_at,
     version
-) SELECT
+)
+SELECT
     sqlc.arg(id),
     sqlc.arg(queue_entry_id),
     sqlc.arg(user_id),
@@ -75,8 +91,10 @@ INSERT INTO public.tickets (
     NULL,
     sqlc.arg(issued_at),
     1
-FROM listing_lock
+FROM ticket_count
+WHERE ticket_count.total < sqlc.arg(listing_quantity)::integer
 ON CONFLICT (queue_entry_id) DO NOTHING;
+
 
 -- name: FindTicketByQueueEntry :one
 SELECT
@@ -95,6 +113,7 @@ SELECT
     close_reason
 FROM public.tickets
 WHERE queue_entry_id = sqlc.arg(queue_entry_id);
+
 
 -- name: CompleteIssueOperation :execrows
 UPDATE public.idempotency_operations

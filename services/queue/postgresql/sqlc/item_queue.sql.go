@@ -12,7 +12,12 @@ import (
 )
 
 const createItemQueue = `-- name: CreateItemQueue :exec
-INSERT INTO item_queues (item_id, state, created_at, updated_at)
+INSERT INTO item_queues (
+    item_id,
+    state,
+    created_at,
+    updated_at
+)
 VALUES ($1, $2, $3, $4)
 `
 
@@ -59,7 +64,11 @@ func (q *Queries) ExistsItemQueue(ctx context.Context, itemID pgtype.UUID) (bool
 }
 
 const getItemQueueByID = `-- name: GetItemQueueByID :one
-SELECT item_id, state, created_at, updated_at
+SELECT
+    item_id,
+    state,
+    created_at,
+    updated_at
 FROM item_queues
 WHERE item_id = $1
 `
@@ -76,18 +85,34 @@ func (q *Queries) GetItemQueueByID(ctx context.Context, itemID pgtype.UUID) (Ite
 	return i, err
 }
 
-const lockItemQueue = `-- name: LockItemQueue :exec
-SELECT pg_advisory_xact_lock(hashtext($1))
+const lockItemQueue = `-- name: LockItemQueue :one
+SELECT
+    item_id,
+    state,
+    created_at,
+    updated_at
+FROM item_queues
+WHERE item_id = $1
+FOR UPDATE
 `
 
-func (q *Queries) LockItemQueue(ctx context.Context, hashtext string) error {
-	_, err := q.db.Exec(ctx, lockItemQueue, hashtext)
-	return err
+func (q *Queries) LockItemQueue(ctx context.Context, itemID pgtype.UUID) (ItemQueue, error) {
+	row := q.db.QueryRow(ctx, lockItemQueue, itemID)
+	var i ItemQueue
+	err := row.Scan(
+		&i.ItemID,
+		&i.State,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateItemQueue = `-- name: UpdateItemQueue :exec
 UPDATE item_queues
-SET state = $2, updated_at = $3
+SET
+    state = $2,
+    updated_at = $3
 WHERE item_id = $1
 `
 

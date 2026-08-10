@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,20 +16,13 @@ func (s *itemQueueService) Enqueue(
 	itemID uuid.UUID,
 	userID uuid.UUID,
 ) error {
+
 	listing, err := s.avitoClient.GetListing(
 		ctx,
 		itemID,
 	)
 
 	if err != nil {
-		s.logger.Error(
-			"failed to get listing",
-			"error",
-			err,
-			"item_id",
-			itemID,
-		)
-
 		return fmt.Errorf(
 			"get listing: %w",
 			err,
@@ -38,10 +32,19 @@ func (s *itemQueueService) Enqueue(
 	if !listing.QueueEnabled ||
 		listing.Status != "active" ||
 		listing.Quantity <= 0 {
+
 		return ErrQueueUnavailable
 	}
 
-	return s.txManager.WithinTransaction(
+
+	var (
+		memberID uuid.UUID
+		position uint
+		needTicket bool
+	)
+
+
+	err = s.txManager.WithinTransaction(
 		ctx,
 		func(
 			ctx context.Context,
@@ -49,42 +52,75 @@ func (s *itemQueueService) Enqueue(
 			memberRepository domain.ItemQueueMemberRepository,
 		) error {
 
-			exists, err := memberRepository.Exists(
+
+			_, err := queueRepository.LockByItemID(
+				ctx,
+				itemID,
+			)
+
+			if err != nil {
+
+				if !errors.Is(
+					err,
+					domain.ErrQueueNotFound,
+				) {
+					return err
+				}
+
+
+				err = queueRepository.Create(
+					ctx,
+					&domain.ItemQueue{
+						ItemID: itemID,
+						State: domain.QueueTicketsAvailable,
+						CreatedAt: time.Now(),
+						UpdatedAt: time.Now(),
+					},
+				)
+
+				if err != nil &&
+					!errors.Is(
+						err,
+						domain.ErrAlreadyExists,
+					) {
+
+					return err
+				}
+
+
+				_, err = queueRepository.LockByItemID(
+					ctx,
+					itemID,
+				)
+
+				if err != nil {
+					return err
+				}
+			}
+
+
+			existing, err := memberRepository.GetByUserID(
 				ctx,
 				itemID,
 				userID,
 			)
 
-			if err != nil {
+			if err != nil &&
+				!errors.Is(
+					err,
+					domain.ErrMemberNotFound,
+				) {
 				return err
 			}
 
-			if exists {
-				return ErrUserAlreadyInQueue
+
+			if existing != nil &&
+				domain.IsActiveMemberStatus(existing.Status) {
+
+				return domain.ErrAlreadyExists
 			}
 
-			err = queueRepository.Create(
-				ctx,
-				&domain.ItemQueue{
-					ItemID:    itemID,
-					State:     domain.QueueTicketsAvailable,
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
-				},
-			)
 
-			if err != nil {
-				return err
-			}
-
-			err = queueRepository.Lock(
-				ctx,
-				itemID,
-			)
-
-			if err != nil {
-				return err
-			}
 
 			members, err := memberRepository.GetAllByItemID(
 				ctx,
@@ -95,101 +131,232 @@ func (s *itemQueueService) Enqueue(
 				return err
 			}
 
+
+
 			activeTickets := 0
 
 			for _, member := range members {
+
 				if member.Status == domain.UserAcquiredPurchaseRights {
 					activeTickets++
 				}
 			}
 
-			count, err := memberRepository.Count(
-				ctx,
-				itemID,
-			)
 
-			if err != nil {
-				return err
+			needTicket = activeTickets < listing.Quantity
+
+
+
+			position = 1
+
+			for _, member := range members {
+
+				if member.Position != nil &&
+					*member.Position >= position {
+
+					position = *member.Position + 1
+				}
 			}
 
-			member, err := memberRepository.Create(
-				ctx,
-				itemID,
-				&domain.ItemQueueMember{
-					ItemID:    itemID,
-					UserID:    userID,
-					Position:  uint(count + 1),
-					Status:    domain.UserWaitingInLine,
-					CreatedAt: time.Now(),
-				},
-			)
 
-			if err != nil {
-				return err
-			}
 
-			if activeTickets >= listing.Quantity {
-				s.logger.Info(
-					"user added without ticket",
-					"item_id",
+			var member *domain.ItemQueueMember
+
+
+			if existing == nil {
+
+				member, err = memberRepository.Create(
+					ctx,
 					itemID,
-					"user_id",
+					&domain.ItemQueueMember{
+						ItemID: itemID,
+						UserID: userID,
+						Position: &position,
+						Status: domain.UserWaitingInLine,
+						CreatedAt: time.Now(),
+					},
+				)
+
+				if err != nil {
+					return err
+				}
+
+			} else {
+
+				err = memberRepository.Reactivate(
+					ctx,
+					itemID,
 					userID,
-					"position",
-					member.Position,
+					position,
 				)
 
-				return nil
+				if err != nil {
+					return err
+				}
+
+				member = existing
+				member.Position = &position
+				member.Status = domain.UserWaitingInLine
+				member.TicketID = nil
 			}
 
-			ticket, err := s.ticketsClient.IssueTicket(
-				ctx,
-				itemID,
-				member.ID,
-				itemID,
-				userID,
-			)
 
-			if err != nil {
-				return fmt.Errorf(
-					"issue ticket: %w",
-					err,
-				)
-			}
+			memberID = member.ID
 
-			ticketID, err := uuid.Parse(ticket.ID)
-
-			if err != nil {
-				return fmt.Errorf(
-					"parse ticket id: %w",
-					err,
-				)
-			}
-
-			member.TicketID = ticketID
-			member.Status = domain.UserAcquiredPurchaseRights
-
-			if err := memberRepository.Update(
-				ctx,
-				itemID,
-				member,
-			); err != nil {
-				return err
-			}
 
 			s.logger.Info(
-				"ticket issued",
+				"queue member created",
+				"member_id",
+				memberID,
 				"item_id",
 				itemID,
 				"user_id",
 				userID,
-				"ticket_id",
-				member.TicketID,
-				"queue_entry_id",
-				member.ID,
+				"position",
+				position,
+				"need_ticket",
+				needTicket,
+				"active_tickets",
+				activeTickets,
+				"quantity",
+				listing.Quantity,
 			)
+
 
 			return nil
 		},
 	)
+
+
+	if err != nil {
+		return err
+	}
+
+
+
+	if !needTicket {
+
+		s.logger.Info(
+			"user added to queue without ticket",
+			"item_id",
+			itemID,
+			"user_id",
+			userID,
+			"queue_entry_id",
+			memberID,
+		)
+
+		return nil
+	}
+
+
+
+	s.logger.Info(
+		"requesting ticket",
+		"item_id",
+		itemID,
+		"user_id",
+		userID,
+		"queue_entry_id",
+		memberID,
+	)
+
+
+
+	ticket, err := s.ticketsClient.IssueTicket(
+		ctx,
+		itemID,
+		memberID,
+		itemID,
+		userID,
+	)
+
+
+	if err != nil {
+
+		s.logger.Warn(
+			"ticket issue failed",
+			"error",
+			err,
+			"item_id",
+			itemID,
+			"user_id",
+			userID,
+		)
+
+		return nil
+	}
+
+
+
+	ticketID, err := uuid.Parse(
+		ticket.ID,
+	)
+
+
+	if err != nil {
+
+		s.logger.Error(
+			"failed to parse ticket uuid",
+			"ticket_id",
+			ticket.ID,
+			"error",
+			err,
+		)
+
+		return nil
+	}
+
+
+
+	err = s.txManager.WithinTransaction(
+		ctx,
+		func(
+			ctx context.Context,
+			_ domain.ItemQueueRepository,
+			memberRepository domain.ItemQueueMemberRepository,
+		) error {
+
+
+			member, err := memberRepository.GetByUserID(
+				ctx,
+				itemID,
+				userID,
+			)
+
+			if err != nil {
+				return err
+			}
+
+
+			member.TicketID = &ticketID
+			member.Status = domain.UserAcquiredPurchaseRights
+
+
+			return memberRepository.Update(
+				ctx,
+				itemID,
+				member,
+			)
+		},
+	)
+
+
+	if err != nil {
+		return err
+	}
+
+
+	s.logger.Info(
+		"ticket issued successfully",
+		"item_id",
+		itemID,
+		"user_id",
+		userID,
+		"ticket_id",
+		ticketID,
+	)
+
+
+	return nil
 }

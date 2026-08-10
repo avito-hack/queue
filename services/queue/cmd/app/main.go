@@ -7,21 +7,18 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/avito-hack/queue/services/queue/config"
-
 	avitogen "github.com/avito-hack/queue/services/queue/gen/clients/avito"
 	ticketsgen "github.com/avito-hack/queue/services/queue/gen/clients/tickets"
-
 	authinfra "github.com/avito-hack/queue/services/queue/infrastructure/auth"
 	avitoclient "github.com/avito-hack/queue/services/queue/infrastructure/client/avitoadapter"
 	ticketsclient "github.com/avito-hack/queue/services/queue/infrastructure/client/tickets"
 	"github.com/avito-hack/queue/services/queue/infrastructure/repository/postgres"
 	transporthttp "github.com/avito-hack/queue/services/queue/infrastructure/transport/http"
-
 	"github.com/avito-hack/queue/services/queue/internal/usecase"
-
 	"github.com/avito-hack/queue/services/queue/postgresql/sqlc"
 )
 
@@ -32,9 +29,7 @@ func main() {
 			nil,
 		),
 	)
-
 	slog.SetDefault(logger)
-
 	if err := run(logger); err != nil {
 		logger.Error("application stopped", "error", err)
 		os.Exit(1)
@@ -47,31 +42,24 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-
 	ctx := context.Background()
-
 
 	pool, err := postgres.NewPool(
 		ctx,
 		cfg.Postgres,
 		logger,
 	)
-
 	if err != nil {
 		return fmt.Errorf("create postgres pool: %w", err)
 	}
-
 	defer pool.Close()
 
-
 	queries := sqlc.New(pool)
-
 
 	queueRepository := postgres.NewItemQueueRepository(
 		queries,
 		logger,
 	)
-
 	memberRepository := postgres.NewItemQueueMemberRepository(
 		queries,
 		logger,
@@ -82,11 +70,9 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
-
 	avitoAPI, err := avitogen.NewClient(
 		cfg.Services.AvitoBaseURL,
 	)
-
 	if err != nil {
 		return fmt.Errorf("create avito client: %w", err)
 	}
@@ -96,11 +82,9 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
-
 	ticketsAPI, err := ticketsgen.NewClient(
 		cfg.Services.TicketsBaseURL,
 	)
-
 	if err != nil {
 		return fmt.Errorf("create tickets client: %w", err)
 	}
@@ -110,7 +94,6 @@ func run(logger *slog.Logger) error {
 		logger,
 	)
 
-
 	service := usecase.NewItemQueueService(
 		queueRepository,
 		memberRepository,
@@ -119,7 +102,6 @@ func run(logger *slog.Logger) error {
 		tickets,
 		logger,
 	)
-
 
 	introspectionURL := cfg.Auth.IntrospectionURL
 	if introspectionURL == "" {
@@ -137,7 +119,6 @@ func run(logger *slog.Logger) error {
 		sessionService,
 		logger,
 	)
-
 
 	health := usecase.NewHealth()
 
@@ -167,8 +148,13 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	signalContext, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
 	defer stop()
+
 	<-signalContext.Done()
 
 	shutdownContext, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)

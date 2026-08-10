@@ -11,20 +11,21 @@ import (
 )
 
 type Querier interface {
-	CountItemQueueMembers(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	CreateItemQueue(ctx context.Context, arg CreateItemQueueParams) error
 	CreateItemQueueMember(ctx context.Context, arg CreateItemQueueMemberParams) (ItemQueueMember, error)
 	DeleteAllItemQueueMembersByItemID(ctx context.Context, itemID pgtype.UUID) error
 	DeleteItemQueue(ctx context.Context, itemID pgtype.UUID) error
-	DeleteItemQueueMember(ctx context.Context, arg DeleteItemQueueMemberParams) error
 	ExistsItemQueue(ctx context.Context, itemID pgtype.UUID) (bool, error)
 	ExistsItemQueueMember(ctx context.Context, arg ExistsItemQueueMemberParams) (bool, error)
 	GetAllItemQueueMembersByItemID(ctx context.Context, itemID pgtype.UUID) ([]ItemQueueMember, error)
 	GetAllItemQueueMembersByUserID(ctx context.Context, userID pgtype.UUID) ([]ItemQueueMember, error)
 	GetItemQueueByID(ctx context.Context, itemID pgtype.UUID) (ItemQueue, error)
 	GetItemQueueMemberByUserID(ctx context.Context, arg GetItemQueueMemberByUserIDParams) (ItemQueueMember, error)
-	GetItemQueueMemberPosition(ctx context.Context, arg GetItemQueueMemberPositionParams) (int32, error)
-	LockItemQueue(ctx context.Context, hashtext string) error
+	GetItemQueueMemberPosition(ctx context.Context, arg GetItemQueueMemberPositionParams) (pgtype.Int4, error)
+	GetUserQueueRank(ctx context.Context, arg GetUserQueueRankParams) (int64, error)
+	LeaveItemQueueMember(ctx context.Context, arg LeaveItemQueueMemberParams) error
+	LockItemQueue(ctx context.Context, itemID pgtype.UUID) (ItemQueue, error)
+	ReactivateItemQueueMember(ctx context.Context, arg ReactivateItemQueueMemberParams) error
 	ShiftItemQueueMembersPositions(ctx context.Context, arg ShiftItemQueueMembersPositionsParams) error
 	UpdateItemQueue(ctx context.Context, arg UpdateItemQueueParams) error
 	UpdateItemQueueMember(ctx context.Context, arg UpdateItemQueueMemberParams) error

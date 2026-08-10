@@ -12,7 +12,7 @@ type ItemQueueRepository interface {
 	Update(ctx context.Context, queue *ItemQueue) error
 	Delete(ctx context.Context, itemID uuid.UUID) error
 	Exists(ctx context.Context, itemID uuid.UUID) (bool, error)
-	Lock(ctx context.Context, itemID uuid.UUID) error
+	LockByItemID(ctx context.Context, itemID uuid.UUID) (*ItemQueue, error)
 }
 
 type ItemQueueMemberRepository interface {
@@ -21,10 +21,11 @@ type ItemQueueMemberRepository interface {
 	GetAllByItemID(ctx context.Context, itemID uuid.UUID) ([]*ItemQueueMember, error)
 	GetAllByUserID(ctx context.Context, userID uuid.UUID) ([]*ItemQueueMember, error)
 	Update(ctx context.Context, itemID uuid.UUID, member *ItemQueueMember) error
-	Delete(ctx context.Context, itemID, userID uuid.UUID) error
+	Leave(ctx context.Context, itemID, userID uuid.UUID, reason ItemQueueMemberStatus) error
+	Reactivate(ctx context.Context, itemID, userID uuid.UUID, position uint) error
 	DeleteAllByItemID(ctx context.Context, itemID uuid.UUID) error
 	Exists(ctx context.Context, itemID, userID uuid.UUID) (bool, error)
-	Count(ctx context.Context, itemID uuid.UUID) (int, error)
 	GetPosition(ctx context.Context, itemID, userID uuid.UUID) (uint, error)
 	ShiftPositionsAfterDelete(ctx context.Context, itemID uuid.UUID, position uint) error
+	GetRank(ctx context.Context, itemID, userID uuid.UUID) (uint, error)	
 }

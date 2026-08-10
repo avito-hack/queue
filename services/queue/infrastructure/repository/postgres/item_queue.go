@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/avito-hack/queue/services/queue/internal/domain"
@@ -24,13 +26,19 @@ func NewItemQueueRepository(queries *sqlc.Queries, logger *slog.Logger) *ItemQue
 	}
 }
 
-func (r *ItemQueueRepository) Create(ctx context.Context, queue *domain.ItemQueue) error {
-	err := r.queries.CreateItemQueue(ctx, sqlc.CreateItemQueueParams{
-		ItemID:    uuidToPg(queue.ItemID),
-		State:     string(queue.State),
-		CreatedAt: timeToPg(queue.CreatedAt),
-		UpdatedAt: timeToPg(queue.UpdatedAt),
-	})
+func (r *ItemQueueRepository) Create(
+	ctx context.Context,
+	queue *domain.ItemQueue,
+) error {
+	err := r.queries.CreateItemQueue(
+		ctx,
+		sqlc.CreateItemQueueParams{
+			ItemID:       uuidToPg(queue.ItemID),
+			State:        string(queue.State),
+			CreatedAt:    timeToPg(queue.CreatedAt),
+			UpdatedAt:    timeToPg(queue.UpdatedAt),
+		},
+	)
 
 	if err != nil {
 		r.logger.Error(
@@ -45,8 +53,15 @@ func (r *ItemQueueRepository) Create(ctx context.Context, queue *domain.ItemQueu
 	return err
 }
 
-func (r *ItemQueueRepository) GetByItemID(ctx context.Context, itemID uuid.UUID) (*domain.ItemQueue, error) {
-	row, err := r.queries.GetItemQueueByID(ctx, uuidToPg(itemID))
+func (r *ItemQueueRepository) GetByItemID(
+	ctx context.Context,
+	itemID uuid.UUID,
+) (*domain.ItemQueue, error) {
+	row, err := r.queries.GetItemQueueByID(
+		ctx,
+		uuidToPg(itemID),
+	)
+
 	if err != nil {
 		r.logger.Error(
 			"failed to get item queue",
@@ -67,12 +82,18 @@ func (r *ItemQueueRepository) GetByItemID(ctx context.Context, itemID uuid.UUID)
 	}, nil
 }
 
-func (r *ItemQueueRepository) Update(ctx context.Context, queue *domain.ItemQueue) error {
-	err := r.queries.UpdateItemQueue(ctx, sqlc.UpdateItemQueueParams{
-		ItemID:    uuidToPg(queue.ItemID),
-		State:     string(queue.State),
-		UpdatedAt: timeToPg(queue.UpdatedAt),
-	})
+func (r *ItemQueueRepository) Update(
+	ctx context.Context,
+	queue *domain.ItemQueue,
+) error {
+	err := r.queries.UpdateItemQueue(
+		ctx,
+		sqlc.UpdateItemQueueParams{
+			ItemID:    uuidToPg(queue.ItemID),
+			State:     string(queue.State),
+			UpdatedAt: timeToPg(queue.UpdatedAt),
+		},
+	)
 
 	if err != nil {
 		r.logger.Error(
@@ -87,8 +108,14 @@ func (r *ItemQueueRepository) Update(ctx context.Context, queue *domain.ItemQueu
 	return err
 }
 
-func (r *ItemQueueRepository) Delete(ctx context.Context, itemID uuid.UUID) error {
-	err := r.queries.DeleteItemQueue(ctx, uuidToPg(itemID))
+func (r *ItemQueueRepository) Delete(
+	ctx context.Context,
+	itemID uuid.UUID,
+) error {
+	err := r.queries.DeleteItemQueue(
+		ctx,
+		uuidToPg(itemID),
+	)
 
 	if err != nil {
 		r.logger.Error(
@@ -103,8 +130,14 @@ func (r *ItemQueueRepository) Delete(ctx context.Context, itemID uuid.UUID) erro
 	return err
 }
 
-func (r *ItemQueueRepository) Exists(ctx context.Context, itemID uuid.UUID) (bool, error) {
-	exists, err := r.queries.ExistsItemQueue(ctx, uuidToPg(itemID))
+func (r *ItemQueueRepository) Exists(
+	ctx context.Context,
+	itemID uuid.UUID,
+) (bool, error) {
+	exists, err := r.queries.ExistsItemQueue(
+		ctx,
+		uuidToPg(itemID),
+	)
 
 	if err != nil {
 		r.logger.Error(
@@ -136,27 +169,34 @@ func timeToPg(t time.Time) pgtype.Timestamp {
 		Valid: true,
 	}
 }
-func (r *ItemQueueRepository) Lock(
+
+func (r *ItemQueueRepository) LockByItemID(
 	ctx context.Context,
 	itemID uuid.UUID,
-) error {
-
-	err := r.queries.LockItemQueue(
+) (*domain.ItemQueue, error) {
+	row, err := r.queries.LockItemQueue(
 		ctx,
-		itemID.String(),
+		uuidToPg(itemID),
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrQueueNotFound
+		}
+
 		r.logger.Error(
-			"failed to lock queue",
-			"error",
-			err,
-			"item_id",
-			itemID,
+			"failed to lock item queue",
+			"error", err,
+			"item_id", itemID,
 		)
 
-		return err
+		return nil, err
 	}
 
-	return nil
+	return &domain.ItemQueue{
+		ItemID:    pgToUUID(row.ItemID),
+		State:     domain.ItemQueueState(row.State),
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
+	}, nil
 }

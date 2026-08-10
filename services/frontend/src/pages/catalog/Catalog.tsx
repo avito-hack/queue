@@ -2,7 +2,11 @@ import { useEffect } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { CatalogCard } from './CatalogCard'
 import { productApi } from '../../features/product/api'
-import { setProductItems } from '../../features/product/productSlice'
+import {
+  patchProductQueueCount,
+  setProductItems,
+} from '../../features/product/productSlice'
+import { queueApi } from '../../features/queue/api'
 import { reportApiError } from '../../shared/api/errors'
 
 export function Catalog() {
@@ -12,6 +16,23 @@ export function Catalog() {
       try {
         const products = await productApi.getProducts()
         dispatch(setProductItems(products))
+        await Promise.all(
+          products.map(async (product) => {
+            try {
+              const data = await queueApi.getItemQueueState(product.id)
+              if (typeof data.waiting_count === 'number') {
+                dispatch(
+                  patchProductQueueCount({
+                    id: product.id,
+                    queueCount: data.waiting_count,
+                  }),
+                )
+              }
+            } catch {
+              // очереди ещё нет — 0
+            }
+          }),
+        )
       } catch (e) {
         reportApiError(e, 'Не удалось загрузить каталог')
         dispatch(setProductItems([]))

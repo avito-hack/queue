@@ -199,7 +199,7 @@ func TestCreatedOrderFromResponse_SafeCheckoutURL_ReturnOrder(t *testing.T) {
 			// then
 			require.NoError(t, err)
 			require.Equal(t, order.Id, createdOrder.ID)
-			require.Equal(t, checkoutURL, createdOrder.CheckoutURL)
+			require.Equal(t, "/checkout?ticket="+request.TicketID.String(), createdOrder.CheckoutURL)
 		})
 	}
 }

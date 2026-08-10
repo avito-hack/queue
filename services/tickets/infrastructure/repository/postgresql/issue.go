@@ -59,6 +59,7 @@ func (r *IssueRepository) issue(
 	command usecase.IssueTicketCommand,
 ) (usecase.IssueTicketResult, error) {
 	requestHash := issueRequestHash(command)
+
 	operation, err := findIssueOperation(ctx, transaction, command.UserID, command.IdempotencyKey)
 	if err == nil {
 		return resolveIssueOperation(operation, command, requestHash)
@@ -68,6 +69,7 @@ func (r *IssueRepository) issue(
 	}
 
 	operationID := r.newID()
+
 	inserted, err := insertIssueOperation(ctx, transaction, operationID, command, requestHash)
 	if err != nil {
 		return usecase.IssueTicketResult{}, fmt.Errorf("insert issue operation: %w", err)
@@ -77,73 +79,78 @@ func (r *IssueRepository) issue(
 		if err != nil {
 			return usecase.IssueTicketResult{}, fmt.Errorf("find concurrent issue operation: %w", err)
 		}
-
 		return resolveIssueOperation(operation, command, requestHash)
 	}
 
 	ticketID := r.newID()
-	ticketInserted, err := insertIssuedTicket(ctx, transaction, ticketID, command)
+
+	ticketInserted, err := insertIssuedTicket(
+		ctx,
+		transaction,
+		ticketID,
+		command,
+	)
 	if err != nil {
 		var postgresError *pgconn.PgError
+
 		if errors.As(err, &postgresError) &&
 			postgresError.Code == "23505" &&
 			postgresError.ConstraintName == issueLiveTicketConstraint {
+
 			return usecase.IssueTicketResult{}, usecase.ErrTicketNotIssuable
 		}
 
-		return usecase.IssueTicketResult{}, fmt.Errorf("insert issued ticket: %w", err)
-	}
-	if ticketInserted {
-		activeTickets, err := sqlgen.New(transaction).CountActiveListingTickets(
-			ctx,
-			sqlgen.CountActiveListingTicketsParams{
-				ListingID: toPGUUID(command.ListingID),
-				ActiveAt:  toPGTimestamptz(command.IssuedAt),
-			},
+		return usecase.IssueTicketResult{}, fmt.Errorf(
+			"insert issued ticket: %w",
+			err,
 		)
-		if err != nil {
-			return usecase.IssueTicketResult{}, fmt.Errorf("count active listing tickets: %w", err)
-		}
-		if activeTickets > int64(command.ListingQuantity) {
-			return usecase.IssueTicketResult{}, usecase.ErrTicketNotIssuable
-		}
 	}
 
-	result := usecase.IssueTicketResult{
-		Ticket: domain.Ticket{
-			ID:                 ticketID,
-			ListingID:          command.ListingID,
-			SKUID:              command.SKUID,
-			Status:             domain.TicketStatusIssued,
-			IssuedAt:           command.IssuedAt,
-			ActivationDeadline: command.ActivationDeadline,
-		},
-		QueueEntryID: command.QueueEntryID,
-		UserID:       command.UserID,
-		Created:      true,
-	}
-	if !ticketInserted {
-		result, err = findTicketByQueueEntry(ctx, transaction, command.QueueEntryID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return usecase.IssueTicketResult{}, errors.New("issued ticket conflict has no existing ticket")
+	var result usecase.IssueTicketResult
+
+	if ticketInserted {
+		result = usecase.IssueTicketResult{
+			Ticket: domain.Ticket{
+				ID:                 ticketID,
+				ListingID:          command.ListingID,
+				SKUID:              command.SKUID,
+				Status:             domain.TicketStatusIssued,
+				IssuedAt:           command.IssuedAt,
+				ActivationDeadline: command.ActivationDeadline,
+			},
+			QueueEntryID: command.QueueEntryID,
+			UserID:       command.UserID,
+			Created:      true,
 		}
-		if err != nil {
-			return usecase.IssueTicketResult{}, fmt.Errorf("find existing issued ticket: %w", err)
-		}
-		if !issueScopeMatches(result, command) {
+	} else {
+		// rowsAffected == 0 значит либо квота исчерпана (WHERE ticket_count.total < quantity
+		// не прошло), либо сработал ON CONFLICT (queue_entry_id) DO NOTHING на повторной
+		// попытке для того же queue_entry_id. Различаем по наличию существующей строки.
+		existing, findErr := findTicketByQueueEntry(ctx, transaction, command.QueueEntryID)
+		if errors.Is(findErr, pgx.ErrNoRows) {
 			return usecase.IssueTicketResult{}, usecase.ErrTicketNotIssuable
 		}
-		result.Created = false
+		if findErr != nil {
+			return usecase.IssueTicketResult{}, fmt.Errorf("find existing issued ticket: %w", findErr)
+		}
+		if !issueScopeMatches(existing, command) {
+			return usecase.IssueTicketResult{}, usecase.ErrTicketNotIssuable
+		}
+
+		existing.Created = false
+		result = existing
 	}
 
 	responseBody, err := encodeIssueResult(result)
 	if err != nil {
 		return usecase.IssueTicketResult{}, fmt.Errorf("encode issue response: %w", err)
 	}
+
 	responseStatus := issueExistingResponseStatus
 	if result.Created {
 		responseStatus = issueCreatedResponseStatus
 	}
+
 	rowsAffected, err := sqlgen.New(transaction).CompleteIssueOperation(ctx, sqlgen.CompleteIssueOperationParams{
 		ResponseStatus: toPGInt4(responseStatus),
 		ResponseBody:   responseBody,
@@ -251,15 +258,26 @@ func insertIssuedTicket(
 	ticketID uuid.UUID,
 	command usecase.IssueTicketCommand,
 ) (bool, error) {
-	rowsAffected, err := sqlgen.New(transaction).InsertIssuedTicket(ctx, sqlgen.InsertIssuedTicketParams{
-		ID:                 toPGUUID(ticketID),
-		QueueEntryID:       toPGUUID(command.QueueEntryID),
-		UserID:             toPGUUID(command.UserID),
-		ListingID:          toPGUUID(command.ListingID),
-		SkuID:              toPGUUID(command.SKUID),
-		ActivationDeadline: toPGTimestamptz(command.ActivationDeadline),
-		IssuedAt:           toPGTimestamptz(command.IssuedAt),
-	})
+	if err := sqlgen.New(transaction).LockListingForTicketIssue(
+		ctx,
+		toPGUUID(command.ListingID),
+	); err != nil {
+		return false, fmt.Errorf("lock listing for ticket issue: %w", err)
+	}
+
+	rowsAffected, err := sqlgen.New(transaction).InsertIssuedTicket(
+		ctx,
+		sqlgen.InsertIssuedTicketParams{
+			ID:                 toPGUUID(ticketID),
+			QueueEntryID:       toPGUUID(command.QueueEntryID),
+			UserID:             toPGUUID(command.UserID),
+			ListingID:          toPGUUID(command.ListingID),
+			SkuID:              toPGUUID(command.SKUID),
+			ListingQuantity:    int32(command.ListingQuantity),
+			ActivationDeadline: toPGTimestamptz(command.ActivationDeadline),
+			IssuedAt:           toPGTimestamptz(command.IssuedAt),
+		},
+	)
 	if err != nil {
 		return false, err
 	}
@@ -345,7 +363,6 @@ func resolveIssueOperation(
 			return usecase.IssueTicketResult{}, errors.New("issue operation has invalid response scope")
 		}
 		result.Created = false
-
 		return result, nil
 	case issueOperationStateProcessing:
 		return usecase.IssueTicketResult{}, errors.New("issue operation is unexpectedly processing")
@@ -361,7 +378,6 @@ func issueRequestHash(command usecase.IssueTicketCommand) string {
 	copy(input[32:48], command.ListingID[:])
 	copy(input[48:], command.SKUID[:])
 	hash := sha256.Sum256(input[:])
-
 	return hex.EncodeToString(hash[:])
 }
 
@@ -401,6 +417,7 @@ func decodeIssueResult(operation issueOperationRecord) (usecase.IssueTicketResul
 	if err := json.Unmarshal(operation.ResponseBody, &response); err != nil {
 		return usecase.IssueTicketResult{}, fmt.Errorf("decode issue response: %w", err)
 	}
+
 	result := usecase.IssueTicketResult{
 		Ticket: domain.Ticket{
 			ID:                 response.ID,
@@ -456,14 +473,12 @@ func inIssueTransaction[T any](
 		if committed {
 			return
 		}
-
 		rollbackContext, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), issueRollbackTimeout)
 		defer cancelRollback()
 		rollbackErr := transaction.Rollback(rollbackContext)
 		if rollbackErr == nil || errors.Is(rollbackErr, pgx.ErrTxClosed) {
 			return
 		}
-
 		wrappedRollbackErr := fmt.Errorf("rollback issue transaction: %w", rollbackErr)
 		if err == nil {
 			err = wrappedRollbackErr
@@ -476,6 +491,7 @@ func inIssueTransaction[T any](
 	if err != nil {
 		return result, err
 	}
+
 	if err = transaction.Commit(ctx); err != nil {
 		return result, fmt.Errorf("commit issue transaction: %w", err)
 	}

@@ -331,9 +331,14 @@ components:
       type: object
       required:
         - state
+        - waiting_count
       properties:
         state:
           $ref: '#/components/schemas/ItemQueueState'
+        waiting_count:
+          type: integer
+          minimum: 0
+          description: Число людей, стоящих в очереди на товар
 
     ItemQueueInfo:
       type: object

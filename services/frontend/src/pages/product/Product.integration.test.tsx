@@ -10,7 +10,10 @@ vi.mock('../../features/queue/api', () => ({
   queueApi: {
     joinQueue: vi.fn(),
     leaveQueue: vi.fn(),
-    getItemQueueState: vi.fn().mockResolvedValue({ state: 'tickets_available' }),
+    getItemQueueState: vi.fn().mockResolvedValue({
+      state: 'tickets_available',
+      waiting_count: 0,
+    }),
     listUserQueues: vi.fn().mockResolvedValue([]),
     getPosition: vi.fn(),
   },

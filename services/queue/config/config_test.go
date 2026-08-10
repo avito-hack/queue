@@ -11,6 +11,7 @@ import (
 
 func Test_Load_ReturnDefaults(t *testing.T) {
 	// given
+	t.Setenv("DATABASE_URL", "postgres://queue:queue@localhost:5432/queue")
 	t.Setenv("HTTP_PORT", "")
 	t.Setenv("POSTGRES_AUTO_MIGRATE", "")
 	clearEnv(
@@ -47,6 +48,7 @@ func Test_Load_ReturnDefaults(t *testing.T) {
 
 func Test_Load_ReturnConfiguredAutoMigrateAndTimeouts(t *testing.T) {
 	// given
+	t.Setenv("DATABASE_URL", "postgres://queue:queue@localhost:5432/queue")
 	t.Setenv("POSTGRES_AUTO_MIGRATE", "true")
 	t.Setenv("POSTGRES_MIGRATIONS_DIR", "custom/migrations")
 	t.Setenv("HTTP_READ_TIMEOUT", "3s")

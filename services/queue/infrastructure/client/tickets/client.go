@@ -2,43 +2,60 @@ package tickets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
-	"encoding/json"
+
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	ticketsgen "github.com/avito-hack/queue/services/queue/gen/clients/tickets"
+	tickets "github.com/avito-hack/queue/services/queue/gen/clients/tickets"
 	"github.com/avito-hack/queue/services/queue/infrastructure/auth"
 	"github.com/avito-hack/queue/services/queue/internal/domain"
 	"github.com/avito-hack/queue/services/queue/internal/usecase"
 )
 
 type client struct {
-	api    ticketsgen.ClientInterface
+	api    tickets.ClientInterface
 	logger *slog.Logger
 }
 
 func NewClient(
-	api ticketsgen.ClientInterface,
+	api tickets.ClientInterface,
 	logger *slog.Logger,
 ) usecase.TicketsClient {
+
 	return &client{
 		api:    api,
 		logger: logger,
 	}
 }
 
-func (c *client) authEditor(ctx context.Context) func(context.Context, *http.Request) error {
-	return func(_ context.Context, req *http.Request) error {
-		header, ok := ctx.Value(auth.AuthorizationHeaderKey).(string)
+func (c *client) authEditor(
+	ctx context.Context,
+) func(context.Context, *http.Request) error {
+
+	return func(
+		_ context.Context,
+		req *http.Request,
+	) error {
+
+		header, ok := ctx.Value(
+			auth.AuthorizationHeaderKey,
+		).(string)
 
 		if !ok || header == "" {
-			return fmt.Errorf("authorization header missing")
+			return fmt.Errorf(
+				"authorization header missing",
+			)
 		}
 
-		req.Header.Set("Authorization", header)
+		req.Header.Set(
+			"Authorization",
+			header,
+		)
 
 		return nil
 	}
@@ -54,39 +71,63 @@ func (c *client) IssueTicket(
 
 	response, err := c.api.IssueTicket(
 		ctx,
-		&ticketsgen.IssueTicketParams{
-			IdempotencyKey: ticketsgen.IdempotencyKey(
+
+		&tickets.IssueTicketParams{
+			IdempotencyKey: tickets.IdempotencyKey(
 				openapi_types.UUID(queueEntryID),
 			),
 		},
-		ticketsgen.IssueTicketJSONRequestBody{
-			ListingId:    openapi_types.UUID(listingID),
-			QueueEntryId: openapi_types.UUID(queueEntryID),
-			SkuId:        openapi_types.UUID(skuID),
-			UserId:       openapi_types.UUID(userID),
+
+		tickets.IssueTicketJSONRequestBody{
+			ListingId: openapi_types.UUID(
+				listingID,
+			),
+
+			QueueEntryId: openapi_types.UUID(
+				queueEntryID,
+			),
+
+			SkuId: openapi_types.UUID(
+				skuID,
+			),
+
+			UserId: openapi_types.UUID(
+				userID,
+			),
 		},
+
 		c.authEditor(ctx),
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("issue ticket request: %w", err)
+		return nil, fmt.Errorf(
+			"issue ticket request: %w",
+			err,
+		)
 	}
 
 	defer response.Body.Close()
 
-	switch response.StatusCode {
-	case http.StatusCreated, http.StatusOK:
+	if response.StatusCode != http.StatusCreated &&
+		response.StatusCode != http.StatusOK {
 
-	default:
+		body, _ := io.ReadAll(
+			response.Body,
+		)
+
 		return nil, fmt.Errorf(
-			"issue ticket failed with status %d",
+			"issue ticket failed: status=%d body=%s",
 			response.StatusCode,
+			string(body),
 		)
 	}
 
-	var ticket ticketsgen.V1Ticket
+	var ticket tickets.V1Ticket
 
-	if err := json.NewDecoder(response.Body).Decode(&ticket); err != nil {
+	if err := json.NewDecoder(
+		response.Body,
+	).Decode(&ticket); err != nil {
+
 		return nil, fmt.Errorf(
 			"decode ticket response: %w",
 			err,
@@ -95,6 +136,7 @@ func (c *client) IssueTicket(
 
 	return &domain.Ticket{
 		ID: ticket.Id.String(),
+
 		Status: domain.TicketStatus(
 			ticket.Status,
 		),
@@ -108,12 +150,15 @@ func (c *client) DeclineTicket(
 
 	response, err := c.api.DeclineTicket(
 		ctx,
+
 		openapi_types.UUID(ticketID),
-		&ticketsgen.DeclineTicketParams{
-			IdempotencyKey: ticketsgen.IdempotencyKey(
+
+		&tickets.DeclineTicketParams{
+			IdempotencyKey: tickets.IdempotencyKey(
 				openapi_types.UUID(uuid.New()),
 			),
 		},
+
 		c.authEditor(ctx),
 	)
 
@@ -127,9 +172,15 @@ func (c *client) DeclineTicket(
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
+
+		body, _ := io.ReadAll(
+			response.Body,
+		)
+
 		return fmt.Errorf(
-			"decline ticket failed: %d",
+			"decline ticket failed: status=%d body=%s",
 			response.StatusCode,
+			string(body),
 		)
 	}
 

@@ -31,7 +31,7 @@ type ItemQueueMember struct {
 	ItemID    pgtype.UUID      `json:"item_id"`
 	UserID    pgtype.UUID      `json:"user_id"`
 	TicketID  pgtype.UUID      `json:"ticket_id"`
-	Position  int32            `json:"position"`
+	Position  pgtype.Int4      `json:"position"`
 	Status    string           `json:"status"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
 }

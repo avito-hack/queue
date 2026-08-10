@@ -59,39 +59,17 @@ func (c *client) GetListing(
 	switch response.StatusCode {
 
 	case http.StatusNotFound:
-
-		err := fmt.Errorf(
+		return nil, fmt.Errorf(
 			"listing not found",
 		)
-
-		c.logger.Warn(
-			"listing not found in avito",
-			"item_id",
-			itemID,
-		)
-
-		return nil, err
 
 	case http.StatusOK:
 
 	default:
-
-		err := fmt.Errorf(
-			"get listing unexpected status: %d",
+		return nil, fmt.Errorf(
+			"unexpected avito status: %d",
 			response.StatusCode,
-		)
-
-		c.logger.Error(
-			"avito returned unexpected status",
-			"error",
-			err,
-			"item_id",
-			itemID,
-			"status_code",
-			response.StatusCode,
-		)
-
-		return nil, err
+			)
 	}
 
 	var listing avitogen.Listing
@@ -100,31 +78,29 @@ func (c *client) GetListing(
 		response.Body,
 	).Decode(&listing); err != nil {
 
-		c.logger.Error(
-			"failed to decode avito listing response",
-			"error",
-			err,
-			"item_id",
-			itemID,
-		)
-
 		return nil, fmt.Errorf(
 			"decode listing response: %w",
 			err,
 		)
 	}
 
+
 	result := &domain.Listing{
-		ID:           uuid.UUID(listing.Id),
-		QueueEnabled: listing.QueueEnabled,
-		Status:       string(listing.Status),
-		Quantity:     listing.Quantity,
+	    ID: uuid.UUID(listing.Id),
+	    SkuID: uuid.UUID(listing.Id),
+		
+	    QueueEnabled: listing.QueueEnabled,
+	    Status:       string(listing.Status),
+	    Quantity:     listing.Quantity,
 	}
+
 
 	c.logger.Info(
 		"listing fetched successfully",
 		"item_id",
 		itemID,
+		"sku_id",
+		result.SkuID,
 		"status",
 		result.Status,
 		"quantity",
@@ -132,6 +108,7 @@ func (c *client) GetListing(
 		"queue_enabled",
 		result.QueueEnabled,
 	)
+
 
 	return result, nil
 }

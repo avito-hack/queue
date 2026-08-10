@@ -6,11 +6,20 @@ import { TicketPurchaseModal } from '../../components/modals/TicketPurchaseModal
 import { queueApi } from '../../features/queue/api'
 import { isTicketExpired } from '../../features/queue/lib'
 import { leaveQueue } from '../../features/queue/queueSlice'
+import {
+  isActivateConflictError,
+  resolveActivatedTicket,
+} from '../../features/ticket/activateRecovery'
 import { ticketApi } from '../../features/ticket/api'
+import {
+  readActivatedTickets,
+  rememberActivatedTicket,
+} from '../../features/ticket/activatedTickets'
 import { resolveCheckoutNavigation } from '../../features/ticket/checkoutNavigation'
-import { removeTicket } from '../../features/ticket/ticketSlice'
+import { removeTicket, upsertTicket } from '../../features/ticket/ticketSlice'
 import { ticketAllows } from '../../features/ticket/types'
 import { reportApiError } from '../../shared/api/errors'
+import { showToast } from '../../shared/toast'
 import { QueueCard } from './QueueCard'
 import { QueueEmpty } from './QueueEmpty'
 import { SummaryTile } from './SummaryTile'
@@ -32,12 +41,57 @@ export function Queue() {
     setTicketTile(null)
   }
 
+  const goToCheckout = (ticketId: string, productId: string, checkoutUrl?: string) => {
+    const target = resolveCheckoutNavigation(ticketId, checkoutUrl)
+    if (target.kind === 'external') {
+      window.location.assign(target.url)
+      return
+    }
+    navigate(target.path, { state: { productId } })
+  }
+
+  const finishActivatedCheckout = (activated: {
+    id: string
+    productId: string
+    checkoutUrl?: string
+  }) => {
+    const entry = {
+      id: activated.id,
+      productId: activated.productId,
+      status: 'redeemed' as const,
+      checkoutUrl:
+        activated.checkoutUrl?.trim() ||
+        `/checkout?ticket=${encodeURIComponent(activated.id)}`,
+      availableActions: ['checkout' as const],
+    }
+    rememberActivatedTicket(entry)
+    dispatch(upsertTicket(entry))
+    setTicketTile(null)
+    goToCheckout(entry.id, entry.productId, entry.checkoutUrl)
+  }
+
   const handleActivateAndBuy = () => {
     if (!ticketTile || buying) return
     if (!ticketAllows(ticketTile, 'activate') && !ticketAllows(ticketTile, 'checkout')) {
       return
     }
     const id = ticketTile.id
+    const productId = ticketTile.productId
+    const remembered = readActivatedTickets().find((item) => item.id === id)
+
+    if (
+      remembered ||
+      ticketTile.ticketStatus === 'redeemed' ||
+      (ticketTile.checkoutUrl && !ticketAllows(ticketTile, 'activate'))
+    ) {
+      finishActivatedCheckout({
+        id,
+        productId,
+        checkoutUrl: remembered?.checkoutUrl || ticketTile.checkoutUrl,
+      })
+      return
+    }
+
     if (isTicketExpired(ticketTile.expiresAt)) {
       dispatch(removeTicket(id))
       setTicketTile(null)
@@ -48,16 +102,18 @@ export function Queue() {
       setBuying(true)
       try {
         const result = await ticketApi.activateTicket(id)
-        setTicketTile(null)
-        const target = resolveCheckoutNavigation(id, result.checkout_url)
-        if (target.kind === 'external') {
-          window.location.assign(target.url)
+        finishActivatedCheckout({
+          id,
+          productId,
+          checkoutUrl: result.checkout_url,
+        })
+      } catch (error) {
+        if (isActivateConflictError(error)) {
+          const recovered = await resolveActivatedTicket(id, productId)
+          finishActivatedCheckout(recovered)
           return
         }
-        navigate(target.path)
-      } catch (error) {
         reportApiError(error, 'Не удалось активировать тикет')
-      } finally {
         setBuying(false)
       }
     })()
@@ -74,6 +130,7 @@ export function Queue() {
         await queueApi.leaveQueue(productId)
         dispatch(leaveQueue(entryId))
         setLeaveTile(null)
+        showToast('Вы вышли из очереди', 'info')
       } catch (error) {
         reportApiError(error, 'Не удалось выйти из очереди')
       } finally {
@@ -88,12 +145,14 @@ export function Queue() {
     kind: TileKind
     position?: number
     expiresAt?: string
+    ticketStatus?: QueueTileView['ticketStatus']
+    checkoutUrl?: string
     availableActions?: QueueTileView['availableActions']
   }): QueueTileView => {
     const product = productItems.find((p) => p.id === entry.productId)
     return {
       ...entry,
-      title: product?.title ?? `Товар ${entry.productId}`,
+      title: product?.title ?? 'Загрузка товара…',
       image: product?.image ?? '🛒',
     }
   }
@@ -113,6 +172,8 @@ export function Queue() {
         productId: ticket.productId,
         kind: 'ticket',
         expiresAt: ticket.expiresAt,
+        ticketStatus: ticket.status,
+        checkoutUrl: ticket.checkoutUrl,
         availableActions: ticket.availableActions,
       }),
     ),
@@ -156,7 +217,13 @@ export function Queue() {
             <QueueCard
               key={`${tile.kind}-${tile.id}`}
               tile={tile}
-              onOpenTicket={() => setTicketTile(tile)}
+              onOpenTicket={() => {
+                if (tile.ticketStatus === 'redeemed' || tile.checkoutUrl) {
+                  goToCheckout(tile.id, tile.productId, tile.checkoutUrl)
+                  return
+                }
+                setTicketTile(tile)
+              }}
               onLeaveQueue={() => setLeaveTile(tile)}
             />
           ))}
@@ -169,10 +236,7 @@ export function Queue() {
         productImage={ticketTile?.image ?? '🛒'}
         expiresAt={ticketTile?.expiresAt}
         buying={buying}
-        canActivate={
-          ticketAllows(ticketTile, 'activate') ||
-          ticketAllows(ticketTile, 'checkout')
-        }
+        canActivate={ticketAllows(ticketTile, 'activate')}
         canDecline={ticketAllows(ticketTile, 'decline')}
         onClose={closeTicketModal}
         onBuy={handleActivateAndBuy}
@@ -185,6 +249,7 @@ export function Queue() {
               await ticketApi.declineTicket(id)
               dispatch(removeTicket(id))
               setTicketTile(null)
+              showToast('Вы отказались от тикета', 'info')
             } catch (error) {
               reportApiError(error, 'Не удалось отказаться от тикета')
             }

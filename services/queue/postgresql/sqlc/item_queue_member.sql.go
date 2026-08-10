@@ -11,19 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countItemQueueMembers = `-- name: CountItemQueueMembers :one
-SELECT COUNT(*)
-FROM item_queue_members
-WHERE item_id = $1
-`
-
-func (q *Queries) CountItemQueueMembers(ctx context.Context, itemID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countItemQueueMembers, itemID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createItemQueueMember = `-- name: CreateItemQueueMember :one
 INSERT INTO item_queue_members (
     item_id,
@@ -34,7 +21,7 @@ INSERT INTO item_queue_members (
     created_at
 )
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING 
+RETURNING
     id,
     item_id,
     user_id,
@@ -48,7 +35,7 @@ type CreateItemQueueMemberParams struct {
 	ItemID    pgtype.UUID      `json:"item_id"`
 	UserID    pgtype.UUID      `json:"user_id"`
 	TicketID  pgtype.UUID      `json:"ticket_id"`
-	Position  int32            `json:"position"`
+	Position  pgtype.Int4      `json:"position"`
 	Status    string           `json:"status"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
 }
@@ -85,27 +72,11 @@ func (q *Queries) DeleteAllItemQueueMembersByItemID(ctx context.Context, itemID 
 	return err
 }
 
-const deleteItemQueueMember = `-- name: DeleteItemQueueMember :exec
-DELETE FROM item_queue_members
-WHERE item_id = $1 
-AND user_id = $2
-`
-
-type DeleteItemQueueMemberParams struct {
-	ItemID pgtype.UUID `json:"item_id"`
-	UserID pgtype.UUID `json:"user_id"`
-}
-
-func (q *Queries) DeleteItemQueueMember(ctx context.Context, arg DeleteItemQueueMemberParams) error {
-	_, err := q.db.Exec(ctx, deleteItemQueueMember, arg.ItemID, arg.UserID)
-	return err
-}
-
 const existsItemQueueMember = `-- name: ExistsItemQueueMember :one
 SELECT EXISTS(
     SELECT 1
     FROM item_queue_members
-    WHERE item_id = $1 
+    WHERE item_id = $1
     AND user_id = $2
 )
 `
@@ -123,7 +94,7 @@ func (q *Queries) ExistsItemQueueMember(ctx context.Context, arg ExistsItemQueue
 }
 
 const getAllItemQueueMembersByItemID = `-- name: GetAllItemQueueMembersByItemID :many
-SELECT 
+SELECT
     id,
     item_id,
     user_id,
@@ -133,7 +104,7 @@ SELECT
     created_at
 FROM item_queue_members
 WHERE item_id = $1
-ORDER BY position
+ORDER BY position NULLS LAST
 `
 
 func (q *Queries) GetAllItemQueueMembersByItemID(ctx context.Context, itemID pgtype.UUID) ([]ItemQueueMember, error) {
@@ -165,7 +136,7 @@ func (q *Queries) GetAllItemQueueMembersByItemID(ctx context.Context, itemID pgt
 }
 
 const getAllItemQueueMembersByUserID = `-- name: GetAllItemQueueMembersByUserID :many
-SELECT 
+SELECT
     id,
     item_id,
     user_id,
@@ -207,7 +178,7 @@ func (q *Queries) GetAllItemQueueMembersByUserID(ctx context.Context, userID pgt
 }
 
 const getItemQueueMemberByUserID = `-- name: GetItemQueueMemberByUserID :one
-SELECT 
+SELECT
     id,
     item_id,
     user_id,
@@ -216,7 +187,7 @@ SELECT
     status,
     created_at
 FROM item_queue_members
-WHERE item_id = $1 
+WHERE item_id = $1
 AND user_id = $2
 `
 
@@ -252,23 +223,99 @@ type GetItemQueueMemberPositionParams struct {
 	UserID pgtype.UUID `json:"user_id"`
 }
 
-func (q *Queries) GetItemQueueMemberPosition(ctx context.Context, arg GetItemQueueMemberPositionParams) (int32, error) {
+func (q *Queries) GetItemQueueMemberPosition(ctx context.Context, arg GetItemQueueMemberPositionParams) (pgtype.Int4, error) {
 	row := q.db.QueryRow(ctx, getItemQueueMemberPosition, arg.ItemID, arg.UserID)
-	var position int32
+	var position pgtype.Int4
 	err := row.Scan(&position)
 	return position, err
 }
 
-const shiftItemQueueMembersPositions = `-- name: ShiftItemQueueMembersPositions :exec
+const getUserQueueRank = `-- name: GetUserQueueRank :one
+SELECT rank
+FROM (
+    SELECT
+        user_id,
+        ROW_NUMBER() OVER (ORDER BY position) AS rank
+    FROM item_queue_members
+    WHERE item_id = $1
+    AND status IN (
+        'waiting_in_line',
+        'acquired_purchase_rights',
+        'placed_an_order'
+    )
+) ranked
+WHERE user_id = $2
+`
+
+type GetUserQueueRankParams struct {
+	ItemID pgtype.UUID `json:"item_id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetUserQueueRank(ctx context.Context, arg GetUserQueueRankParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserQueueRank, arg.ItemID, arg.UserID)
+	var rank int64
+	err := row.Scan(&rank)
+	return rank, err
+}
+
+const leaveItemQueueMember = `-- name: LeaveItemQueueMember :exec
 UPDATE item_queue_members
-SET position = position - 1
+SET
+    status = $3,
+    position = NULL
 WHERE item_id = $1
-AND position > $2
+AND user_id = $2
+`
+
+type LeaveItemQueueMemberParams struct {
+	ItemID pgtype.UUID `json:"item_id"`
+	UserID pgtype.UUID `json:"user_id"`
+	Status string      `json:"status"`
+}
+
+func (q *Queries) LeaveItemQueueMember(ctx context.Context, arg LeaveItemQueueMemberParams) error {
+	_, err := q.db.Exec(ctx, leaveItemQueueMember, arg.ItemID, arg.UserID, arg.Status)
+	return err
+}
+
+const reactivateItemQueueMember = `-- name: ReactivateItemQueueMember :exec
+UPDATE item_queue_members
+SET
+    status = 'waiting_in_line',
+    position = $3,
+    ticket_id = NULL
+WHERE item_id = $1
+AND user_id = $2
+`
+
+type ReactivateItemQueueMemberParams struct {
+	ItemID   pgtype.UUID `json:"item_id"`
+	UserID   pgtype.UUID `json:"user_id"`
+	Position pgtype.Int4 `json:"position"`
+}
+
+func (q *Queries) ReactivateItemQueueMember(ctx context.Context, arg ReactivateItemQueueMemberParams) error {
+	_, err := q.db.Exec(ctx, reactivateItemQueueMember, arg.ItemID, arg.UserID, arg.Position)
+	return err
+}
+
+const shiftItemQueueMembersPositions = `-- name: ShiftItemQueueMembersPositions :exec
+WITH negated AS (
+    UPDATE item_queue_members AS source
+    SET position = -source.position
+    WHERE source.item_id = $1
+    AND source.position > $2
+    RETURNING source.id
+)
+UPDATE item_queue_members AS target
+SET position = -target.position - 1
+WHERE target.id IN (SELECT id FROM negated)
 `
 
 type ShiftItemQueueMembersPositionsParams struct {
 	ItemID   pgtype.UUID `json:"item_id"`
-	Position int32       `json:"position"`
+	Position pgtype.Int4 `json:"position"`
 }
 
 func (q *Queries) ShiftItemQueueMembersPositions(ctx context.Context, arg ShiftItemQueueMembersPositionsParams) error {
@@ -278,11 +325,11 @@ func (q *Queries) ShiftItemQueueMembersPositions(ctx context.Context, arg ShiftI
 
 const updateItemQueueMember = `-- name: UpdateItemQueueMember :exec
 UPDATE item_queue_members
-SET 
+SET
     ticket_id = $3,
     position = $4,
     status = $5
-WHERE item_id = $1 
+WHERE item_id = $1
 AND user_id = $2
 `
 
@@ -290,7 +337,7 @@ type UpdateItemQueueMemberParams struct {
 	ItemID   pgtype.UUID `json:"item_id"`
 	UserID   pgtype.UUID `json:"user_id"`
 	TicketID pgtype.UUID `json:"ticket_id"`
-	Position int32       `json:"position"`
+	Position pgtype.Int4 `json:"position"`
 	Status   string      `json:"status"`
 }
 

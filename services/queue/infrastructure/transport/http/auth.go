@@ -13,9 +13,8 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 
 	"github.com/avito-hack/queue/services/queue/gen/server"
-	"github.com/avito-hack/queue/services/queue/internal/auth"
 	a "github.com/avito-hack/queue/services/queue/infrastructure/auth"
-	
+	"github.com/avito-hack/queue/services/queue/internal/auth"
 )
 
 const authenticatedUserIDKey = "queue_authenticated_user_id"
@@ -106,7 +105,7 @@ func authenticateRequest(
 			ginContext.Request.URL.Path,
 		)
 
-		ginContext.Error(err)
+		_ = ginContext.Error(err)
 
 		return errUserIdentityUnavailable
 	}
@@ -124,17 +123,17 @@ func authenticateRequest(
 	}
 
 	ginContext.Set(authenticatedUserIDKey, userID)
-	
+
 	requestContext := ginContext.Request.Context()
-	
+
 	requestContext = context.WithValue(
 		requestContext,
 		a.AuthorizationHeaderKey,
 		header,
 	)
-	
+
 	ginContext.Request = ginContext.Request.WithContext(requestContext)
-	
+
 	authLogger.Info(
 		"authentication successful",
 		"user_id",
@@ -150,24 +149,6 @@ func setAuthenticationError(ctx *gin.Context, value authenticationError) {
 	if ctx != nil {
 		ctx.Set(authenticationErrorKey, value)
 	}
-}
-
-func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
-	if ginCtx, ok := ctx.(*gin.Context); ok {
-		if v, exists := ginCtx.Get(authenticatedUserIDKey); exists {
-			if id, ok := v.(uuid.UUID); ok && id != uuid.Nil {
-				return id, true
-			}
-		}
-	}
-
-	if v := ctx.Value(authenticatedUserIDKey); v != nil {
-		if id, ok := v.(uuid.UUID); ok && id != uuid.Nil {
-			return id, true
-		}
-	}
-
-	return uuid.Nil, false
 }
 
 func validationErrorHandler(ctx *gin.Context, message string, statusCode int) {

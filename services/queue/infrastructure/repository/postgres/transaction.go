@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -40,7 +41,7 @@ func (tm *transactionManager) WithinTransaction(
 		queueRepository domain.ItemQueueRepository,
 		memberRepository domain.ItemQueueMemberRepository,
 	) error,
-) error {
+) (err error) {
 	tm.logger.Debug("starting database transaction")
 
 	tx, err := tm.pool.Begin(ctx)
@@ -53,6 +54,23 @@ func (tm *transactionManager) WithinTransaction(
 
 		return err
 	}
+
+	rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	defer func() {
+		if p := recover(); p != nil {
+			if rollbackErr := tx.Rollback(rollbackCtx); rollbackErr != nil {
+				tm.logger.Error(
+					"transaction rollback after panic failed",
+					"error",
+					rollbackErr,
+				)
+			}
+
+			panic(p)
+		}
+	}()
 
 	queries := sqlc.New(tx)
 
@@ -68,7 +86,7 @@ func (tm *transactionManager) WithinTransaction(
 			err,
 		)
 
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+		if rollbackErr := tx.Rollback(rollbackCtx); rollbackErr != nil {
 			tm.logger.Error(
 				"transaction rollback failed",
 				"error",
@@ -79,14 +97,14 @@ func (tm *transactionManager) WithinTransaction(
 		return err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if commitErr := tx.Commit(ctx); commitErr != nil {
 		tm.logger.Error(
 			"transaction commit failed",
 			"error",
-			err,
+			commitErr,
 		)
-	
-		return err
+
+		return commitErr
 	}
 
 	tm.logger.Debug("database transaction committed")

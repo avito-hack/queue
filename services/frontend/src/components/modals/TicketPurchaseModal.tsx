@@ -98,28 +98,43 @@ export function TicketPurchaseModal({
           </div>
         )}
 
-        <div className="grid gap-2.5">
-          {canActivate && (
-            <button
-              type="button"
-              disabled={expired || buying}
-              className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-50 disabled:hover:translate-y-0"
-              onClick={onBuy}
-            >
-              {buying ? 'Активация…' : 'Перейти к покупке'}
-            </button>
-          )}
-          {canDecline && (
-            <button
-              type="button"
-              disabled={buying}
-              className="min-h-12 w-full cursor-pointer rounded-xl bg-[#fff0f2] px-[18px] py-3 font-extrabold text-avito-red disabled:cursor-default disabled:opacity-50"
-              onClick={onDecline}
-            >
-              Отказаться от покупки
-            </button>
-          )}
-        </div>
+        {buying ? (
+          <div
+            className="grid min-h-[120px] place-items-center gap-3 rounded-2xl bg-[#f5f5f5] px-4 py-6"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="size-9 animate-spin rounded-full border-[3px] border-[#d8d8d8] border-t-avito-blue"
+              aria-hidden="true"
+            />
+            <div className="text-center text-sm font-extrabold text-avito-ink">
+              Переход к оформлению…
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-2.5">
+            {canActivate && (
+              <button
+                type="button"
+                disabled={expired}
+                className="min-h-12 w-full cursor-pointer rounded-xl bg-avito-blue px-[18px] py-3 font-extrabold text-white transition duration-150 hover:-translate-y-px hover:bg-avito-blue-hover disabled:cursor-default disabled:opacity-50 disabled:hover:translate-y-0"
+                onClick={onBuy}
+              >
+                Перейти к покупке
+              </button>
+            )}
+            {canDecline && (
+              <button
+                type="button"
+                className="min-h-12 w-full cursor-pointer rounded-xl bg-[#fff0f2] px-[18px] py-3 font-extrabold text-avito-red"
+                onClick={onDecline}
+              >
+                Отказаться от покупки
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
